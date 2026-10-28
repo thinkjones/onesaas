@@ -1,16 +1,28 @@
-import './App.css';
-import Pairing from './Pairing.tsx';
-import RunLog from './RunLog.tsx';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter } from 'react-router';
+import { useLiveEvents } from './api.ts';
+import { Toaster } from './components/ui/sonner.tsx';
+import { TooltipProvider } from './components/ui/tooltip.tsx';
+import AppRoutes from './routes.tsx';
 
-// Bare M1 page: pairing card + live run log. Template CSS and main.tsx are
-// untouched on purpose — no styling work until M2/M5.
+const queryClient = new QueryClient();
+
+function LiveEvents() {
+  useLiveEvents();
+  return null;
+}
+
 function App() {
   return (
-    <>
-      <h1>My Dad&apos;s AI Agent</h1>
-      <Pairing />
-      <RunLog />
-    </>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <BrowserRouter>
+          <LiveEvents />
+          <AppRoutes />
+        </BrowserRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
 

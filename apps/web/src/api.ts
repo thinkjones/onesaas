@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import type { Run, StepRun, Workflow } from '@dad/shared';
 
@@ -5,8 +6,39 @@ import type { Run, StepRun, Workflow } from '@dad/shared';
 // (server is not a dependency), so the shape is redeclared here.
 export type EngineEvent = { type: 'run'; run: Run } | { type: 'step'; stepRun: StepRun };
 
+/** GET /api/runs/:id shape. `workflow` is the run's OWN pinned version. */
+export interface RunDetail {
+  run: Run;
+  steps: StepRun[];
+  story: string[];
+  workflow: Workflow;
+}
+
+/** POST approval/retry responses OMIT `workflow` (it is immutable). */
+export interface RunUpdate {
+  run: Run;
+  steps: StepRun[];
+  story: string[];
+}
+
+/** Bodies must match the server's strict zod union EXACTLY — surplus keys 400. */
+export type ApprovalAction =
+  | { action: 'approve' }
+  | { action: 'edit'; text: string }
+  | { action: 'skip' };
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as T;
+}
+
+async function postJson<T>(url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as T;
 }
@@ -21,8 +53,21 @@ export function getRuns(workflowId?: string): Promise<Run[]> {
   );
 }
 
-export function getRun(id: string): Promise<{ run: Run; steps: StepRun[] }> {
+export function getRun(id: string): Promise<RunDetail> {
   return getJson(`/api/runs/${encodeURIComponent(id)}`);
+}
+
+export function approveStep(runId: string, stepId: string, body: ApprovalAction): Promise<RunUpdate> {
+  return postJson(
+    `/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/approval`,
+    body,
+  );
+}
+
+export function retryStep(runId: string, stepId: string): Promise<RunUpdate> {
+  return postJson(
+    `/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/retry`,
+  );
 }
 
 export async function startPairing(): Promise<{ code: string }> {
@@ -48,4 +93,81 @@ export function useEvents(onEvent: (e: EngineEvent) => void): void {
     es.onmessage = (msg: MessageEvent) => ref.current(JSON.parse(msg.data) as EngineEvent);
     return () => es.close();
   }, []);
+}
+
+// --- TanStack Query hooks (M2) ---
+
+export function useWorkflows() {
+  return useQuery({ queryKey: ['workflows'], queryFn: getWorkflows });
+}
+
+// The server has no GET /api/workflows/:id, so this selects from the list.
+export function useWorkflow(id: string) {
+  return useQuery({
+    queryKey: ['workflows'],
+    queryFn: getWorkflows,
+    select: (wfs) => wfs.find((w) => w.id === id),
+  });
+}
+
+export function useRuns(workflowId: string) {
+  return useQuery({ queryKey: ['runs', workflowId], queryFn: () => getRuns(workflowId) });
+}
+
+export function useRun(runId: string) {
+  return useQuery({ queryKey: ['run', runId], queryFn: () => getRun(runId) });
+}
+
+// Merges a POST response into the cached detail, keeping the existing pinned
+// `workflow` (POSTs omit it). Falls back to a re-GET when nothing is cached.
+function mergeRunUpdate(client: QueryClient, runId: string, update: RunUpdate): void {
+  const cached = client.getQueryData<RunDetail>(['run', runId]);
+  if (cached) {
+    client.setQueryData<RunDetail>(['run', runId], { ...update, workflow: cached.workflow });
+  } else {
+    void client.invalidateQueries({ queryKey: ['run', runId] });
+  }
+  void client.invalidateQueries({ queryKey: ['runs', update.run.workflowId] });
+}
+
+export function useApprove(runId: string, stepId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ApprovalAction) => approveStep(runId, stepId, body),
+    onSuccess: (update) => mergeRunUpdate(client, runId, update),
+  });
+}
+
+export function useRetry(runId: string, stepId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => retryStep(runId, stepId),
+    onSuccess: (update) => mergeRunUpdate(client, runId, update),
+  });
+}
+
+// NOTE: run.endedAt is only meaningful on terminal runs — a failed→waiting
+// retry leaves a stale endedAt behind (known server wart). Never display
+// durations off endedAt for non-terminal runs.
+
+/** Subscribes to /api/events once and invalidates run queries per event. */
+export function useLiveEvents(): void {
+  const client = useQueryClient();
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/events');
+    es.onmessage = (msg: MessageEvent) => {
+      const e = JSON.parse(msg.data) as EngineEvent;
+      if (e.type === 'run') {
+        void client.invalidateQueries({ queryKey: ['run', e.run.id] });
+        void client.invalidateQueries({ queryKey: ['runs', e.run.workflowId] });
+      } else {
+        // Step events carry no workflowId, so the runs lists are invalidated
+        // by prefix instead of per workflow.
+        void client.invalidateQueries({ queryKey: ['run', e.stepRun.runId] });
+        void client.invalidateQueries({ queryKey: ['runs'] });
+      }
+    };
+    return () => es.close();
+  }, [client]);
 }
