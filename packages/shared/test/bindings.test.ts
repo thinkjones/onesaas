@@ -23,6 +23,14 @@ test('resolveBindings resolves a missing path to undefined instead of throwing',
   expect('body' in out).toBe(true);
 });
 
+test('resolveBindings interpolates $-patterns verbatim in mixed text', async () => {
+  const out = await resolveBindings(
+    { text: 'a={{x}} b={{y}} c={{z}}' },
+    { x: '$&', y: "$'", z: '$`' },
+  );
+  expect(out).toEqual({ text: "a=$& b=$' c=$`" });
+});
+
 test('evalCondition returns true or false from ctx', async () => {
   await expect(evalCondition('classify.isBooking == true', { classify: { isBooking: true } })).resolves.toBe(true);
   await expect(evalCondition('classify.isBooking == true', { classify: { isBooking: false } })).resolves.toBe(false);

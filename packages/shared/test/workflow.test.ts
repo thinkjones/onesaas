@@ -41,3 +41,15 @@ test('Workflow rejects an edge whose from is not a step or trigger id', () => {
   const bad = workflowWithEdges([{ from: 'nope', to: 'a' }]);
   expect(() => Workflow.parse(bad)).toThrow();
 });
+
+test('Workflow rejects two steps sharing an id', () => {
+  const wf = workflowWithEdges([]);
+  wf.steps = [step('a'), step('a'), step('c')];
+  expect(() => Workflow.parse(wf)).toThrow('Duplicate step id: a');
+});
+
+test('Workflow rejects a step colliding with the trigger id', () => {
+  const wf = workflowWithEdges([]);
+  wf.steps = [step('a'), step('trigger'), step('c')];
+  expect(() => Workflow.parse(wf)).toThrow('Duplicate step id: trigger');
+});

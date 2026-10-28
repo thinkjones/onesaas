@@ -34,6 +34,22 @@ export const Workflow = z
   })
   .superRefine((wf, ctx) => {
     const ids = new Set([wf.trigger.id, ...wf.steps.map((s) => s.id)]);
+    const seen = new Set([wf.trigger.id]);
+    const reported = new Set<string>();
+    wf.steps.forEach((s, i) => {
+      if (seen.has(s.id)) {
+        if (!reported.has(s.id)) {
+          reported.add(s.id);
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['steps', i, 'id'],
+            message: `Duplicate step id: ${s.id}`,
+          });
+        }
+      } else {
+        seen.add(s.id);
+      }
+    });
     wf.edges.forEach((edge, i) => {
       if (!ids.has(edge.from)) {
         ctx.addIssue({

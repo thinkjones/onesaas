@@ -30,7 +30,7 @@ export async function resolveBindings(
       let text = value;
       for (const match of matches) {
         const evaluated = await evalExpr(match[1].trim(), ctx);
-        text = text.replace(match[0], evaluated == null ? '' : String(evaluated));
+        text = text.replace(match[0], () => (evaluated == null ? '' : String(evaluated)));
       }
       out[key] = text;
     }
