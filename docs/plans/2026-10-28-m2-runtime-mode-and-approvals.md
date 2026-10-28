@@ -141,6 +141,30 @@
 - [ ] **Step 4: Run it; expect PASS. `pnpm dev`: each route renders and the Settings pairing card still pairs.**
 - [ ] **Step 5: Commit** `feat(web): app shell, routes, tokens and query hooks`
 
+### Task 3b: Craft-inspired design system
+
+**Design reference:** Craft (https://www.craft.do/): paper-like card surfaces, warm neutrals, a quiet sidebar, strong type hierarchy, generous whitespace, soft small shadows, one corner radius, minimal chrome, and friendly empty states. This task turns that language plus the M2 Global Constraints into shared tokens and primitives so Tasks 4–6 (and every later screen) look like one app, not six.
+
+**Files:**
+- Create: `apps/web/src/design/{tokens.css,AppCard.tsx,AppButton.tsx,StatusBadge.tsx,EmptyState.tsx}`, `apps/web/src/pages/DesignPreviewPage.tsx`
+- Modify: `apps/web/src/styles/app.css` (import design tokens), `apps/web/src/routes.tsx` (add `/design` preview route)
+- Test: `apps/web/src/design/primitives.test.tsx`
+
+**Interfaces:**
+- Consumes: Morning tokens and shadcn set (Task 3); status labels/colours (Global Constraints).
+- Produces:
+  - `tokens.css` extends the Task 3 tokens with `--info 210 80% 50%` (running blue), `--shadow-sm` and `--shadow-md` (soft, low-opacity), keeping `--radius` as the single corner radius.
+  - `StatusBadge({status})` renders the exact Global Constraints label for each of the six statuses (`pending`, `running`, `waiting`, `done`, `failed`, `skipped`) with a `data-status` attribute; `running` pulses (disabled under `prefers-reduced-motion`); `skipped` uses a dashed border.
+  - `AppCard` (paper surface: `--card` background, `--radius` corners, `--shadow-sm`), `AppButton` (wraps the shadcn button; at least 40px tall, 16px+ text), `EmptyState({icon, title, hint, action?})` (centred icon, title, one-line hint, optional action button).
+  - `/design` preview page renders every primitive in every state plus all six status badges, so regressions are visible in one place.
+  - Rule from here on: no screen introduces one-off colours, fonts, radii, or shadows. Tasks 4–6 consume these primitives, and later milestones extend them instead of inventing new ones.
+
+- [ ] **Step 1: Write failing tests.** StatusBadge renders "Not started", "Working…", "Waiting for you", "Done", "Needs a look" and "Skipped" for the six statuses with matching `data-status`. AppButton carries `min-h-10` and `text-base`. EmptyState renders its title, hint and action label.
+- [ ] **Step 2: Run them; expect FAIL.**
+- [ ] **Step 3: Implement the tokens, primitives and preview page.**
+- [ ] **Step 4: Run them; expect PASS. `pnpm dev`: open `/design` and confirm one card language, one radius, readable hierarchy, and no clipped text at 1280×800.**
+- [ ] **Step 5: Commit** `feat(web): Craft-inspired design primitives and status language`
+
 ### Task 4: Workflow canvas (shared by both modes)
 
 **Files:**
