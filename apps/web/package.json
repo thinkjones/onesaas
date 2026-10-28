@@ -11,7 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@dad/shared": "workspace:^",
+    "@dad/shared": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

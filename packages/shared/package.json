@@ -10,5 +10,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "jexl": "^2.3.0",
+    "zod": "^3"
+  },
+  "devDependencies": {
+    "@types/jexl": "^2.3.4",
+    "vitest": "^2.1.9"
   }
 }
