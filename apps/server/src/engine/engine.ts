@@ -25,9 +25,17 @@ export function createEngine(d: {
 } {
   const { repo, executors, ctx: ctxBase } = d;
   const events = new EventEmitter();
+  events.setMaxListeners(0); // Singleton engine + per-connection SSE subscribers (Task 9): never warn.
 
   function emit(e: EngineEvent): void {
-    events.emit('event', e);
+    // A listener must never break a run: one throwing subscriber (e.g. SSE in
+    // Task 9) would otherwise propagate out of runStep → reject Promise.all →
+    // reject start() with the run stuck `running` forever.
+    try {
+      events.emit('event', e);
+    } catch {
+      // Deliberately swallowed: listener errors are not run errors.
+    }
   }
 
   async function start(workflowId: string, triggerPayload: unknown): Promise<Run> {
@@ -54,163 +62,183 @@ export function createEngine(d: {
     });
     emit({ type: 'run', run });
 
-    // Pre-create every StepRun as pending, in topo order (insertion order, so
-    // getRun returns full graph coverage from run start for M2's canvas).
-    // Trade-off: startedAt is ~run start for all steps (upsert preserves the
-    // first write), not the moment each step actually starts.
-    const preCreatedAt = new Date().toISOString();
-    const stepRunIds = new Map<string, string>();
-    for (const id of order) {
-      const pending: StepRun = {
-        id: randomUUID(),
-        runId: run.id,
-        stepId: id,
-        status: 'pending',
-        startedAt: preCreatedAt,
-      };
-      repo.upsertStepRun(pending);
-      stepRunIds.set(id, pending.id);
-      emit({ type: 'step', stepRun: pending });
-    }
+    // Every repo write below (pre-create upserts, runStep upserts, the final
+    // updateRun) can throw on infra failure; the catch best-efforts a
+    // failed-mark so the run never sticks `running` with no terminal event.
+    try {
+      // Pre-create every StepRun as pending, in topo order (insertion order, so
+      // getRun returns full graph coverage from run start for M2's canvas).
+      // Trade-off: startedAt is ~run start for all steps (upsert preserves the
+      // first write), not the moment each step actually starts.
+      const preCreatedAt = new Date().toISOString();
+      const stepRunIds = new Map<string, string>();
+      for (const id of order) {
+        const pending: StepRun = {
+          id: randomUUID(),
+          runId: run.id,
+          stepId: id,
+          status: 'pending',
+          startedAt: preCreatedAt,
+        };
+        repo.upsertStepRun(pending);
+        stepRunIds.set(id, pending.id);
+        emit({ type: 'step', stepRun: pending });
+      }
 
-    // One controller per run; nothing aborts in M1 (M2's cancellation hook).
-    const signal = new AbortController().signal;
-    const statusOf = new Map<string, StepRunStatus>(order.map((id) => [id, 'pending']));
-    // Binding context: trigger output under `trigger` plus every finished
-    // step's output under its step id (trigger also under its own id when it
-    // differs from 'trigger').
-    const bindings: Record<string, unknown> = {};
+      // One controller per run; nothing aborts in M1 (M2's cancellation hook).
+      const signal = new AbortController().signal;
+      const statusOf = new Map<string, StepRunStatus>(order.map((id) => [id, 'pending']));
+      // Binding context: trigger output under `trigger` plus every finished
+      // step's output under its step id (trigger also under its own id when it
+      // differs from 'trigger').
+      const bindings: Record<string, unknown> = {};
 
-    const isTerminal = (s: StepRunStatus): boolean =>
-      s === 'done' || s === 'skipped' || s === 'failed';
+      const isTerminal = (s: StepRunStatus): boolean =>
+        s === 'done' || s === 'skipped' || s === 'failed';
 
-    // One step's unit of work: skip or run to a terminal state. Never rejects:
-    // every failure is captured as a failed StepRun so other branches continue.
-    async function runStep(stepId: string): Promise<void> {
-      const step = byId.get(stepId)!;
-      const def = catalog[step.type]!;
-      const executor = executors[step.type]!;
-      const srId = stepRunIds.get(stepId)!;
-      const inc = incoming.get(stepId)!;
+      // One step's unit of work: skip or run to a terminal state.
+      // Executor/schema failures never reject (they fail the step so other
+      // branches continue); infra failures reject start() after a best-effort
+      // failed-mark by the finalizer below.
+      async function runStep(stepId: string): Promise<void> {
+        const step = byId.get(stepId)!;
+        const def = catalog[step.type]!;
+        const executor = executors[step.type]!;
+        const srId = stepRunIds.get(stepId)!;
+        const inc = incoming.get(stepId)!;
 
-      // OR-join: satisfied when from a done step with a true/absent `when`.
-      // Every incoming `when` is evaluated (workflow.edges order) even from
-      // skipped sources, so the first false one names the skip reason.
-      let satisfied = false;
-      const falseWhens: string[] = [];
-      for (const e of inc) {
-        let condTrue = true;
-        if (e.when !== undefined) {
-          condTrue = await evalCondition(e.when, bindings);
-          if (!condTrue) falseWhens.push(e.when);
+        // OR-join: satisfied when from a done step with a true/absent `when`.
+        // Every incoming `when` is evaluated (workflow.edges order) even from
+        // skipped sources, so the first false one names the skip reason.
+        let satisfied = false;
+        const falseWhens: string[] = [];
+        for (const e of inc) {
+          let condTrue = true;
+          if (e.when !== undefined) {
+            condTrue = await evalCondition(e.when, bindings);
+            if (!condTrue) falseWhens.push(e.when);
+          }
+          if (statusOf.get(e.from) === 'done' && condTrue) satisfied = true;
         }
-        if (statusOf.get(e.from) === 'done' && condTrue) satisfied = true;
-      }
-      if (inc.length > 0 && !satisfied) {
-        const why =
-          falseWhens.length > 0
-            ? `Skipped because the condition "${falseWhens[0]}" was not met.`
-            : 'Skipped because an earlier step was skipped.';
-        const skipped: StepRun = {
+        if (inc.length > 0 && !satisfied) {
+          const why =
+            falseWhens.length > 0
+              ? `Skipped because the condition "${falseWhens[0]}" was not met.`
+              : 'Skipped because an earlier step was skipped.';
+          const skipped: StepRun = {
+            id: srId,
+            runId: run.id,
+            stepId,
+            status: 'skipped',
+            why,
+            startedAt: preCreatedAt,
+          };
+          repo.upsertStepRun(skipped);
+          statusOf.set(stepId, 'skipped');
+          emit({ type: 'step', stepRun: skipped });
+          return;
+        }
+
+        const timerStarted = Date.now();
+        const running: StepRun = {
           id: srId,
           runId: run.id,
           stepId,
-          status: 'skipped',
-          why,
+          status: 'running',
           startedAt: preCreatedAt,
         };
-        repo.upsertStepRun(skipped);
-        statusOf.set(stepId, 'skipped');
-        emit({ type: 'step', stepRun: skipped });
-        return;
+        repo.upsertStepRun(running);
+        statusOf.set(stepId, 'running');
+        emit({ type: 'step', stepRun: running });
+
+        let input: unknown;
+        try {
+          // The single choke point: config validated (converts cryptic executor
+          // TypeErrors into clean step failures), then inputs resolved, then
+          // input validated. Schemas are guards only — originals flow through
+          // (zod strip would gut trigger echo: manual's inputSchema {} would
+          // strip { payload } to {} and break the output check downstream).
+          def.configSchema.parse(step.config);
+          input =
+            stepId === workflow.trigger.id
+              ? triggerPayload
+              : await resolveBindings(step.inputs, bindings);
+          def.inputSchema.parse(input);
+          const result = await executor(step.config, input, { ...ctxBase, signal });
+          def.outputSchema.parse(result.output);
+          const done: StepRun = {
+            id: srId,
+            runId: run.id,
+            stepId,
+            status: 'done',
+            input,
+            output: result.output,
+            why: result.why ?? 'Finished.',
+            model: result.model,
+            tokens: result.tokens,
+            costUsd: result.costUsd,
+            durationMs: Date.now() - timerStarted,
+            startedAt: preCreatedAt,
+          };
+          repo.upsertStepRun(done);
+          statusOf.set(stepId, 'done');
+          emit({ type: 'step', stepRun: done });
+          bindings[stepId] = result.output;
+          if (stepId === workflow.trigger.id) bindings['trigger'] = result.output;
+        } catch (err) {
+          const failed: StepRun = {
+            id: srId,
+            runId: run.id,
+            stepId,
+            status: 'failed',
+            ...(input !== undefined ? { input } : {}),
+            error: err instanceof Error ? err.message : String(err),
+            durationMs: Date.now() - timerStarted,
+            startedAt: preCreatedAt,
+          };
+          repo.upsertStepRun(failed);
+          statusOf.set(stepId, 'failed');
+          emit({ type: 'step', stepRun: failed });
+        }
       }
 
-      const timerStarted = Date.now();
-      const running: StepRun = {
-        id: srId,
-        runId: run.id,
-        stepId,
-        status: 'running',
-        startedAt: preCreatedAt,
-      };
-      repo.upsertStepRun(running);
-      statusOf.set(stepId, 'running');
-      emit({ type: 'step', stepRun: running });
+      // Wave loop: a step is ready when every incoming edge comes from a
+      // done/skipped step. Dependents of a failed step never become ready and
+      // keep their pending rows. Each wave moves every ready step to a terminal
+      // state, so the loop always terminates.
+      for (;;) {
+        const ready = order.filter((id) => {
+          if (isTerminal(statusOf.get(id)!)) return false;
+          return incoming
+            .get(id)!
+            .every((e) => statusOf.get(e.from) === 'done' || statusOf.get(e.from) === 'skipped');
+        });
+        if (ready.length === 0) break;
+        await Promise.all(ready.map((id) => runStep(id)));
+      }
 
-      let input: unknown;
+      // Cost passthrough: executors omit model/tokens/costUsd when they have no
+      // model cost; undefined is stored as-is and never synthesized to 0/NaN
+      // (M2 aggregates with `?? 0`).
+      const status = [...statusOf.values()].some((s) => s === 'failed') ? 'failed' : 'done';
+      repo.updateRun(run.id, { status, endedAt: new Date().toISOString() });
+      run = repo.getRun(run.id)!.run;
+      emit({ type: 'run', run });
+      return run;
+    } catch (err) {
+      // Best-effort finalizer: mark the run failed so it never sticks
+      // `running`, emit the terminal run event (emit itself is guarded), then
+      // rethrow — infra failures reject start().
+      const endedAt = new Date().toISOString();
       try {
-        // The single choke point: config validated (converts cryptic executor
-        // TypeErrors into clean step failures), then inputs resolved, then
-        // input validated. Schemas are guards only — originals flow through
-        // (zod strip would gut trigger echo: manual's inputSchema {} would
-        // strip { payload } to {} and break the output check downstream).
-        def.configSchema.parse(step.config);
-        input =
-          stepId === workflow.trigger.id
-            ? triggerPayload
-            : await resolveBindings(step.inputs, bindings);
-        def.inputSchema.parse(input);
-        const result = await executor(step.config, input, { ...ctxBase, signal });
-        def.outputSchema.parse(result.output);
-        const done: StepRun = {
-          id: srId,
-          runId: run.id,
-          stepId,
-          status: 'done',
-          input,
-          output: result.output,
-          why: result.why,
-          model: result.model,
-          tokens: result.tokens,
-          costUsd: result.costUsd,
-          durationMs: Date.now() - timerStarted,
-          startedAt: preCreatedAt,
-        };
-        repo.upsertStepRun(done);
-        statusOf.set(stepId, 'done');
-        emit({ type: 'step', stepRun: done });
-        bindings[stepId] = result.output;
-        if (stepId === workflow.trigger.id) bindings['trigger'] = result.output;
-      } catch (err) {
-        const failed: StepRun = {
-          id: srId,
-          runId: run.id,
-          stepId,
-          status: 'failed',
-          ...(input !== undefined ? { input } : {}),
-          error: err instanceof Error ? err.message : String(err),
-          durationMs: Date.now() - timerStarted,
-          startedAt: preCreatedAt,
-        };
-        repo.upsertStepRun(failed);
-        statusOf.set(stepId, 'failed');
-        emit({ type: 'step', stepRun: failed });
+        repo.updateRun(run.id, { status: 'failed', endedAt });
+      } catch {
+        // The store itself is failing: nothing left to do.
       }
+      run = { ...run, status: 'failed', endedAt };
+      emit({ type: 'run', run });
+      throw err;
     }
-
-    // Wave loop: a step is ready when every incoming edge comes from a
-    // done/skipped step. Dependents of a failed step never become ready and
-    // keep their pending rows. Each wave moves every ready step to a terminal
-    // state, so the loop always terminates.
-    for (;;) {
-      const ready = order.filter((id) => {
-        if (isTerminal(statusOf.get(id)!)) return false;
-        return incoming
-          .get(id)!
-          .every((e) => statusOf.get(e.from) === 'done' || statusOf.get(e.from) === 'skipped');
-      });
-      if (ready.length === 0) break;
-      await Promise.all(ready.map((id) => runStep(id)));
-    }
-
-    // Cost passthrough: executors omit model/tokens/costUsd when they have no
-    // model cost; undefined is stored as-is and never synthesized to 0/NaN
-    // (M2 aggregates with `?? 0`).
-    const status = [...statusOf.values()].some((s) => s === 'failed') ? 'failed' : 'done';
-    repo.updateRun(run.id, { status, endedAt: new Date().toISOString() });
-    run = repo.getRun(run.id)!.run;
-    emit({ type: 'run', run });
-    return run;
   }
 
   return { start, events };

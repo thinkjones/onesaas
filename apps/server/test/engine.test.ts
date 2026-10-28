@@ -480,3 +480,217 @@ test('input violating inputSchema fails the step', async () => {
   expect(a.status).toBe('failed');
   expect(a.error).toMatch(/string/i);
 });
+
+test('a throwing event listener never breaks a run', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': async () => ({ output: { ok: true }, why: 'Extracted.' }),
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  engine.events.on('event', () => {
+    throw new Error('subscriber blew up');
+  });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } })],
+      edges: [{ from: 'trigger', to: 'a' }],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  const full = repo.getRun(run.id)!;
+  expect(full.steps).toHaveLength(2);
+  for (const sr of full.steps) expect(sr.status).toBe('done');
+});
+
+test('persistent repo failure rejects start() after a best-effort failed-mark', async () => {
+  const { repo, ctxBase } = setup();
+  // The repo is closure-based (no `this`), so a spread override is faithful.
+  const failingRepo = {
+    ...repo,
+    upsertStepRun: (): void => {
+      throw new Error('store down');
+    },
+  };
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+  };
+  const engine = createEngine({ repo: failingRepo, executors, ctx: ctxBase });
+  const seen: EngineEvent[] = [];
+  engine.events.on('event', (e: EngineEvent) => seen.push(e));
+  repo.saveWorkflow(mkWorkflow({}));
+
+  await expect(engine.start('wf1', { payload: 1 })).rejects.toThrow('store down');
+  const runs = repo.listRuns();
+  expect(runs).toHaveLength(1);
+  expect(runs[0]!.status).toBe('failed');
+  const runSeq = seen
+    .filter((e): e is Extract<EngineEvent, { type: 'run' }> => e.type === 'run')
+    .map((e) => e.run.status);
+  expect(runSeq).toEqual(['running', 'failed']);
+});
+
+test('executor omitting why still yields done with a Finished. fallback', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': (async () => ({ output: { ok: true } })) as unknown as Executor,
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } })],
+      edges: [{ from: 'trigger', to: 'a' }],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  const a = repo.getRun(run.id)!.steps.find((s) => s.stepId === 'a')!;
+  expect(a.status).toBe('done');
+  expect(a.why).toBe('Finished.');
+});
+
+test('executor receives a live AbortSignal in ctx', async () => {
+  const { repo, ctxBase } = setup();
+  let captured: unknown;
+  const executors: Record<string, Executor> = {
+    'trigger.manual': async (_config, input, ctx) => {
+      captured = ctx.signal;
+      return { output: input, why: 'Started manually.' };
+    },
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(mkWorkflow({}));
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  expect(captured).toBeInstanceOf(AbortSignal);
+  expect((captured as AbortSignal).aborted).toBe(false);
+});
+
+test('executors omitting cost fields store undefined, never 0/NaN', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(mkWorkflow({}));
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  const trigger = repo.getRun(run.id)!.steps.find((s) => s.stepId === 'trigger')!;
+  expect(trigger.status).toBe('done');
+  expect(trigger.costUsd).toBeUndefined();
+  expect(trigger.model).toBeUndefined();
+  expect(trigger.tokens).toBeUndefined();
+});
+
+test('failing step emits pending→running→failed in order', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': async () => {
+      throw new Error('Boom');
+    },
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  const seen: EngineEvent[] = [];
+  engine.events.on('event', (e: EngineEvent) => seen.push(e));
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } })],
+      edges: [{ from: 'trigger', to: 'a' }],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('failed');
+  const states = seen
+    .filter(
+      (e): e is Extract<EngineEvent, { type: 'step' }> =>
+        e.type === 'step' && e.stepRun.stepId === 'a',
+    )
+    .map((e) => e.stepRun.status);
+  expect(states).toEqual(['pending', 'running', 'failed']);
+});
+
+test('skip names the first false when in workflow.edges order', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': async () => ({ output: { ok: true }, why: 'Extracted.' }),
+    'gmail.draftReply': async () => ({ output: { drafted: true }, why: 'Drafted.' }),
+    'ai.write': async () => ({ output: { text: 'unreached' }, why: 'unreached' }),
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [
+        mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } }),
+        mkStep('s', 'gmail.draftReply', { inputs: { threadId: 't1', body: 'hi' } }),
+        mkStep('b', 'ai.write', { config: WRITE_CONFIG, inputs: { context: 'x' } }),
+      ],
+      edges: [
+        { from: 'trigger', to: 'a' },
+        { from: 'trigger', to: 's' },
+        { from: 'a', to: 'b', when: 'a.ok == false' },
+        { from: 's', to: 'b', when: 's.drafted == false' },
+      ],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  const b = repo.getRun(run.id)!.steps.find((s) => s.stepId === 'b')!;
+  expect(b.status).toBe('skipped');
+  expect(b.why).toContain('a.ok == false');
+});
+
+test('diamond fan-in executes the join step exactly once', async () => {
+  const { repo, ctxBase } = setup();
+  let dCalls = 0;
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': async () => ({ output: { ok: true }, why: 'Extracted.' }),
+    'ai.write': async () => ({ output: { text: 'hi' }, why: 'Wrote.' }),
+    'table.upsert': async () => {
+      dCalls += 1;
+      return { output: { id: 1, created: true }, why: 'Saved.' };
+    },
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [
+        mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } }),
+        mkStep('b', 'ai.write', { config: WRITE_CONFIG, inputs: { context: 'c' } }),
+        mkStep('d', 'table.upsert', {
+          config: { table: 'customers', keyField: 'email' },
+          inputs: { row: '{{a}}' },
+        }),
+      ],
+      edges: [
+        { from: 'trigger', to: 'a' },
+        { from: 'trigger', to: 'b' },
+        { from: 'a', to: 'd' },
+        { from: 'b', to: 'd' },
+      ],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: 1 });
+
+  expect(run.status).toBe('done');
+  expect(dCalls).toBe(1);
+  const d = repo.getRun(run.id)!.steps.find((s) => s.stepId === 'd')!;
+  expect(d.status).toBe('done');
+});
