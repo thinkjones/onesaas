@@ -1,0 +1,16 @@
+{
+  "name": "dads-ai-agent",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "test": "vitest run",
+    "typecheck": "pnpm -r --parallel typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

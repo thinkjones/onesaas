@@ -34,3 +34,13 @@ Temporary Items
 *.icloud
 
 # End of https://www.toptal.com/developers/gitignore/api/MacOS
+
+# Deps and builds
+node_modules
+dist
+.output
+.wxt
+
+# Local data and secrets
+data/
+.env*
