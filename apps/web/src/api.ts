@@ -139,8 +139,12 @@ export function useRuns(workflowId: string) {
   return useQuery({ queryKey: ['runs', workflowId], queryFn: () => getRuns(workflowId) });
 }
 
-export function useRun(runId: string) {
-  return useQuery({ queryKey: ['run', runId], queryFn: () => getRun(runId) });
+export function useRun(runId: string, opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['run', runId],
+    queryFn: () => getRun(runId),
+    enabled: opts?.enabled ?? true,
+  });
 }
 
 // Merges a POST response into the cached detail, keeping the existing pinned
