@@ -104,5 +104,20 @@ export default defineContentScript({
     });
 
     refresh();
+
+    // Late-tab pull: the server sends `buttons` only on hello, so a tab that
+    // boots after that push (pair-then-open-Gmail, reload with socket up)
+    // would keep `[]` forever. Ask the background for the cached list; if it
+    // is unreachable the pushed path still covers us, so ignore failures.
+    void browser.runtime
+      .sendMessage({ action: 'getButtons' })
+      .then((reply) => {
+        const r = (reply ?? {}) as Record<string, unknown>;
+        if (r['type'] === 'buttons' && Array.isArray(r['items'])) {
+          buttons = r['items'] as WorkflowButtonItem[];
+          refresh();
+        }
+      })
+      .catch(() => {});
   },
 });

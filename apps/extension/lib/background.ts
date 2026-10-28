@@ -106,6 +106,11 @@ export function createBackground(deps: {
   let readyWaiters: Array<() => void> = [];
   let helloAcked = false;
   let disposed = false;
+  // Last workflow-button list from the server. The server sends `buttons`
+  // only on hello, so Gmail tabs that boot later pull this via `getButtons`
+  // instead of waiting for a push that already happened. An empty list is a
+  // valid state and CLEARS stale buttons (e.g. workflows deleted server-side).
+  let lastButtons: Array<{ workflowId: string; label: string }> = [];
 
   const isOpen = () => socket !== null && socket.readyState === WebSocket.OPEN;
 
@@ -255,6 +260,10 @@ export function createBackground(deps: {
         break;
       }
       case 'buttons': {
+        // Clone, never alias: the parsed object is per-message garbage and
+        // fan-out/getButtons consumers must not share references with it.
+        // Runs on EVERY buttons message, including empty (empty clears).
+        lastButtons = msg.items.map((i) => ({ workflowId: i.workflowId, label: i.label }));
         await fanOut({ type: 'buttons', items: msg.items });
         break;
       }
@@ -352,6 +361,15 @@ export function createBackground(deps: {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload.
       return sendTrigger(msg['workflowId'], msg['email']);
+    }
+    if (msg['action'] === 'getButtons') {
+      // Same shape as the fan-out so the content script reuses its
+      // `buttons` handler. Cloned per call so a tab mutating its reply
+      // cannot corrupt the cache for other tabs.
+      return {
+        type: 'buttons',
+        items: lastButtons.map((i) => ({ workflowId: i.workflowId, label: i.label })),
+      };
     }
     return undefined;
   });

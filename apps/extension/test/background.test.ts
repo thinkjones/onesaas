@@ -505,6 +505,58 @@ describe('reconnect + ping', () => {
     bg.dispose();
   });
 
+describe('getButtons (late-loading Gmail tabs)', () => {
+  it('returns [] before any buttons message', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    expect(t.runtimeMessage({ action: 'getButtons' })).toEqual({ type: 'buttons', items: [] });
+    bg.dispose();
+  });
+
+  it('caches server buttons; replies are isolated copies', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const items = [{ workflowId: 'wf1', label: '✨ Save as lead & reply' }];
+    lastSocket().receive({ type: 'buttons', items });
+    await flush();
+    const reply = t.runtimeMessage({ action: 'getButtons' }) as {
+      type: string;
+      items: Array<{ workflowId: string; label: string }>;
+    };
+    expect(reply).toEqual({ type: 'buttons', items });
+    expect(reply.items).not.toBe(items);
+    // Mutating the reply must not corrupt the cache.
+    reply.items.push({ workflowId: 'evil', label: 'evil' });
+    reply.items[0]!.label = 'mutated';
+    const reread = t.runtimeMessage({ action: 'getButtons' }) as {
+      type: string;
+      items: unknown[];
+    };
+    expect(reread).toEqual({ type: 'buttons', items });
+    bg.dispose();
+  });
+
+  it('empty buttons clear previously cached buttons', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({
+      type: 'buttons',
+      items: [{ workflowId: 'wf1', label: '✨ Save as lead & reply' }],
+    });
+    await flush();
+    lastSocket().receive({ type: 'buttons', items: [] });
+    await flush();
+    expect(t.runtimeMessage({ action: 'getButtons' })).toEqual({ type: 'buttons', items: [] });
+    bg.dispose();
+  });
+  });
+
   it('pings every 20s while open and stops on close', async () => {
     const t = makeBrowser({ token: 'tok' });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
