@@ -27,9 +27,34 @@ export type ApprovalAction =
   | { action: 'edit'; text: string }
   | { action: 'skip' };
 
+/** Thrown by the API helpers; `status` lets callers (e.g. Task 6 toasts) branch on it. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+// Server failure bodies are `{ error: string }`; surface the message, not raw JSON.
+async function throwApiError(res: Response): Promise<never> {
+  const text = await res.text();
+  let message = text;
+  try {
+    const body: unknown = JSON.parse(text);
+    if (typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string') {
+      message = (body as { error: string }).error;
+    }
+  } catch {
+    // Non-JSON body: fall back to raw text.
+  }
+  throw new ApiError(message, res.status);
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return (await res.json()) as T;
 }
 
@@ -39,7 +64,7 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return (await res.json()) as T;
 }
 
@@ -72,7 +97,7 @@ export function retryStep(runId: string, stepId: string): Promise<RunUpdate> {
 
 export async function startPairing(): Promise<{ code: string }> {
   const res = await fetch('/api/pairing/start', { method: 'POST' });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) await throwApiError(res);
   return (await res.json()) as { code: string };
 }
 
