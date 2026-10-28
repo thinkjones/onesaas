@@ -1,0 +1,4 @@
+build.stamp
+plugins/
+plugins.tmp/
+.gascity/

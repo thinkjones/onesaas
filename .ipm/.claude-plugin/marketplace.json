@@ -1,0 +1,78 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "meta-ai-hackathon-my-dads-ai-agent-ipm",
+  "description": "ipm packs: vendor-meta-hackathon",
+  "owner": {
+    "name": "Gene Conroy-Jones"
+  },
+  "plugins": [
+    {
+      "name": "vendor-meta-hackathon",
+      "description": "Hackathon pack to manage skills needed to build the app",
+      "source": "./plugins/vendor-meta-hackathon",
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-superpowers",
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers",
+        "sha": "bb92a77741419a4ab5f06e711a283343f1ada0c3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-ui-ux-pro-max",
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "sha": "56ea9cf174ed86786187daa9de0e6247cb0747e4"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-skill-creator",
+      "source": {
+        "source": "git-subdir",
+        "url": "anthropics/claude-plugins-official",
+        "path": "plugins/skill-creator",
+        "sha": "ea10b213686c90bb1984b2016937310e05336cf3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "author": {
+        "name": "Twilio"
+      },
+      "category": "development",
+      "description": "Twilio Skills provide procedural knowledge for AI coding agents — which APIs to use, in what order, and what to avoid. Covers SMS, Voice, WhatsApp, Verify, SendGrid, Compliance, and 30+ products.",
+      "homepage": "https://www.twilio.com",
+      "name": "vendor-meta-hackathon-twilio-developer-kit",
+      "source": {
+        "sha": "8aba46fb65dc8d9a20f4b301a68352064b4159a5",
+        "source": "url",
+        "url": "https://github.com/twilio/ai.git"
+      },
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    }
+  ]
+}
