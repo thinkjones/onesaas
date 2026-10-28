@@ -35,8 +35,11 @@ export interface StepResult {
   costUsd?: number;
 }
 
-// Trust boundary: config/input are trusted. Task 7 validates them against the
-// catalog schemas before dispatch, so executors cast instead of re-validating.
+// Trust boundary: the engine validates input/output against the catalog
+// schemas; config is trusted dev-authored input in M1 (configs come only
+// from the hand-written flow1 seed — nothing validates them). Engine-side
+// `configSchema.parse` is a Task 7 follow-up, mandatory before M3's
+// machine-generated configs. Executors cast instead of re-validating.
 export type Executor = (config: any, input: any, ctx: StepContext) => Promise<StepResult>;
 
 export const executors: Record<string, Executor> = {

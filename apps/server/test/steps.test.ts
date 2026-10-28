@@ -356,3 +356,91 @@ test('trigger.manual echoes the payload', async () => {
   expect(result.output).toEqual({ payload: { hello: 1 } });
   expect(result.why).toBe('Started manually.');
 });
+
+test('ai.extract rejects an unknown field type instead of a TypeError', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  await expect(
+    executors['ai.extract']!(
+      {
+        instructions: 'Read it.',
+        fields: [{ name: 'x', type: 'bogus', description: 'X' }],
+      },
+      { text: 'hello' },
+      makeCtx(gateway),
+    ),
+  ).rejects.toThrow('Unknown field type: bogus');
+});
+
+test('ai.extract rejects duplicate field names instead of last-win', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  await expect(
+    executors['ai.extract']!(
+      {
+        instructions: 'Read it.',
+        fields: [
+          { name: 'name', type: 'text', description: 'Name' },
+          { name: 'name', type: 'number', description: 'Name again' },
+        ],
+      },
+      { text: 'hello' },
+      makeCtx(gateway),
+    ),
+  ).rejects.toThrow('Duplicate field: "name"');
+});
+
+test.each([['null', null], ['string', 'oops']])(
+  'gmail.read survives garbage bridge output (%s) with fallback sender and subject',
+  async (_label, garbage) => {
+    const { gateway } = gatewayWithResponses(0, '{}');
+    const call = vi.fn().mockResolvedValue(garbage);
+    const result = await executors['gmail.read']!(
+      {},
+      { threadId: 't1' },
+      makeCtx(gateway, undefined, { call }),
+    );
+    // senderBits falls back to 'someone' / '(no subject)' when the bridge
+    // returns anything without fromName/from/subject properties.
+    expect(result.output).toEqual(garbage);
+    expect(result.why).toBe('Read the email from someone ("(no subject)").');
+  },
+);
+
+test('table.upsert throws for an unknown table', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  await expect(
+    executors['table.upsert']!(
+      { table: 'nope', keyField: 'email' },
+      { row: { name: 'Sarah', email: 'sarah@x.com' } },
+      makeCtx(gateway),
+    ),
+  ).rejects.toThrow('Unknown table: nope');
+});
+
+test('ai.extract propagates a transport error on the retry attempt unwrapped', async () => {
+  const create = vi
+    .fn()
+    .mockResolvedValueOnce(INVALID_JSON)
+    .mockRejectedValueOnce(new Error('fetch failed'));
+  const gateway = createGateway({ client: { chat: { completions: { create } } } as never });
+  const err = await executors['ai.extract']!(
+    {
+      instructions: 'Read it.',
+      fields: [{ name: 'name', type: 'text', description: 'Name' }],
+    },
+    { text: 'hello' },
+    makeCtx(gateway),
+  ).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(err).toBeInstanceOf(Error);
+  // Exactly the transport error: no friendly "I couldn't read that" prefix.
+  expect((err as Error).message).toBe('fetch failed');
+});
+
+test('ai.extract config schema requires at least one field', () => {
+  expect(() =>
+    catalog['ai.extract']!.configSchema.parse({ instructions: 'x', fields: [] }),
+  ).toThrow();
+});

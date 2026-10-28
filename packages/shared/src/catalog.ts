@@ -47,13 +47,15 @@ export const catalog: Record<string, StepDef> = {
     title: 'Extract details',
     configSchema: z.object({
       instructions: z.string(),
-      fields: z.array(
-        z.object({
-          name: z.string(),
-          type: columnTypeSchema,
-          description: z.string(),
-        }),
-      ),
+      fields: z
+        .array(
+          z.object({
+            name: z.string(),
+            type: columnTypeSchema,
+            description: z.string(),
+          }),
+        )
+        .min(1),
     }),
     inputSchema: z.object({ text: z.string() }),
     // DYNAMIC per config: a static schema cannot express "an object with these

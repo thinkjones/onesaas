@@ -25,6 +25,8 @@ function fieldSchema(type: ColumnType): z.ZodTypeAny {
       // Plain string, NOT .email(): malformed model output must not fail
       // extraction. The table validates emails on write instead.
       return z.string();
+    default:
+      throw new Error(`Unknown field type: ${type}`);
   }
 }
 
@@ -66,6 +68,7 @@ export const extractExecutor: Executor = async (config, input, ctx) => {
   const fields = config.fields as ExtractField[];
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
+    if (field.name in shape) throw new Error(`Duplicate field: "${field.name}"`);
     // All fields REQUIRED: the model must return every field every time, so a
     // missing field is a schema error (and retried). M3 may add per-field
     // required flags; until then the contract is strict.
