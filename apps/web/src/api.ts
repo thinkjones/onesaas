@@ -175,13 +175,25 @@ export function useRetry(runId: string, stepId: string) {
 // retry leaves a stale endedAt behind (known server wart). Never display
 // durations off endedAt for non-terminal runs.
 
-/** Subscribes to /api/events once and invalidates run queries per event. */
+/** Reconnect backoffs after an EventSource error; the last delay repeats. */
+const RECONNECT_DELAYS_MS = [1000, 2000, 5000];
+
+/**
+ * Subscribes to /api/events once and invalidates run queries per event.
+ * Reconnects on error with 1/2/5s backoff (native retry is suppressed via
+ * close() so only one connection exists) and on reconnect invalidates every
+ * ['run', *] query by prefix so the open run is never stale. Double-mount
+ * safe: cleanup closes the connection and clears the pending timer.
+ */
 export function useLiveEvents(): void {
   const client = useQueryClient();
   useEffect(() => {
     if (typeof EventSource === 'undefined') return;
-    const es = new EventSource('/api/events');
-    es.onmessage = (msg: MessageEvent) => {
+    let closed = false;
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let es: EventSource | undefined;
+    const onMessage = (msg: MessageEvent) => {
       const e = JSON.parse(msg.data) as EngineEvent;
       if (e.type === 'run') {
         void client.invalidateQueries({ queryKey: ['run', e.run.id] });
@@ -193,6 +205,31 @@ export function useLiveEvents(): void {
         void client.invalidateQueries({ queryKey: ['runs'] });
       }
     };
-    return () => es.close();
+    const connect = () => {
+      if (closed) return;
+      es = new EventSource('/api/events');
+      es.onmessage = onMessage;
+      es.onerror = () => {
+        es?.close();
+        if (closed) return;
+        const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)]!;
+        attempt += 1;
+        timer = setTimeout(connect, delay);
+      };
+      es.onopen = () => {
+        // Only a post-error open is a reconnect; the initial open refetches
+        // nothing (mount queries are already fresh).
+        if (attempt > 0) {
+          attempt = 0;
+          void client.invalidateQueries({ queryKey: ['run'] });
+        }
+      };
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (timer !== undefined) clearTimeout(timer);
+      es?.close();
+    };
   }, [client]);
 }
