@@ -30,6 +30,12 @@ export interface Bridge {
   onTrigger(fn: (t: TriggerMsg) => void): void;
   /** Fires after every successful hello (including re-hello on the same socket). */
   onReady(fn: () => void): void;
+  /**
+   * Drop the active socket (4401) and fail in-flight calls. Idempotent.
+   * Revoke needs this: clearing the token alone would leave the old socket
+   * authorized until its next hello.
+   */
+  dropActive(): void;
 }
 
 interface PendingCall {
@@ -197,10 +203,25 @@ export function createBridge(o: {
     sendTo(socket, msg);
   }
 
+  function dropActive(): void {
+    const socket = active;
+    // Null + fail FIRST so the socket's late async onclose no-ops instead of
+    // double-tearing-down; the close itself is best-effort.
+    active = null;
+    failAllPending();
+    if (socket === null) return;
+    try {
+      socket.close(4401, 'Revoked');
+    } catch {
+      // Already dead; session state is already cleared above.
+    }
+  }
+
   return {
     call,
     connected: () => active !== null,
     send,
+    dropActive,
     onTrigger: (fn: (t: TriggerMsg) => void) => {
       triggerFns.push(fn);
     },

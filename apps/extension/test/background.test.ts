@@ -65,6 +65,9 @@ function makeBrowser(
         set: async (obj: Record<string, unknown>) => {
           Object.assign(store, obj);
         },
+        remove: async (key: string) => {
+          delete store[key];
+        },
       },
     },
     tabs: {
@@ -177,6 +180,31 @@ describe('pairing', () => {
     expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
     lastSocket().receive({ type: 'paired', token: 'tok' });
     await expect(replyP).resolves.toEqual({ ok: true });
+    bg.dispose();
+  });
+});
+
+describe('unpair', () => {
+  it('clears the token + storage and reports unpaired, keeping the socket for re-pair', async () => {
+    const t = makeBrowser({ token: 'tok123' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    await expect(t.runtimeMessage({ action: 'unpair' })).resolves.toEqual({ ok: true });
+    expect(t.store['dadExtToken']).toBeUndefined();
+    expect(await t.runtimeMessage({ action: 'status' })).toEqual({
+      paired: false,
+      connected: true,
+    });
+    bg.dispose();
+  });
+
+  it('succeeds when already unpaired', async () => {
+    const t = makeBrowser({});
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    await expect(t.runtimeMessage({ action: 'unpair' })).resolves.toEqual({ ok: true });
+    expect(t.store['dadExtToken']).toBeUndefined();
     bg.dispose();
   });
 });

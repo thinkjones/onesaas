@@ -34,6 +34,7 @@ export interface BrowserLike {
     local: {
       get(key: string): Promise<Record<string, unknown>>;
       set(items: Record<string, unknown>): Promise<void>;
+      remove(key: string): Promise<void>;
     };
   };
   tabs: {
@@ -351,9 +352,26 @@ export function createBackground(deps: {
     });
   }
 
+  /**
+   * Local half of unpair (the popup calls the server revoke route first):
+   * forget the token so the popup offers pairing again. The socket stays
+   * open but unauthenticated — exactly what the next pair needs.
+   */
+  async function unpair(): Promise<{ ok: true }> {
+    token = null;
+    try {
+      await browser.storage.local.remove(TOKEN_KEY);
+    } catch {
+      // Storage failure must not block the in-memory unpair; worst case the
+      // stale token is re-read on the next boot and rejected by the server.
+    }
+    return { ok: true };
+  }
+
   browser.runtime.onMessage.addListener((message: unknown) => {
     const msg = (message ?? {}) as Record<string, unknown>;
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
+    if (msg['action'] === 'unpair') return unpair();
     if (msg['action'] === 'status') {
       return { paired: token !== null, connected: isOpen() };
     }

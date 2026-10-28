@@ -5,6 +5,7 @@ import type { Database } from '../db/connection.js';
 export interface PairingStore {
   get(k: string): string | undefined;
   set(k: string, v: string): void;
+  del(k: string): void;
 }
 
 /** Storage key for the extension auth token. Lives outside M5's 'app' key. */
@@ -21,6 +22,11 @@ export interface Pairing {
   isValid(token: string): boolean;
   /** True when a token is present in the store (for GET /api/pairing/status). */
   paired(): boolean;
+  /**
+   * Forget the token AND kill pending codes: a code redeemed after revoke
+   * must not resurrect a pairing. Idempotent.
+   */
+  revoke(): void;
 }
 
 export function createPairing(store: PairingStore): Pairing {
@@ -55,6 +61,11 @@ export function createPairing(store: PairingStore): Pairing {
     paired() {
       return store.get(EXTENSION_TOKEN_KEY) !== undefined;
     },
+
+    revoke() {
+      pending.clear();
+      store.del(EXTENSION_TOKEN_KEY);
+    },
   };
 }
 
@@ -65,10 +76,14 @@ export function createSettingsStore(db: Database): PairingStore {
   const setStmt = db.prepare(
     'INSERT INTO "settings" ("key", "value") VALUES (?, ?) ON CONFLICT("key") DO UPDATE SET "value" = excluded."value"',
   );
+  const delStmt = db.prepare('DELETE FROM "settings" WHERE "key" = ?');
   return {
     get: (k: string) => (getStmt.get(k) as { value: string } | undefined)?.value,
     set: (k: string, v: string) => {
       setStmt.run(k, v);
+    },
+    del: (k: string) => {
+      delStmt.run(k);
     },
   };
 }

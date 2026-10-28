@@ -74,6 +74,9 @@ function mapStore(map: Map<string, string>) {
     set: (k: string, v: string) => {
       map.set(k, v);
     },
+    del: (k: string) => {
+      map.delete(k);
+    },
   };
 }
 
@@ -254,6 +257,21 @@ describe('pairing', () => {
       vi.useRealTimers();
     }
   });
+
+  test('revoke() forgets the token and kills pending codes', () => {
+    const pairing = makePairing();
+    const token = pairing.redeem(pairing.start().code)!;
+    expect(pairing.paired()).toBe(true);
+    const { code: pending } = pairing.start();
+    pairing.revoke();
+    expect(pairing.paired()).toBe(false);
+    expect(pairing.isValid(token)).toBe(false);
+    // A pending code must not resurrect a token after revoke.
+    expect(pairing.redeem(pending)).toBeNull();
+    // Pairing still works after revoke.
+    expect(pairing.redeem(pairing.start().code)).not.toBeNull();
+    expect(pairing.paired()).toBe(true);
+  });
 });
 
 describe('settings store', () => {
@@ -268,6 +286,19 @@ describe('settings store', () => {
       expect(s2.get('extension.token')).toBe('tok-1');
       s2.set('extension.token', 'tok-2');
       expect(s1.get('extension.token')).toBe('tok-2');
+    } finally {
+      db.close();
+    }
+  });
+
+  test('del removes the key and ignores missing keys', () => {
+    const db = openDb(':memory:');
+    try {
+      const s = createSettingsStore(db);
+      s.del('extension.token');
+      s.set('extension.token', 'tok-1');
+      s.del('extension.token');
+      expect(s.get('extension.token')).toBeUndefined();
     } finally {
       db.close();
     }
@@ -302,6 +333,25 @@ describe('bridge attach() with fakes', () => {
     bridge.attach(ws);
     ws.onmessage!(JSON.stringify({ type: 'hello', token: 'nope' }));
     expect(ws.closed?.code).toBe(4401);
+    expect(bridge.connected()).toBe(false);
+  });
+
+  test('dropActive closes the active socket and fails in-flight calls', async () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    ws.onmessage!(JSON.stringify({ type: 'hello', token }));
+    expect(bridge.connected()).toBe(true);
+    const callP = bridge.call('gmail', 'draftReply', {});
+    const assertion = expect(callP).rejects.toThrow(GMAIL_MSG);
+    bridge.dropActive();
+    expect(bridge.connected()).toBe(false);
+    expect(ws.closed?.code).toBe(4401);
+    await assertion;
+    // Idempotent with no active socket.
+    bridge.dropActive();
     expect(bridge.connected()).toBe(false);
   });
 
@@ -633,6 +683,24 @@ describe('pairing HTTP routes', () => {
     await pairAndHello(client, inbox, code);
     expect(await status()).toEqual({ paired: true, connected: true });
   });
+
+  test('POST /api/pairing/revoke forgets the token and drops the socket', async () => {
+    const { port } = await setup();
+    const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
+    const { code } = (await startRes.json()) as { code: string };
+    const client = await connect(port);
+    const inbox = new Inbox(client);
+    await pairAndHello(client, inbox, code);
+    const closedP = waitClose(client);
+    const revokeRes = await fetch(`http://127.0.0.1:${port}/api/pairing/revoke`, {
+      method: 'POST',
+    });
+    expect(revokeRes.status).toBe(200);
+    expect(await revokeRes.json()).toEqual({ revoked: true });
+    expect((await closedP).code).toBe(4401);
+    const statusRes = await fetch(`http://127.0.0.1:${port}/api/pairing/status`);
+    expect(await statusRes.json()).toEqual({ paired: false, connected: false });
+  });
 });
 
 describe('unconfigured app (createApp({}))', () => {
@@ -644,6 +712,12 @@ describe('unconfigured app (createApp({}))', () => {
 
   test('GET /api/pairing/status returns 500', async () => {
     const res = await createApp({}).request('/api/pairing/status');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Bridge not configured' });
+  });
+
+  test('POST /api/pairing/revoke returns 500', async () => {
+    const res = await createApp({}).request('/api/pairing/revoke', { method: 'POST' });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Bridge not configured' });
   });

@@ -11,6 +11,7 @@ export default defineBackground(() => {
         local: {
           get: (key) => browser.storage.local.get(key),
           set: (items) => browser.storage.local.set(items),
+          remove: (key) => browser.storage.local.remove(key),
         },
       },
       tabs: {

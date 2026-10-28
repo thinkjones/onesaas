@@ -56,6 +56,13 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ paired: pairing.paired(), connected: bridge.connected() });
   });
 
+  app.post('/api/pairing/revoke', (c) => {
+    if (!pairing || !bridge) return c.json({ error: 'Bridge not configured' }, 500);
+    pairing.revoke();
+    bridge.dropActive();
+    return c.json({ revoked: true });
+  });
+
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the
   // bridge's 'Bridge not configured': these routes never touch the bridge.
   app.get('/api/workflows', (c) => {

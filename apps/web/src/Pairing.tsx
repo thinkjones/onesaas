@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getPairingStatus, startPairing } from './api.ts';
 import AppButton from './design/AppButton.tsx';
 import AppCard from './design/AppCard.tsx';
@@ -12,6 +12,10 @@ export default function Pairing() {
   const [status, setStatus] = useState<PairingStatus | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Tracks the last seen paired flag so the poll can spot a revoke (a poll
+  // that reports unpaired while the user is still mid-pairing must NOT clear
+  // their code — only a paired -> unpaired transition does).
+  const wasPaired = useRef(false);
 
   // On mount, learn whether the extension is already paired: returning users
   // must see their state, not another Connect button. A failed check falls
@@ -20,7 +24,9 @@ export default function Pairing() {
     let cancelled = false;
     getPairingStatus().then(
       (s) => {
-        if (!cancelled) setStatus(s);
+        if (cancelled) return;
+        wasPaired.current = s.paired;
+        setStatus(s);
       },
       (e: unknown) => {
         if (cancelled) return;
@@ -43,15 +49,22 @@ export default function Pairing() {
     }
   }
 
-  // Poll every 2s while waiting: after a code is issued until it is redeemed,
-  // and while paired-but-offline until Chrome connects. Stop when settled.
-  const waiting =
-    status !== null && ((code !== null && !status.paired) || (status.paired && !status.connected));
+  // Poll every 2s until the unpaired start state: after a code is issued until
+  // it is redeemed, while paired-but-offline until Chrome connects, and while
+  // connected (a server-side revoke must reflect here). Only the quiet
+  // unpaired start state skips polling; cleanup stops it on unmount.
+  const waiting = status !== null && (code !== null || status.paired);
   useEffect(() => {
     if (!waiting) return;
     const timer = setInterval(() => {
       getPairingStatus()
-        .then((s) => setStatus(s))
+        .then((s) => {
+          // Revoke lands here: the server killed the token AND the pending
+          // code, so drop the dead code and fall back to the start view.
+          if (wasPaired.current && !s.paired) setCode(null);
+          wasPaired.current = s.paired;
+          setStatus(s);
+        })
         .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     }, 2000);
     return () => clearInterval(timer);
