@@ -1,6 +1,10 @@
+import type { ColumnType } from '@dad/shared';
 import type { Database } from '../db/connection.js';
 
-export type ColumnType = 'text' | 'number' | 'boolean' | 'date' | 'email';
+// The union lives in @dad/shared (the step catalog needs it, and shared
+// cannot import from server). Re-exported here so existing imports keep
+// working.
+export type { ColumnType } from '@dad/shared';
 
 export interface TableDef {
   name: string;
