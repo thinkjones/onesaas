@@ -1,0 +1,196 @@
+/**
+ * Model smoke test. Run with: pnpm tsx scripts/smoke-models.ts
+ *
+ * Prints one check/cross line per model (Spark, Wonder, Image, SAM,
+ * Transcribe, Glimmer). Needs MODEL_API_KEY in the environment.
+ * Glimmer needs GLIMMER_BASE_URL too, and prints "skipped" without it.
+ * The SAM photo defaults to scripts/fixtures/mug.jpg; override with
+ * SMOKE_PHOTO_PATH.
+ *
+ * Live-run notes (API shape differences vs the docs):
+ * - Not yet run against the live API (no MODEL_API_KEY in this
+ *   environment at implementation time). Fill in below when it runs.
+ * - Per the docs, SAM returns special-token output_text with one
+ *   `<|mask;...|>` token per match; this script counts those tokens.
+ * - Per the docs, /v1/asr/transcribe takes a `sessionId` query param
+ *   plus multipart `request` (JSON) and `audio` (WAV) parts, and
+ *   returns `{ transcript, ... }`.
+ */
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import OpenAI from 'openai';
+
+const BASE_URL = 'https://api.meta.ai/v1';
+
+// Run from the repo root: pnpm tsx scripts/smoke-models.ts
+const rootDir = process.cwd();
+const photoPath = process.env['SMOKE_PHOTO_PATH'] ?? join(rootDir, 'scripts', 'fixtures', 'mug.jpg');
+const helloPath = join(rootDir, 'scripts', 'fixtures', 'hello.wav');
+
+function fail(model: string, err: unknown): void {
+  const detail = err instanceof Error ? err.message : String(err);
+  console.log(`\u2717 ${model}: ${detail.split('\n')[0]}`);
+}
+
+async function checkSpark(client: OpenAI): Promise<void> {
+  try {
+    const res = await client.chat.completions.create({
+      model: 'muse-spark-1.3',
+      messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
+    });
+    console.log(`\u2713 spark: ${JSON.stringify(res.choices[0]?.message.content)}`);
+  } catch (err) {
+    fail('spark', err);
+  }
+}
+
+async function checkWonder(client: OpenAI): Promise<void> {
+  try {
+    const res = await client.chat.completions.create({
+      model: 'muse-wonder-1.0',
+      messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
+    });
+    console.log(`\u2713 wonder: ${JSON.stringify(res.choices[0]?.message.content)}`);
+  } catch (err) {
+    fail('wonder', err);
+  }
+}
+
+async function checkImage(client: OpenAI): Promise<void> {
+  try {
+    const res = await client.images.generate({
+      model: 'muse-image-1.0',
+      prompt: 'soft watercolor of a small shop counter at dawn',
+    });
+    const first = res.data?.[0];
+    let bytes: Buffer | null = null;
+    if (first?.b64_json) {
+      bytes = Buffer.from(first.b64_json, 'base64');
+    } else if (first?.url) {
+      const dl = await fetch(first.url);
+      if (!dl.ok) throw new Error(`image download failed: HTTP ${dl.status}`);
+      bytes = Buffer.from(await dl.arrayBuffer());
+    }
+    if (!bytes) throw new Error('image response had neither b64_json nor url');
+    mkdirSync(join(rootDir, 'data'), { recursive: true });
+    const outPath = join(rootDir, 'data', 'smoke-image.png');
+    writeFileSync(outPath, bytes);
+    console.log(`\u2713 image: wrote data/smoke-image.png (${bytes.length} bytes)`);
+  } catch (err) {
+    fail('image', err);
+  }
+}
+
+function collectText(node: unknown, out: string[]): void {
+  if (typeof node === 'string') {
+    out.push(node);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectText(item, out);
+    return;
+  }
+  if (node && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'text' && typeof value === 'string') out.push(value);
+      else collectText(value, out);
+    }
+  }
+}
+
+async function checkSam(apiKey: string): Promise<void> {
+  try {
+    const photo = readFileSync(photoPath);
+    const dataUrl = `data:image/jpeg;base64,${photo.toString('base64')}`;
+    const res = await fetch(`${BASE_URL}/responses`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'sam-3.1',
+        input: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_text', text: 'mug' },
+              { type: 'input_image', image_url: dataUrl },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const body: unknown = await res.json();
+    const texts: string[] = [];
+    collectText((body as { output?: unknown }).output ?? body, texts);
+    const joined = texts.join('\n');
+    const masks = (joined.match(/<\|mask;/g) ?? []).length;
+    console.log(`\u2713 sam: ${masks} mask(s)`);
+  } catch (err) {
+    fail('sam', err);
+  }
+}
+
+async function checkTranscribe(apiKey: string): Promise<void> {
+  try {
+    const audio = readFileSync(helloPath);
+    const form = new FormData();
+    form.append(
+      'request',
+      JSON.stringify({ model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK' }),
+    );
+    form.append('audio', new Blob([new Uint8Array(audio)], { type: 'audio/wav' }), 'hello.wav');
+    const sessionId = `smoke-${Date.now()}`;
+    const res = await fetch(`${BASE_URL}/asr/transcribe?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const body = (await res.json()) as { transcript?: unknown };
+    console.log(`\u2713 transcribe: ${JSON.stringify(body.transcript)}`);
+  } catch (err) {
+    fail('transcribe', err);
+  }
+}
+
+async function checkGlimmer(): Promise<void> {
+  const baseURL = process.env['GLIMMER_BASE_URL'];
+  if (!baseURL) {
+    console.log('○ glimmer: skipped (GLIMMER_BASE_URL not set)');
+    return;
+  }
+  try {
+    const client = new OpenAI({ baseURL, apiKey: process.env['MODEL_API_KEY'] ?? 'smoke' });
+    const res = await client.chat.completions.create({
+      model: 'muse-glimmer-1.0',
+      messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
+    });
+    console.log(`\u2713 glimmer: ${JSON.stringify(res.choices[0]?.message.content)}`);
+  } catch (err) {
+    fail('glimmer', err);
+  }
+}
+
+async function main(): Promise<void> {
+  const apiKey = process.env['MODEL_API_KEY'];
+  if (!apiKey) {
+    console.log('\u2717 spark: MODEL_API_KEY not set');
+    console.log('\u2717 wonder: MODEL_API_KEY not set');
+    console.log('\u2717 image: MODEL_API_KEY not set');
+    console.log('\u2717 sam: MODEL_API_KEY not set');
+    console.log('\u2717 transcribe: MODEL_API_KEY not set');
+    await checkGlimmer();
+    process.exitCode = 1;
+    return;
+  }
+  const client = new OpenAI({ baseURL: BASE_URL, apiKey });
+  await checkSpark(client);
+  await checkWonder(client);
+  await checkImage(client);
+  await checkSam(apiKey);
+  await checkTranscribe(apiKey);
+  await checkGlimmer();
+}
+
+void main();
