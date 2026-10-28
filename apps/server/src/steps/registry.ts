@@ -1,6 +1,7 @@
 import type { Gateway } from '../models/gateway.js';
 import type { TableStore } from '../tables/store.js';
 import { extractExecutor, writeExecutor } from './ai.js';
+import { askExecutor } from './approval.js';
 import { upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
@@ -27,12 +28,21 @@ export interface StepContext {
   signal: AbortSignal;
 }
 
+export interface ApprovalWait {
+  kind: 'approval';
+  question: string;
+  proposed: unknown;
+}
+
 export interface StepResult {
   output: unknown;
   why: string;
   model?: string;
   tokens?: { input: number; output: number };
   costUsd?: number;
+  // When present, the engine parks the step as `waiting` instead of `done`
+  // (output validation is skipped: the output is provisional, not final).
+  wait?: ApprovalWait;
 }
 
 // Trust boundary: the engine validates config/input/output against the catalog
@@ -47,4 +57,5 @@ export const executors: Record<string, Executor> = {
   'table.upsert': upsertExecutor,
   'gmail.read': readExecutor,
   'gmail.draftReply': draftReplyExecutor,
+  'approval.ask': askExecutor,
 };

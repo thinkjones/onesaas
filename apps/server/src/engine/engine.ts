@@ -15,12 +15,19 @@ import type { Repo } from '../db/repo.js';
 import type { Executor, StepContext } from '../steps/registry.js';
 import type { EngineEvent } from './events.js';
 
+export type ApprovalDecision =
+  | { action: 'approve' }
+  | { action: 'edit'; text: string }
+  | { action: 'skip' };
+
 export function createEngine(d: {
   repo: Repo;
   executors: Record<string, Executor>;
   ctx: Omit<StepContext, 'signal'>;
 }): {
   start: (workflowId: string, triggerPayload: unknown) => Promise<Run>;
+  resolveApproval: (runId: string, stepId: string, d: ApprovalDecision) => Promise<Run>;
+  resumeAll: () => Promise<void>;
   events: EventEmitter;
 } {
   const { repo, executors, ctx: ctxBase } = d;
@@ -38,73 +45,92 @@ export function createEngine(d: {
     }
   }
 
-  async function start(workflowId: string, triggerPayload: unknown): Promise<Run> {
-    const wf = repo.getWorkflow(workflowId);
-    if (!wf) throw new Error(`Unknown workflow: ${workflowId}`);
+  // The shared run loop: start, resolveApproval, retryStep (Task 2) and
+  // resumeAll all drive runs through this. Loads the run plus its PINNED
+  // workflow version (getWorkflow with the run's own version, so a retry
+  // after an edit still runs the version the run started on), re-enters
+  // non-running runs as `running`, rebuilds the binding context ONLY from
+  // `done` StepRuns (trigger output + stepId→output), then runs M1's wave
+  // loop unchanged. Waiting steps park the loop: `waiting` is terminal for
+  // the wave loop (never re-run) but blocks the ready rule (neither done
+  // nor skipped), so dependents keep their pending rows.
+  async function continueRun(runId: string): Promise<Run> {
+    const loaded = repo.getRun(runId);
+    if (!loaded) throw new Error(`Unknown run: ${runId}`);
+    let run = loaded.run;
+    const wf = repo.getWorkflow(run.workflowId, run.workflowVersion);
+    if (!wf) throw new Error(`Unknown workflow: ${run.workflowId}`);
     // Bound const: narrowing on `wf` does not survive into the runStep closure.
     const workflow = wf;
-    // Pre-flight before any run row exists: invalid workflows never run.
-    const order = topoOrder(wf);
-    const byId = new Map<string, StepInstance>([[wf.trigger.id, wf.trigger]]);
-    for (const s of wf.steps) byId.set(s.id, s);
-    for (const id of order) {
-      const type = byId.get(id)!.type;
-      if (!catalog[type] || !executors[type]) throw new Error(`Unknown step type: ${type}`);
-    }
+    const order = topoOrder(workflow);
+    const byId = new Map<string, StepInstance>([[workflow.trigger.id, workflow.trigger]]);
+    for (const s of workflow.steps) byId.set(s.id, s);
     const incoming = new Map<string, Edge[]>(order.map((id) => [id, []]));
-    for (const e of wf.edges) incoming.get(e.to)!.push(e);
+    for (const e of workflow.edges) incoming.get(e.to)!.push(e);
+    const savedById = new Map<string, StepRun>(loaded.steps.map((s) => [s.stepId, s]));
 
-    let run = repo.createRun({
-      workflowId,
-      workflowVersion: wf.version,
-      triggerPayload,
-      status: 'running',
-    });
-    emit({ type: 'run', run });
-
-    // Every repo write below (pre-create upserts, runStep upserts, the final
-    // updateRun) can throw on infra failure; the catch best-efforts a
+    // Every repo write below (the running re-entry, runStep upserts, the
+    // final updateRun) can throw on infra failure; the catch best-efforts a
     // failed-mark so the run never sticks `running` with no terminal event.
     try {
-      // Pre-create every StepRun as pending, in topo order (insertion order, so
-      // getRun returns full graph coverage from run start for M2's canvas).
-      // Trade-off: startedAt is ~run start for all steps (upsert preserves the
-      // first write), not the moment each step actually starts.
-      const preCreatedAt = new Date().toISOString();
-      const stepRunIds = new Map<string, string>();
-      for (const id of order) {
-        const pending: StepRun = {
-          id: randomUUID(),
-          runId: run.id,
-          stepId: id,
-          status: 'pending',
-          startedAt: preCreatedAt,
-        };
-        repo.upsertStepRun(pending);
-        stepRunIds.set(id, pending.id);
-        emit({ type: 'step', stepRun: pending });
+      // Re-entry: resolve/resume paths arrive as waiting/running and emit a
+      // `running` event; the start path is already running, so no double-emit.
+      if (run.status !== 'running') {
+        repo.updateRun(run.id, { status: 'running' });
+        run = repo.getRun(run.id)!.run;
+        emit({ type: 'run', run });
       }
 
-      // One controller per run; nothing aborts in M1 (M2's cancellation hook).
+      // Defensive: every M1+ run pre-creates full graph coverage, but a
+      // crafted or cross-version row set may miss steps; continueRun is
+      // self-sufficient rather than crashing on the lookup below.
+      for (const id of order) {
+        if (!savedById.has(id)) {
+          const pending: StepRun = {
+            id: randomUUID(),
+            runId: run.id,
+            stepId: id,
+            status: 'pending',
+            startedAt: new Date().toISOString(),
+          };
+          repo.upsertStepRun(pending);
+          savedById.set(id, pending);
+          emit({ type: 'step', stepRun: pending });
+        }
+      }
+
+      // One controller per continueRun call; nothing aborts in M1 (M2's cancellation hook).
       const signal = new AbortController().signal;
-      const statusOf = new Map<string, StepRunStatus>(order.map((id) => [id, 'pending']));
+      const stepRunIds = new Map<string, string>(order.map((id) => [id, savedById.get(id)!.id]));
+      const statusOf = new Map<string, StepRunStatus>(
+        order.map((id) => [id, savedById.get(id)!.status]),
+      );
       // Binding context: trigger output under `trigger` plus every finished
       // step's output under its step id (trigger also under its own id when it
-      // differs from 'trigger').
+      // differs from 'trigger'). Only `done` outputs: waiting/skipped/failed
+      // steps contribute nothing, so a resumed run sees exactly what the
+      // original run saw.
       const bindings: Record<string, unknown> = {};
+      for (const [stepId, sr] of savedById) {
+        if (sr.status === 'done') {
+          bindings[stepId] = sr.output;
+          if (stepId === workflow.trigger.id) bindings['trigger'] = sr.output;
+        }
+      }
 
       const isTerminal = (s: StepRunStatus): boolean =>
-        s === 'done' || s === 'skipped' || s === 'failed';
+        s === 'done' || s === 'skipped' || s === 'failed' || s === 'waiting';
 
       // One step's unit of work: skip or run to a terminal state.
       // Executor/schema failures never reject (they fail the step so other
-      // branches continue); infra failures reject start() after a best-effort
+      // branches continue); infra failures reject after a best-effort
       // failed-mark by the finalizer below.
       async function runStep(stepId: string): Promise<void> {
         const step = byId.get(stepId)!;
         const def = catalog[step.type]!;
         const executor = executors[step.type]!;
         const srId = stepRunIds.get(stepId)!;
+        const startedAt = savedById.get(stepId)!.startedAt;
         const inc = incoming.get(stepId)!;
 
         // OR-join: satisfied when from a done step with a true/absent `when`.
@@ -131,7 +157,7 @@ export function createEngine(d: {
             stepId,
             status: 'skipped',
             why,
-            startedAt: preCreatedAt,
+            startedAt,
           };
           repo.upsertStepRun(skipped);
           statusOf.set(stepId, 'skipped');
@@ -145,7 +171,7 @@ export function createEngine(d: {
           runId: run.id,
           stepId,
           status: 'running',
-          startedAt: preCreatedAt,
+          startedAt,
         };
         repo.upsertStepRun(running);
         statusOf.set(stepId, 'running');
@@ -161,10 +187,36 @@ export function createEngine(d: {
           def.configSchema.parse(step.config);
           input =
             stepId === workflow.trigger.id
-              ? triggerPayload
+              ? run.triggerPayload
               : await resolveBindings(step.inputs, bindings);
           def.inputSchema.parse(input);
           const result = await executor(step.config, input, { ...ctxBase, signal });
+          // A waiting result parks the step: output validation is SKIPPED
+          // because the output is provisional ({ proposed }, not the final
+          // schema — the final output is written by resolveApproval). The
+          // question lives in the step config, so only the proposal is
+          // stored. Bindings are untouched: dependents block on `waiting`
+          // via the unchanged ready rule below.
+          if (result.wait?.kind === 'approval') {
+            const waiting: StepRun = {
+              id: srId,
+              runId: run.id,
+              stepId,
+              status: 'waiting',
+              input,
+              output: { proposed: result.wait.proposed },
+              why: result.why ?? 'Finished.',
+              model: result.model,
+              tokens: result.tokens,
+              costUsd: result.costUsd,
+              durationMs: Date.now() - timerStarted,
+              startedAt,
+            };
+            repo.upsertStepRun(waiting);
+            statusOf.set(stepId, 'waiting');
+            emit({ type: 'step', stepRun: waiting });
+            return;
+          }
           def.outputSchema.parse(result.output);
           const done: StepRun = {
             id: srId,
@@ -178,7 +230,7 @@ export function createEngine(d: {
             tokens: result.tokens,
             costUsd: result.costUsd,
             durationMs: Date.now() - timerStarted,
-            startedAt: preCreatedAt,
+            startedAt,
           };
           repo.upsertStepRun(done);
           statusOf.set(stepId, 'done');
@@ -194,7 +246,7 @@ export function createEngine(d: {
             ...(input !== undefined ? { input } : {}),
             error: err instanceof Error ? err.message : String(err),
             durationMs: Date.now() - timerStarted,
-            startedAt: preCreatedAt,
+            startedAt,
           };
           repo.upsertStepRun(failed);
           statusOf.set(stepId, 'failed');
@@ -203,9 +255,9 @@ export function createEngine(d: {
       }
 
       // Wave loop: a step is ready when every incoming edge comes from a
-      // done/skipped step. Dependents of a failed step never become ready and
-      // keep their pending rows. Each wave moves every ready step to a terminal
-      // state, so the loop always terminates.
+      // done/skipped step. Dependents of a failed or waiting step never
+      // become ready and keep their pending rows. Each wave moves every ready
+      // step to a terminal state, so the loop always terminates.
       for (;;) {
         const ready = order.filter((id) => {
           if (isTerminal(statusOf.get(id)!)) return false;
@@ -220,15 +272,25 @@ export function createEngine(d: {
       // Cost passthrough: executors omit model/tokens/costUsd when they have no
       // model cost; undefined is stored as-is and never synthesized to 0/NaN
       // (M2 aggregates with `?? 0`).
-      const status = [...statusOf.values()].some((s) => s === 'failed') ? 'failed' : 'done';
-      repo.updateRun(run.id, { status, endedAt: new Date().toISOString() });
+      const values = [...statusOf.values()];
+      const status = values.some((s) => s === 'failed')
+        ? 'failed'
+        : values.some((s) => s === 'waiting')
+          ? 'waiting'
+          : 'done';
+      // endedAt marks a terminal run only: a waiting run is paused, not over,
+      // so it carries no endedAt (and updateRun cannot unset, so none is set).
+      repo.updateRun(
+        run.id,
+        status === 'waiting' ? { status } : { status, endedAt: new Date().toISOString() },
+      );
       run = repo.getRun(run.id)!.run;
       emit({ type: 'run', run });
       return run;
     } catch (err) {
       // Best-effort finalizer: mark the run failed so it never sticks
       // `running`, emit the terminal run event (emit itself is guarded), then
-      // rethrow — infra failures reject start().
+      // rethrow — infra failures reject.
       const endedAt = new Date().toISOString();
       try {
         repo.updateRun(run.id, { status: 'failed', endedAt });
@@ -241,5 +303,190 @@ export function createEngine(d: {
     }
   }
 
-  return { start, events };
+  async function start(workflowId: string, triggerPayload: unknown): Promise<Run> {
+    const wf = repo.getWorkflow(workflowId);
+    if (!wf) throw new Error(`Unknown workflow: ${workflowId}`);
+    // Pre-flight before any run row exists: invalid workflows never run.
+    const order = topoOrder(wf);
+    const byId = new Map<string, StepInstance>([[wf.trigger.id, wf.trigger]]);
+    for (const s of wf.steps) byId.set(s.id, s);
+    for (const id of order) {
+      const type = byId.get(id)!.type;
+      if (!catalog[type] || !executors[type]) throw new Error(`Unknown step type: ${type}`);
+    }
+
+    const run = repo.createRun({
+      workflowId,
+      workflowVersion: wf.version,
+      triggerPayload,
+      status: 'running',
+    });
+    emit({ type: 'run', run });
+
+    // Pre-create failures finalize here; everything after is continueRun's
+    // (which owns its own finalizer), so a failure is never marked twice.
+    try {
+      // Pre-create every StepRun as pending, in topo order (insertion order, so
+      // getRun returns full graph coverage from run start for M2's canvas).
+      // Trade-off: startedAt is ~run start for all steps (upsert preserves the
+      // first write), not the moment each step actually starts.
+      const preCreatedAt = new Date().toISOString();
+      for (const id of order) {
+        const pending: StepRun = {
+          id: randomUUID(),
+          runId: run.id,
+          stepId: id,
+          status: 'pending',
+          startedAt: preCreatedAt,
+        };
+        repo.upsertStepRun(pending);
+        emit({ type: 'step', stepRun: pending });
+      }
+    } catch (err) {
+      const endedAt = new Date().toISOString();
+      try {
+        repo.updateRun(run.id, { status: 'failed', endedAt });
+      } catch {
+        // The store itself is failing: nothing left to do.
+      }
+      emit({ type: 'run', run: { ...run, status: 'failed', endedAt } });
+      throw err;
+    }
+    return continueRun(run.id);
+  }
+
+  function approvalTime(): string {
+    // Server-local wall clock ("9:42 AM"). There is no stored timezone yet —
+    // that is an M5 setting; until then the server's locale is the contract.
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date());
+  }
+
+  async function resolveApproval(runId: string, stepId: string, d: ApprovalDecision): Promise<Run> {
+    const loaded = repo.getRun(runId);
+    const sr = loaded?.steps.find((s) => s.stepId === stepId);
+    // Covers double-resolve too: the second call sees done/skipped, not waiting.
+    if (!sr || sr.status !== 'waiting') throw new Error("That step isn't waiting for you.");
+    // Engine-written data, so this shape is trusted; the fallback is purely
+    // defensive against malformed rows.
+    const proposed = ((sr.output as { proposed?: unknown } | undefined)?.proposed ?? {}) as {
+      text?: unknown;
+    };
+    const proposedText = typeof proposed.text === 'string' ? proposed.text : '';
+    if (d.action === 'skip') {
+      // Output is LEFT as-is (the provisional { proposed }) for audit;
+      // downstream steps skip via M1's OR-join rule, no new code.
+      const skipped: StepRun = {
+        id: sr.id,
+        runId,
+        stepId,
+        status: 'skipped',
+        input: sr.input,
+        output: sr.output,
+        why: 'You chose to skip this.',
+        startedAt: sr.startedAt,
+      };
+      repo.upsertStepRun(skipped);
+      emit({ type: 'step', stepRun: skipped });
+    } else {
+      const text = d.action === 'edit' ? d.text : proposedText;
+      const done: StepRun = {
+        id: sr.id,
+        runId,
+        stepId,
+        status: 'done',
+        input: sr.input,
+        output: { text, decision: d.action === 'edit' ? 'edited' : 'approved' },
+        why:
+          d.action === 'edit'
+            ? `You changed the wording and approved it at ${approvalTime()}.`
+            : `You approved this at ${approvalTime()}.`,
+        model: sr.model,
+        tokens: sr.tokens,
+        costUsd: sr.costUsd,
+        durationMs: sr.durationMs,
+        startedAt: sr.startedAt,
+      };
+      repo.upsertStepRun(done);
+      emit({ type: 'step', stepRun: done });
+    }
+    // Multi-approval flows work: if a later step waits, this pass ends
+    // `waiting` again and the run pauses there.
+    return continueRun(runId);
+  }
+
+  // Boot recovery, called once at boot. Waiting runs are left alone entirely
+  // (no-op by design: they must stay waiting AND resolvable). Running runs
+  // are triaged by the KIND of each interrupted (`running`) step: `act`
+  // steps may have side-effected, so they NEVER auto-re-run — they fail with
+  // a retry hint and the run fails without launching anything new. Non-act
+  // steps are side-effect-free, so they reset to fresh `pending` and the run
+  // continues. An unknown kind fails safe (treated as act). A running run
+  // with no running steps (crash between waves) just continues; the end rule
+  // settles it. Runs are processed in listRuns order (newest-first); runs are
+  // independent so the order is irrelevant. NOTE: listRuns loads every run;
+  // fine for a single household's history, revisit with pagination if the
+  // runs table ever grows unbounded.
+  async function resumeAll(): Promise<void> {
+    const runs = repo.listRuns();
+    for (const r of runs) {
+      if (r.status !== 'running' && r.status !== 'waiting') continue;
+      if (r.status === 'waiting') continue;
+      const loaded = repo.getRun(r.id);
+      const wf = repo.getWorkflow(r.workflowId, r.workflowVersion);
+      if (!loaded || !wf) continue;
+      const kindById = new Map<string, string>([
+        [wf.trigger.id, catalog[wf.trigger.type]?.kind ?? ''],
+      ]);
+      for (const s of wf.steps) kindById.set(s.id, catalog[s.type]?.kind ?? '');
+      // Only these kinds are provably side-effect-free; anything else (act,
+      // unknown types, cross-version drift) fails safe as act below.
+      const rerunnable = new Set(['trigger', 'fetch', 'enrich', 'store']);
+      let sawAct = false;
+      for (const sr of loaded.steps) {
+        if (sr.status !== 'running') continue;
+        const kind = kindById.get(sr.stepId);
+        if (!kind || !rerunnable.has(kind)) {
+          sawAct = true;
+          // The attempt never finished, so durationMs stays undefined; the
+          // input is kept for the retry hint's context.
+          const failed: StepRun = {
+            id: sr.id,
+            runId: r.id,
+            stepId: sr.stepId,
+            status: 'failed',
+            input: sr.input,
+            error: "I was interrupted while doing this. Press Retry if it didn't happen.",
+            startedAt: sr.startedAt,
+          };
+          repo.upsertStepRun(failed);
+          emit({ type: 'step', stepRun: failed });
+        } else {
+          // Fresh pending: same id/runId/stepId/startedAt, everything else
+          // cleared (upsert replaces all mutable fields).
+          const pending: StepRun = {
+            id: sr.id,
+            runId: r.id,
+            stepId: sr.stepId,
+            status: 'pending',
+            startedAt: sr.startedAt,
+          };
+          repo.upsertStepRun(pending);
+          emit({ type: 'step', stepRun: pending });
+        }
+      }
+      if (sawAct) {
+        // Failed runs launch nothing new: other pendings stay pending.
+        repo.updateRun(r.id, { status: 'failed', endedAt: new Date().toISOString() });
+        emit({ type: 'run', run: repo.getRun(r.id)!.run });
+        continue;
+      }
+      await continueRun(r.id);
+    }
+  }
+
+  return { start, resolveApproval, resumeAll, events };
 }

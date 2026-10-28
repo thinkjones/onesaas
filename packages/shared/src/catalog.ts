@@ -101,4 +101,16 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({ threadId: z.string(), body: z.string() }),
     outputSchema: z.object({ drafted: z.literal(true) }),
   },
+  'approval.ask': {
+    type: 'approval.ask',
+    kind: 'act',
+    title: 'Ask for approval',
+    // The engine validates schemas as guards only (originals flow through),
+    // so this .default() NEVER applies at runtime: the approval executor
+    // must apply it manually (config.question ?? 'Is this OK to use?').
+    // Same caveat for any future catalog default.
+    configSchema: z.object({ question: z.string().default('Is this OK to use?') }),
+    inputSchema: z.object({ text: z.string() }),
+    outputSchema: z.object({ text: z.string(), decision: z.enum(['approved', 'edited']) }),
+  },
 };
