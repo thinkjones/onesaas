@@ -17,7 +17,8 @@ function isUnpositioned(s: StepInstance): boolean {
  * Fills missing ({0,0}) or overlapping positions left-to-right via dagre
  * (rankdir LR, nodesep 60, ranksep 120). Nodes with a distinct non-zero
  * position keep it; of overlapping duplicates the first keeps its spot.
- * Returns a new Workflow; the input is not mutated.
+ * Returns a new Workflow; the input is not mutated. When nothing needs
+ * layout, returns the input unchanged (same reference).
  */
 export function layoutWorkflow(wf: Workflow): Workflow {
   const all = [wf.trigger, ...wf.steps];

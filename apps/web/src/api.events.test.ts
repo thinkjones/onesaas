@@ -71,6 +71,30 @@ describe('useLiveEvents reconnect', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['run'] });
   });
 
+  test('reconnect backoff escalates 1s → 2s → 5s and caps at 5s', async () => {
+    renderLiveEvents();
+    for (const [waitMs, total] of [
+      [1000, 1],
+      [2000, 2],
+      [5000, 3],
+      [5000, 4],
+    ] as const) {
+      await act(async () => {
+        MockEventSource.instances[total - 1]!.onerror!();
+      });
+      // No reconnect before the full delay elapses …
+      await act(async () => {
+        vi.advanceTimersByTime(waitMs - 1);
+      });
+      expect(MockEventSource.instances).toHaveLength(total);
+      // … then exactly one fires.
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(MockEventSource.instances).toHaveLength(total + 1);
+    }
+  });
+
   test('unmount clears the pending reconnect (StrictMode double-mount safe)', async () => {
     const { unmount } = renderLiveEvents();
     await act(async () => {

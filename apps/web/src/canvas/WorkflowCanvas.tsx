@@ -138,7 +138,11 @@ export default function WorkflowCanvas({
       onNodesChangeInner(changes);
       if (!design || !onChange) return;
       for (const c of changes) {
-        if (c.type === 'position' && c.position) {
+        // @xyflow/react emits a `position` change per drag frame with
+        // `dragging: true`, then one final change with `dragging: false`
+        // on drop (updateNodePositions in @xyflow/react 12). Only the drop
+        // is an op, so M3 sees one move per drag instead of ~per-frame ops.
+        if (c.type === 'position' && c.position && !c.dragging) {
           onChange({ op: 'move', stepId: c.id, position: c.position });
         } else if (c.type === 'remove') {
           onChange({ op: 'remove', stepId: c.id });
