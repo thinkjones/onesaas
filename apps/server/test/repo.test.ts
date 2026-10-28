@@ -206,3 +206,28 @@ test('nested input/output/tokens objects survive a JSON round-trip', () => {
   expect(got?.steps[0]?.costUsd).toBeCloseTo(0.000123, 9);
   expect(got?.steps[0]?.durationMs).toBe(1500);
 });
+
+test('saveWorkflow ignores an incoming version and stores as version 1', () => {
+  const repo = freshRepo();
+  const saved = repo.saveWorkflow(makeWorkflow({ version: 999 }));
+  expect(saved.version).toBe(1);
+  expect(repo.getWorkflow('flow-1')?.version).toBe(1);
+});
+
+test('updateRun with an invalid status throws', () => {
+  const repo = freshRepo();
+  const run = repo.createRun(makeRunInput());
+  expect(() => repo.updateRun(run.id, { status: 'bogus' as never })).toThrow(/status/i);
+});
+
+test('upsertStepRun for an unknown run id is allowed (no FK)', () => {
+  const db = openDb(':memory:');
+  const repo = createRepo(db);
+  repo.upsertStepRun(makeStepRun('ghost-run', { id: 'sr-ghost' }));
+  expect(repo.getRun('ghost-run')).toBeUndefined();
+  const row = db.prepare('SELECT id, run_id FROM step_runs WHERE id = ?').get('sr-ghost') as {
+    id: string;
+    run_id: string;
+  };
+  expect(row).toMatchObject({ id: 'sr-ghost', run_id: 'ghost-run' });
+});

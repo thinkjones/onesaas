@@ -226,6 +226,7 @@ export function createRepo(db: Database): Repo {
       const row = orm.select().from(runs).where(eq(runs.id, id)).get();
       if (!row) throw new Error(`Unknown run: ${id}`);
       const { id: _ignored, ...rest } = patch;
+      // undefined values are skipped (cannot unset a field); id is always ignored.
       const defined = Object.fromEntries(
         Object.entries(rest).filter(([, v]) => v !== undefined),
       );
