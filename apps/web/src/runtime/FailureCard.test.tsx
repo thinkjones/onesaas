@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Toaster } from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { RunUpdate } from '../api.ts';
 import FailureCard from './FailureCard.tsx';
@@ -21,6 +22,7 @@ function renderCard(error = 'I need Gmail open in Chrome to do this.') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
+      <Toaster />
       <FailureCard runId="run-1" stepId="draft" error={error} />
     </QueryClientProvider>,
   );
@@ -61,6 +63,24 @@ describe('FailureCard', () => {
         true,
       );
     });
+  });
+
+  // Real sonner Toaster + DOM assertion: proves the user SEES the error, not
+  // just that toast.error was called (a toast mock would prove less).
+  test('retry→409 toasts the parsed server message (no silent failure)', async () => {
+    const body = JSON.stringify({ error: 'This step was already resolved elsewhere.' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 409,
+        text: async () => body,
+        json: async () => JSON.parse(body),
+      })),
+    );
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('This step was already resolved elsewhere.')).toBeDefined();
   });
 
   test('"Fix this step" is disabled with a "Coming soon" tooltip until M3', () => {

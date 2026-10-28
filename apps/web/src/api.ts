@@ -27,7 +27,7 @@ export type ApprovalAction =
   | { action: 'edit'; text: string }
   | { action: 'skip' };
 
-/** Thrown by the API helpers; `status` lets callers (e.g. Task 6 toasts) branch on it. */
+/** Thrown by the API helpers; the cards toast `message` on mutation failure (`status` carried for branching). */
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useApprove } from '../api.ts';
+import { toast } from 'sonner';
+import { ApiError, useApprove } from '../api.ts';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
 import AppCard from '../design/AppCard.tsx';
@@ -22,19 +23,29 @@ export interface ApprovalCardProps {
  * whitespace-only) disables the approve buttons with "The reply is empty",
  * mirroring the server's 422; Skip stays enabled as the escape hatch for an
  * empty proposal. Every button disables while the mutation is in flight, so a
- * double-click can't fire twice (the server would reject the loser with a
- * confusing toast).
+ * double-click can't fire twice (a loser that still slips through — e.g.
+ * resolved from another tab — surfaces the server message as an error toast).
  *
  * Key={status} on the node remounts this card on a status flip, discarding an
  * in-flight textarea edit — accepted: only another client resolving mid-edit
  * triggers it, and a local approve/edit sends before the flip lands.
  */
+/** Surfaces the parsed server message; network failures get a plain-words fallback. */
+function toastMutationError(error: Error): void {
+  toast.error(
+    error instanceof ApiError && error.message
+      ? error.message
+      : "Couldn't reach the server. Try again.",
+  );
+}
+
 export default function ApprovalCard({ runId, stepId, question, proposedText }: ApprovalCardProps) {
   const [text, setText] = useState(proposedText);
   const approve = useApprove(runId, stepId);
   const empty = text.trim().length === 0;
   const changed = text !== proposedText;
   const busy = approve.isPending;
+  const onError = toastMutationError;
 
   return (
     <AppCard className="w-full p-4">
@@ -51,17 +62,24 @@ export default function ApprovalCard({ runId, stepId, question, proposedText }: 
         </p>
       )}
       <div className="mt-3 flex flex-col gap-2">
-        <AppButton disabled={empty || busy} onClick={() => approve.mutate({ action: 'approve' })}>
+        <AppButton
+          disabled={empty || busy}
+          onClick={() => approve.mutate({ action: 'approve' }, { onError })}
+        >
           Looks good
         </AppButton>
         <AppButton
           variant="outline"
           disabled={empty || !changed || busy}
-          onClick={() => approve.mutate({ action: 'edit', text })}
+          onClick={() => approve.mutate({ action: 'edit', text }, { onError })}
         >
           Use my changes
         </AppButton>
-        <AppButton variant="ghost" disabled={busy} onClick={() => approve.mutate({ action: 'skip' })}>
+        <AppButton
+          variant="ghost"
+          disabled={busy}
+          onClick={() => approve.mutate({ action: 'skip' }, { onError })}
+        >
           Skip
         </AppButton>
       </div>

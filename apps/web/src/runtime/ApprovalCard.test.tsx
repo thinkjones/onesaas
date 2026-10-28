@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Toaster } from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { RunUpdate } from '../api.ts';
 import ApprovalCard from './ApprovalCard.tsx';
@@ -27,10 +28,21 @@ function stubFetchOk() {
   }));
 }
 
+function stubFetch409(message: string) {
+  const body = JSON.stringify({ error: message });
+  return vi.fn(async () => ({
+    ok: false,
+    status: 409,
+    text: async () => body,
+    json: async () => JSON.parse(body),
+  }));
+}
+
 function renderCard(proposedText = 'Hi Sarah, thanks for writing!') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
+      <Toaster />
       <ApprovalCard
         runId="run-1"
         stepId="approve"
@@ -107,6 +119,15 @@ describe('ApprovalCard', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
     expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({ action: 'skip' });
+  });
+
+  // Real sonner Toaster + DOM assertion: proves the user SEES the error, not
+  // just that toast.error was called (a toast mock would prove less).
+  test('approve→409 toasts the parsed server message (no silent failure)', async () => {
+    vi.stubGlobal('fetch', stubFetch409('This step was already resolved elsewhere.'));
+    renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Looks good' }));
+    expect(await screen.findByText('This step was already resolved elsewhere.')).toBeDefined();
   });
 
   test('all buttons disable while the mutation is in flight (no double-submit)', async () => {
