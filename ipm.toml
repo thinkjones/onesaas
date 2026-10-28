@@ -1,0 +1,16 @@
+# ipm packs: each becomes a Claude Code plugin under .ipm/plugins/ when you run `ipm pack build`.
+
+[packs.vendor-meta-hackathon]
+description = "Hackathon pack to manage skills needed to build the app"
+items = [
+  "plugin:obra/superpowers:.",
+  "plugin:nextlevelbuilder/ui-ux-pro-max-skill:.",
+  "skill:oil-oil/beautify-github-readme:skills/beautify-github-readme",
+  "plugin:anthropics/claude-plugins-official:plugins/skill-creator",
+  "plugin:anthropics/claude-plugins-official#twilio-developer-kit",
+]
+
+[[packs.vendor-meta-hackathon.installs]]
+target = "claude"
+path = "."
+scope = "project"
