@@ -6,6 +6,8 @@ import { useSearchParams } from 'react-router';
 import { getRun, useRun, useRuns } from '../api.ts';
 import WorkflowCanvas from '../canvas/WorkflowCanvas.tsx';
 import EmptyState from '../design/EmptyState.tsx';
+import ApprovalCard from './ApprovalCard.tsx';
+import FailureCard from './FailureCard.tsx';
 import Inspector from './Inspector.tsx';
 import { resolveRunId, resolveStepId } from './params.ts';
 import RunsList from './RunsList.tsx';
@@ -46,6 +48,15 @@ function RuntimeShell({
   );
 }
 
+/** Waiting approval output is `{ proposed: { text } }`; anything else yields ''. */
+function proposedTextOf(output: unknown): string {
+  if (typeof output !== 'object' || output === null) return '';
+  const proposed = (output as Record<string, unknown>)['proposed'];
+  if (typeof proposed !== 'object' || proposed === null) return '';
+  const text = (proposed as Record<string, unknown>)['text'];
+  return typeof text === 'string' ? text : '';
+}
+
 /**
  * The runtime screen: runs list left (300px), run story + canvas centre,
  * inspector sheet on node click. Selections live in the URL (?run=, ?step=)
@@ -53,9 +64,10 @@ function RuntimeShell({
  *
  * Canvas seams (per review): stepRuns is a memoized Record (a fresh object
  * per SSE event would churn nodes), onSelectStep is a useCallback, and
- * renderNodeExtra is left undefined for Task 6 — no inline lambdas into the
- * canvas. There is deliberately no canvas-driven deselect: the inspector
- * closes (and ?step= clears) only around the canvas, via the sheet's close.
+ * renderNodeExtra is a useCallback closed over the run detail — no inline
+ * lambdas into the canvas. There is deliberately no canvas-driven deselect:
+ * the inspector closes (and ?step= clears) only around the canvas, via the
+ * sheet's close.
  */
 export default function RuntimeView({ workflowId }: { workflowId: string }) {
   const [params, setParams] = useSearchParams();
@@ -146,6 +158,47 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
     });
   }, [setParams]);
 
+  // Approval / failure cards under waiting / failed nodes. A useCallback
+  // closed over the run detail (an inline lambda would churn the canvas nodes
+  // on every SSE event); the cards call useApprove/useRetry themselves
+  // because this is a plain function, not a hook context. The question lives
+  // in the pinned workflow's step config — StepRuns carry only the proposal —
+  // with the manual 'Is this OK to use?' default (the catalog .default()
+  // never applies at runtime). Tall extras shift React Flow node centres
+  // (handles dive, accepted aesthetic); verified no edge overlaps the cards
+  // on linear flow 1 — forked graphs may need extra rank spacing in M3+.
+  const renderNodeExtra = useCallback(
+    (stepId: string): ReactNode => {
+      if (runId === undefined || detail === undefined) return undefined;
+      const stepRun = stepRuns[stepId];
+      if (stepRun?.status === 'waiting') {
+        const step = detail.workflow.steps.find((s) => s.id === stepId);
+        const rawQuestion = step?.config['question'];
+        const question =
+          typeof rawQuestion === 'string' ? rawQuestion : 'Is this OK to use?';
+        return (
+          <ApprovalCard
+            runId={runId}
+            stepId={stepId}
+            question={question}
+            proposedText={proposedTextOf(stepRun.output)}
+          />
+        );
+      }
+      if (stepRun?.status === 'failed') {
+        return (
+          <FailureCard
+            runId={runId}
+            stepId={stepId}
+            error={stepRun.error ?? 'Something went wrong.'}
+          />
+        );
+      }
+      return undefined;
+    },
+    [detail, runId, stepRuns],
+  );
+
   if (runsQuery.isPending) return <p className="text-base">Loading runs…</p>;
   if (runsQuery.isError || !runs) {
     return (
@@ -218,6 +271,7 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
           stepRuns={stepRuns}
           selectedStepId={selectedStepId}
           onSelectStep={handleSelectStep}
+          renderNodeExtra={renderNodeExtra}
         />
       </div>
       {/* Keyed by step so the sheet (incl. the Show-details toggle) resets per selection. */}

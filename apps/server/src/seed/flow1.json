@@ -15,6 +15,10 @@
     },
     {
       "from": "write",
+      "to": "approve"
+    },
+    {
+      "from": "approve",
       "to": "draft"
     }
   ],
@@ -54,7 +58,7 @@
       },
       "position": {
         "x": 0,
-        "y": 120
+        "y": 0
       },
       "summary": "Read the name, email, need and urgency from the email.",
       "title": "Extract details",
@@ -71,7 +75,7 @@
       },
       "position": {
         "x": 0,
-        "y": 240
+        "y": 0
       },
       "summary": "Save the customer to the Customers list.",
       "title": "Save to Customers",
@@ -88,22 +92,38 @@
       },
       "position": {
         "x": 0,
-        "y": 360
+        "y": 0
       },
       "summary": "Write a short, warm reply.",
       "title": "Write reply",
       "type": "ai.write"
     },
     {
+      "config": {
+        "question": "Is this reply OK to put in Gmail?"
+      },
+      "id": "approve",
+      "inputs": {
+        "text": "{{write.text}}"
+      },
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "summary": "Check the reply with you before drafting it.",
+      "title": "Approve reply",
+      "type": "approval.ask"
+    },
+    {
       "config": {},
       "id": "draft",
       "inputs": {
-        "body": "{{write.text}}",
+        "body": "{{approve.text}}",
         "threadId": "{{trigger.email.threadId}}"
       },
       "position": {
         "x": 0,
-        "y": 480
+        "y": 0
       },
       "summary": "Draft the reply in Gmail.",
       "title": "Draft reply",
@@ -124,5 +144,5 @@
     "title": "Gmail button",
     "type": "trigger.gmailButton"
   },
-  "version": 1
+  "version": 2
 }

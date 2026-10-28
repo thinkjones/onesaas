@@ -10,6 +10,7 @@ import { createRepo } from './db/repo.js';
 import { createEngine } from './engine/engine.js';
 import { createGateway } from './models/gateway.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };
+import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
 import { createTableStore } from './tables/store.js';
 import { registerGmailButtonTrigger } from './triggers/gmailButton.js';
@@ -61,6 +62,9 @@ export function createServer(opts?: { dbFile?: string }): {
   // Seed flow 1 only into an empty workflow store (never overwrite user edits).
   // Workflow.parse fails loud on a broken seed file.
   if (repo.listWorkflows().length === 0) repo.saveWorkflow(Workflow.parse(flow1));
+  // Existing installs whose flow-1 predates the approval step move to the new
+  // definition as the next version (no-op for fresh seeds and migrated DBs).
+  migrateFlow1Seed(repo);
   if (!tables.getTable('customers')) {
     tables.createTable({
       name: 'customers',

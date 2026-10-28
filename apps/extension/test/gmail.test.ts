@@ -94,6 +94,31 @@ describe('setButtonStatus', () => {
   it('no-ops for an unknown workflow id', () => {
     expect(() => setButtonStatus(document, 'nope', 'running')).not.toThrow();
   });
+
+  it('waiting with a run id renders a pill link to the runtime view', () => {
+    setButtonStatus(document, 'wf_lead', 'waiting', 'run-1');
+    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .dad-status-pill')!;
+    expect(pill.textContent).toBe('Waiting for you');
+    expect(pill.tagName).toBe('A');
+    expect(pill.getAttribute('href')).toBe(
+      'http://localhost:5173/reducers/wf_lead?mode=runtime&run=run-1',
+    );
+  });
+
+  it('without a run id the pill is plain text, not a link', () => {
+    setButtonStatus(document, 'wf_lead', 'waiting');
+    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .dad-status-pill')!;
+    expect(pill.tagName).toBe('SPAN');
+    expect(pill.getAttribute('href')).toBeNull();
+  });
+
+  it('clicking the pill link does not re-trigger the workflow', () => {
+    const onClick = vi.fn();
+    injectButtons(document, [{ workflowId: 'wf_lead', label: '✨ Save as lead & reply' }], onClick);
+    setButtonStatus(document, 'wf_lead', 'waiting', 'run-1');
+    (document.querySelector('.dad-status-pill') as HTMLElement).click();
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });
 
 describe('draftReply', () => {

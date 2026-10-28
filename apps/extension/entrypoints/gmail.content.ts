@@ -52,9 +52,16 @@ export default defineContentScript({
       }
       if (msg['type'] === 'runStatus') {
         // Guard wrong-thread pills: paint only when the run's thread is the
-        // open one (the background fans out to every Gmail tab).
+        // open one (the background fans out to every Gmail tab). The message
+        // carries runId (see the server's gmailButton trigger), which turns
+        // the pill into a link to that run's runtime view.
         if (msg['threadId'] === readThreadId(document)) {
-          setButtonStatus(document, String(msg['workflowId']), msg['status'] as RunStatus);
+          setButtonStatus(
+            document,
+            String(msg['workflowId']),
+            msg['status'] as RunStatus,
+            typeof msg['runId'] === 'string' ? msg['runId'] : undefined,
+          );
         }
         return undefined;
       }

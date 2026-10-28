@@ -14,6 +14,11 @@ const STATUS_PILLS: Record<RunStatus, string> = {
   failed: 'Needs a look',
 };
 
+/** Deep link into the runtime view for one run (local dev web app). */
+export function runtimeUrl(workflowId: string, runId: string): string {
+  return `http://localhost:5173/reducers/${encodeURIComponent(workflowId)}?mode=runtime&run=${encodeURIComponent(runId)}`;
+}
+
 /**
  * Render one button per workflow into the message toolbar. Idempotent: our
  * container (div.dad-gmail-buttons) is created once per toolbar and cleared +
@@ -60,11 +65,17 @@ export function injectButtons(
 /**
  * Show a status pill on one of our buttons. dataset.status mirrors the status
  * for M2's benefit. Missing button (wrong thread, list view) is a no-op.
+ *
+ * With a runId the pill is a link to that run's runtime view (new tab — the
+ * Gmail tab must stay open for the bridge); without one it is plain text.
+ * The pill element is rebuilt only when its kind (link vs text) changes, so
+ * repeat updates keep the same node.
  */
 export function setButtonStatus(
   doc: Document,
   workflowId: string,
   status: RunStatus,
+  runId?: string,
 ): void {
   const container = doc.querySelector(SELECTORS.buttonsContainer);
   if (!container) return;
@@ -76,13 +87,40 @@ export function setButtonStatus(
   if (!button) return;
 
   button.dataset['status'] = status;
-  let pill = button.querySelector(SELECTORS.statusPill) as HTMLElement | null;
-  if (!pill) {
-    pill = doc.createElement('span');
-    pill.className = 'dad-status-pill';
-    pill.style.marginLeft = '6px';
-    pill.style.fontSize = '12px';
-    button.appendChild(pill);
+  const pill = button.querySelector(SELECTORS.statusPill) as HTMLElement | null;
+  if (runId === undefined) {
+    if (pill?.tagName === 'SPAN') {
+      pill.textContent = STATUS_PILLS[status];
+    } else {
+      pill?.remove();
+      const span = doc.createElement('span');
+      span.className = 'dad-status-pill';
+      span.style.marginLeft = '6px';
+      span.style.fontSize = '12px';
+      span.textContent = STATUS_PILLS[status];
+      button.appendChild(span);
+    }
+    return;
   }
-  pill.textContent = STATUS_PILLS[status];
+  const href = runtimeUrl(workflowId, runId);
+  if (pill?.tagName === 'A') {
+    (pill as HTMLAnchorElement).href = href;
+    pill.textContent = STATUS_PILLS[status];
+    return;
+  }
+  pill?.remove();
+  const link = doc.createElement('a');
+  link.className = 'dad-status-pill';
+  link.style.marginLeft = '6px';
+  link.style.fontSize = '12px';
+  link.style.color = 'inherit';
+  link.style.textDecoration = 'underline';
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  // The pill sits INSIDE the trigger button: without this, clicking it would
+  // bubble up and fire the workflow trigger as well.
+  link.addEventListener('click', (e) => e.stopPropagation());
+  link.textContent = STATUS_PILLS[status];
+  button.appendChild(link);
 }
