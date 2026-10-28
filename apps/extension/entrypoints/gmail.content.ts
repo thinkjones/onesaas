@@ -13,6 +13,10 @@ export default defineContentScript({
   main() {
     let buttons: WorkflowButtonItem[] = [];
     let lastThreadId = '';
+    // Set once a pushed `buttons` list is processed. The boot pull reply and
+    // pushed updates travel independent channels with no ordering guarantee,
+    // so a pull reply arriving after a push must be ignored (it is stale).
+    let sawPush = false;
 
     const onButtonClick = (workflowId: string) => {
       let email;
@@ -36,6 +40,7 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((message: unknown) => {
       const msg = (message ?? {}) as Record<string, unknown>;
       if (msg['type'] === 'buttons') {
+        sawPush = true;
         const items = msg['items'];
         buttons = Array.isArray(items) ? (items as WorkflowButtonItem[]) : [];
         refresh();
@@ -112,6 +117,7 @@ export default defineContentScript({
     void browser.runtime
       .sendMessage({ action: 'getButtons' })
       .then((reply) => {
+        if (sawPush) return; // A fresher-or-equal push already won; reply is stale.
         const r = (reply ?? {}) as Record<string, unknown>;
         if (r['type'] === 'buttons' && Array.isArray(r['items'])) {
           buttons = r['items'] as WorkflowButtonItem[];
