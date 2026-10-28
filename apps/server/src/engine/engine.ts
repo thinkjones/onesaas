@@ -27,6 +27,7 @@ export function createEngine(d: {
 }): {
   start: (workflowId: string, triggerPayload: unknown) => Promise<Run>;
   resolveApproval: (runId: string, stepId: string, d: ApprovalDecision) => Promise<Run>;
+  retryStep: (runId: string, stepId: string) => Promise<Run>;
   resumeAll: () => Promise<void>;
   events: EventEmitter;
 } {
@@ -442,6 +443,34 @@ export function createEngine(d: {
     return continueRun(runId);
   }
 
+  // Re-runs one failed step, then continues the run. Failed steps only: any
+  // other state (pending, running, waiting, done, skipped) — and unknown
+  // run/step ids — reject with the same message, mirroring resolveApproval;
+  // the routes discriminate 404 from 409 with their own lookups. The step is
+  // reset to fresh `pending` (same id/runId/stepId/startedAt) and continueRun
+  // re-resolves its inputs from the saved `done` outputs under the run's OWN
+  // pinned workflow version, so a retry after an edit still runs the version
+  // the run started on. NO downstream reset: the wave ready rule only admits
+  // steps whose incoming edges are all done/skipped, so everything downstream
+  // of a failed step is still `pending` and runs naturally in this pass.
+  async function retryStep(runId: string, stepId: string): Promise<Run> {
+    const loaded = repo.getRun(runId);
+    const sr = loaded?.steps.find((s) => s.stepId === stepId);
+    if (!sr || sr.status !== 'failed') {
+      throw new Error('Only a step that needs a look can be retried.');
+    }
+    const pending: StepRun = {
+      id: sr.id,
+      runId,
+      stepId,
+      status: 'pending',
+      startedAt: sr.startedAt,
+    };
+    repo.upsertStepRun(pending);
+    emit({ type: 'step', stepRun: pending });
+    return continueRun(runId);
+  }
+
   // Boot recovery, called once at boot. Waiting runs are left alone entirely
   // (no-op by design: they must stay waiting AND resolvable). Running runs
   // are triaged by the KIND of each interrupted (`running`) step: `act`
@@ -527,5 +556,5 @@ export function createEngine(d: {
     await continueRun(runId);
   }
 
-  return { start, resolveApproval, resumeAll, events };
+  return { start, resolveApproval, retryStep, resumeAll, events };
 }

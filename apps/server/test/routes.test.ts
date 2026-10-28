@@ -68,7 +68,7 @@ test('GET /api/runs filters by workflowId', async () => {
   expect(body.map((r) => r.id)).toEqual([run.id]);
 });
 
-test('GET /api/runs/:id returns { run, steps } or an exact 404', async () => {
+test('GET /api/runs/:id returns { run, steps, story, workflow } or an exact 404', async () => {
   const { app, repo } = createServer({ dbFile: ':memory:' });
   const run = repo.createRun({
     workflowId: 'flow-1',
@@ -78,7 +78,12 @@ test('GET /api/runs/:id returns { run, steps } or an exact 404', async () => {
   });
   const ok = await app.request(`/api/runs/${run.id}`);
   expect(ok.status).toBe(200);
-  expect(await ok.json()).toEqual({ run: { ...run }, steps: [] });
+  expect(await ok.json()).toEqual({
+    run: { ...run },
+    steps: [],
+    story: ['Runs when you click the button in Gmail.'],
+    workflow: repo.getWorkflow('flow-1', 1),
+  });
   const missing = await app.request('/api/runs/does-not-exist');
   expect(missing.status).toBe(404);
   expect(await missing.json()).toEqual({ error: 'Unknown run: does-not-exist' });

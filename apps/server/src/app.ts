@@ -2,11 +2,13 @@ import type { ServerType } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { z } from 'zod';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
 import type { Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
+import { buildRunStory } from './engine/story.js';
 
 // Grows in later tasks (gateway, store, engine, bridge...). Kept as an
 // interface so call sites can add fields without changing createApp's shape.
@@ -72,7 +74,78 @@ export function createApp(deps: AppDeps): Hono {
     const id = c.req.param('id');
     const got = repo.getRun(id);
     if (!got) return c.json({ error: `Unknown run: ${id}` }, 404);
-    return c.json(got);
+    // The run's OWN pinned version, not latest: the canvas must render the
+    // definition the run actually executed.
+    const workflow = repo.getWorkflow(got.run.workflowId, got.run.workflowVersion);
+    if (!workflow) return c.json({ error: `Unknown workflow: ${got.run.workflowId}` }, 500);
+    return c.json({ run: got.run, steps: got.steps, story: buildRunStory(workflow, got.steps), workflow });
+  });
+
+  // Strict: approve/skip take no text, edit requires it. A surplus field is a
+  // client bug, so it 400s rather than being silently stripped.
+  const approvalBody = z.discriminatedUnion('action', [
+    z.object({ action: z.literal('approve') }).strict(),
+    z.object({ action: z.literal('edit'), text: z.string() }).strict(),
+    z.object({ action: z.literal('skip') }).strict(),
+  ]);
+
+  // 404/409 taxonomy without engine changes: the engine throws the SAME
+  // message for unknown ids and wrong-state steps, so the routes check ids
+  // themselves (404) and map any engine throw to 409. No TOCTOU: the repo is
+  // synchronous, so nothing interleaves between the check and the engine's
+  // own re-check at the head of resolveApproval/retryStep.
+  app.post('/api/runs/:id/steps/:stepId/approval', async (c) => {
+    if (!repo || !engine) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const stepId = c.req.param('stepId');
+    const got = repo.getRun(id);
+    if (!got) return c.json({ error: `Unknown run: ${id}` }, 404);
+    if (!got.steps.some((s) => s.stepId === stepId)) {
+      return c.json({ error: `Unknown step: ${stepId}` }, 404);
+    }
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid approval body' }, 400);
+    }
+    const parsed = approvalBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid approval body' }, 400);
+    // An empty edit would approve blank text: 422, matching the Task 6 card's
+    // "The reply is empty" wording. Whitespace-only counts as empty — it
+    // renders as nothing in the draft.
+    if (parsed.data.action === 'edit' && parsed.data.text.trim().length === 0) {
+      return c.json({ error: 'The reply is empty' }, 422);
+    }
+    try {
+      await engine.resolveApproval(id, stepId, parsed.data);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    const full = repo.getRun(id)!;
+    const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
+    if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
+    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
+  });
+
+  app.post('/api/runs/:id/steps/:stepId/retry', async (c) => {
+    if (!repo || !engine) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const stepId = c.req.param('stepId');
+    const got = repo.getRun(id);
+    if (!got) return c.json({ error: `Unknown run: ${id}` }, 404);
+    if (!got.steps.some((s) => s.stepId === stepId)) {
+      return c.json({ error: `Unknown step: ${stepId}` }, 404);
+    }
+    try {
+      await engine.retryStep(id, stepId);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 409);
+    }
+    const full = repo.getRun(id)!;
+    const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
+    if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
+    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
   });
 
   app.get('/api/events', (c) => {
