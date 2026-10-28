@@ -201,6 +201,59 @@ test('a run event is forwarded as runStatus with the threadId', () => {
   });
 });
 
+test('a label-less workflow falls back to its name (never "undefined")', () => {
+  const local = setup([
+    makeWorkflow({
+      id: 'flow-nolabel',
+      name: 'Label-less flow',
+      trigger: { ...makeWorkflow().trigger, config: {} },
+    }),
+  ]);
+  local.fireReady();
+  expect(local.send).toHaveBeenCalledWith({
+    type: 'buttons',
+    items: [{ workflowId: 'flow-nolabel', label: 'Label-less flow' }],
+  });
+});
+
+test('a click on a label-less workflow still calls start; the engine validates config', () => {
+  const local = setup([
+    makeWorkflow({
+      id: 'flow-nolabel',
+      name: 'Label-less flow',
+      trigger: { ...makeWorkflow().trigger, config: {} },
+    }),
+  ]);
+  const d = deferred<Run>();
+  local.start.mockReturnValue(d.promise);
+  local.fireTrigger(makeTrigger('flow-nolabel', makeEmail()));
+  expect(local.start).toHaveBeenCalledTimes(1);
+  // The engine owns config validation: Task 7 tests prove a trigger step
+  // with a bad config fails observably, so start() being called is the
+  // whole contract here — the click path must not drop it silently.
+  d.resolve({} as Run);
+});
+
+test.each(['done', 'failed'] as const)(
+  'a terminal run event (%s) is forwarded as runStatus',
+  (status) => {
+    const run = h.repo.createRun({
+      workflowId: 'flow-1',
+      workflowVersion: 1,
+      triggerPayload: { email: { threadId: 'thread-1' } },
+      status,
+    });
+    h.events.emit('event', { type: 'run', run });
+    expect(h.send).toHaveBeenCalledWith({
+      type: 'runStatus',
+      workflowId: 'flow-1',
+      threadId: 'thread-1',
+      runId: run.id,
+      status,
+    });
+  },
+);
+
 test('buttons exclude off workflows', () => {
   const off: Workflow = {
     ...makeWorkflow(),

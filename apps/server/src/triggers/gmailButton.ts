@@ -40,7 +40,12 @@ export function registerGmailButtonTrigger(d: {
     const items = repo
       .listWorkflows()
       .filter((w) => w.status === 'on' && w.trigger.type === 'trigger.gmailButton')
-      .map((w) => ({ workflowId: w.id, label: String(w.trigger.config['label']) }));
+      .map((w) => {
+        // A missing/empty label falls back to the workflow NAME — never
+        // String(undefined), which would render as the literal 'undefined'.
+        const l = w.trigger.config['label'];
+        return { workflowId: w.id, label: typeof l === 'string' && l ? l : w.name };
+      });
     bridge.send({ type: 'buttons', items });
   });
 
@@ -57,7 +62,7 @@ export function registerGmailButtonTrigger(d: {
     // Missing threadId coalesces under one key — the safe direction: one
     // run at a time for unidentified threads rather than unbounded clicks.
     const threadId = String(flat['threadId'] ?? '');
-    const key = `${t.workflowId}::${threadId}`;
+    const key = JSON.stringify([t.workflowId, threadId]);
     if (inFlight.has(key)) return;
     inFlight.add(key);
     // M1 runs otherwise never reject: the engine's finalizer already failed

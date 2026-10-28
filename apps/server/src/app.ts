@@ -77,7 +77,7 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get('/api/events', (c) => {
     if (!engine) return c.json({ error: 'Server not configured' }, 500);
-    // Verified against installed hono 4.6: streamSSE lives in 'hono/streaming'
+    // Verified against the installed hono: streamSSE lives in 'hono/streaming'
     // and writeSSE takes { data }. The stream ends when the client aborts.
     return streamSSE(c, async (stream) => {
       const onEvent = (e: EngineEvent): void => {

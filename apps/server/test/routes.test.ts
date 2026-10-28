@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect } from 'vitest';
 import { createServer } from '../src/main.js';
 
@@ -9,6 +13,28 @@ test('startup seeds flow-1 and the customers table', async () => {
     displayField: 'name',
     keyField: 'email',
   });
+});
+
+test('a second boot against the same file db does not reseed or duplicate', async () => {
+  // :memory: DBs cannot be shared across createServer calls, so this test
+  // needs a real tmp file both boots open.
+  const dbFile = join(tmpdir(), `routes-seed-twice-${randomUUID()}.db`);
+  const first = createServer({ dbFile });
+  try {
+    const second = createServer({ dbFile });
+    try {
+      expect(second.repo.listWorkflows()).toHaveLength(1);
+      expect(second.repo.getWorkflow('flow-1')?.version).toBe(1);
+      expect(second.tables.getTable('customers')).toMatchObject({ name: 'customers' });
+    } finally {
+      second.db.close();
+    }
+  } finally {
+    first.db.close();
+    rmSync(dbFile, { force: true });
+    rmSync(`${dbFile}-wal`, { force: true });
+    rmSync(`${dbFile}-shm`, { force: true });
+  }
 });
 
 test('GET /api/workflows contains the seeded flow-1', async () => {

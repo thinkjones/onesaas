@@ -14,6 +14,9 @@ import { executors } from './steps/registry.js';
 import { createTableStore } from './tables/store.js';
 import { registerGmailButtonTrigger } from './triggers/gmailButton.js';
 
+// Warn-once: createServer() runs per test, so an unflagged warn would spam stderr.
+let warnedMissingKey = false;
+
 /**
  * Composition root: opens the DB, builds tables/repo/settings/pairing/bridge,
  * gateway/engine, registers triggers, seeds flow 1 + the customers table, and
@@ -42,7 +45,10 @@ export function createServer(opts?: { dbFile?: string }): {
   // The client requires SOME apiKey string at construction; 'unconfigured' is
   // a placeholder that only surfaces if an AI step actually runs (it fails
   // with an auth error then), so the server still boots for non-AI work.
-  if (!apiKey) console.warn('MODEL_API_KEY not set — AI steps will fail');
+  if (!apiKey && !warnedMissingKey) {
+    warnedMissingKey = true;
+    console.warn('MODEL_API_KEY not set — AI steps will fail');
+  }
   const gateway = createGateway({
     client: new OpenAI({ apiKey: apiKey ?? 'unconfigured', baseURL: 'https://api.meta.ai/v1' }),
   });
