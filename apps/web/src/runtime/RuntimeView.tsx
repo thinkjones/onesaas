@@ -1,7 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
-import type { StepRun } from '@dad/shared';
+import type { Run, StepRun } from '@dad/shared';
 import { History, TriangleAlert } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { getRun, useRun, useRuns } from '../api.ts';
 import WorkflowCanvas from '../canvas/WorkflowCanvas.tsx';
@@ -10,6 +10,41 @@ import Inspector from './Inspector.tsx';
 import { resolveRunId, resolveStepId } from './params.ts';
 import RunsList from './RunsList.tsx';
 import RunStory from './RunStory.tsx';
+
+/**
+ * Two-column shell (300px runs list left, detail pane right) shared by the
+ * loading, error, and loaded branches, so the list stays mounted — the
+ * recovery hint ("pick another run on the left") is only honest if the
+ * list is actually there. The inspector renders in a portal, so passing it
+ * as a child costs the flex layout nothing.
+ */
+function RuntimeShell({
+  runs,
+  selectedRunId,
+  onSelectRun,
+  lastLineByRunId,
+  children,
+}: {
+  runs: Run[];
+  selectedRunId: string | undefined;
+  onSelectRun: (id: string) => void;
+  lastLineByRunId: Record<string, string | undefined>;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="w-[300px] shrink-0">
+        <RunsList
+          runs={runs}
+          selectedRunId={selectedRunId}
+          onSelect={onSelectRun}
+          lastLineByRunId={lastLineByRunId}
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-4">{children}</div>
+    </div>
+  );
+}
 
 /**
  * The runtime screen: runs list left (300px), run story + canvas centre,
@@ -27,9 +62,28 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
   const runsQuery = useRuns(workflowId);
   const runs = runsQuery.data;
 
-  const runId = resolveRunId(params.get('run'), runs);
+  const rawRunParam = params.get('run');
+  const runId = resolveRunId(rawRunParam, runs);
   const detailQuery = useRun(runId ?? '', { enabled: runId !== undefined });
   const detail = detailQuery.data;
+
+  // Pin the resolved run back into ?run=. Without this, landing bare (or on
+  // a stale id) selects newest only implicitly — then a newer run arriving
+  // via SSE silently yanks the whole view, and copied links diverge from
+  // what's shown. Replace (not push) adds no history entry and ?step= is
+  // preserved; the write fires only when different, so this never loops.
+  useEffect(() => {
+    if (runId !== undefined && runId !== rawRunParam) {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('run', runId);
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [runId, rawRunParam, setParams]);
 
   // One cached detail query per row for its story last line (N+1, same as the
   // ChoreReducersPage precedent — runs lists are small in M2). The selected
@@ -41,14 +95,15 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
       queryFn: () => getRun(r.id),
     })),
   });
-  const lastLineByRunId = useMemo(() => {
-    const map: Record<string, string | undefined> = {};
-    for (const [i, r] of (runs ?? []).entries()) {
-      const story = storyQueries[i]?.data?.story;
-      map[r.id] = story?.[story.length - 1];
-    }
-    return map;
-  }, [runs, storyQueries]);
+  // Recomputed every render on purpose: the useQueries result array is
+  // rebuilt each render, so a useMemo keyed on it would never memoize.
+  // (useQueries({ combine }) would memoize but obscures the tiny loop;
+  // runs lists are small in M2, so the honest recompute wins.)
+  const lastLineByRunId: Record<string, string | undefined> = {};
+  for (const [i, r] of (runs ?? []).entries()) {
+    const story = storyQueries[i]?.data?.story;
+    lastLineByRunId[r.id] = story?.[story.length - 1];
+  }
 
   const stepRuns = useMemo(() => {
     const map: Record<string, StepRun> = {};
@@ -110,16 +165,34 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
       />
     );
   }
-  if (detailQuery.isPending || !detail) {
-    return <p className="text-base">Loading run…</p>;
-  }
+  // The error branch comes first: on error `detail` is undefined, so the
+  // `!detail` pending check below would swallow it into "Loading run…" forever.
   if (detailQuery.isError) {
     return (
-      <EmptyState
-        icon={TriangleAlert}
-        title="Couldn't load this run"
-        hint="It may have been deleted; pick another run on the left."
-      />
+      <RuntimeShell
+        runs={runs}
+        selectedRunId={runId}
+        onSelectRun={handleSelectRun}
+        lastLineByRunId={lastLineByRunId}
+      >
+        <EmptyState
+          icon={TriangleAlert}
+          title="Couldn't load this run"
+          hint="It may have been deleted; pick another run on the left."
+        />
+      </RuntimeShell>
+    );
+  }
+  if (detailQuery.isPending || !detail) {
+    return (
+      <RuntimeShell
+        runs={runs}
+        selectedRunId={runId}
+        onSelectRun={handleSelectRun}
+        lastLineByRunId={lastLineByRunId}
+      >
+        <p className="text-base">Loading run…</p>
+      </RuntimeShell>
     );
   }
 
@@ -131,26 +204,21 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
         : detail.workflow.steps.find((s) => s.id === selectedStepId);
 
   return (
-    <div className="flex gap-4">
-      <div className="w-[300px] shrink-0">
-        <RunsList
-          runs={runs}
-          selectedRunId={runId}
-          onSelect={handleSelectRun}
-          lastLineByRunId={lastLineByRunId}
+    <RuntimeShell
+      runs={runs}
+      selectedRunId={runId}
+      onSelectRun={handleSelectRun}
+      lastLineByRunId={lastLineByRunId}
+    >
+      <RunStory story={detail.story} />
+      <div className="min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+        <WorkflowCanvas
+          workflow={detail.workflow}
+          mode="runtime"
+          stepRuns={stepRuns}
+          selectedStepId={selectedStepId}
+          onSelectStep={handleSelectStep}
         />
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <RunStory story={detail.story} />
-        <div className="min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
-          <WorkflowCanvas
-            workflow={detail.workflow}
-            mode="runtime"
-            stepRuns={stepRuns}
-            selectedStepId={selectedStepId}
-            onSelectStep={handleSelectStep}
-          />
-        </div>
       </div>
       {/* Keyed by step so the sheet (incl. the Show-details toggle) resets per selection. */}
       <Inspector
@@ -160,6 +228,6 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
         open={selectedStepId !== undefined}
         onClose={handleCloseInspector}
       />
-    </div>
+    </RuntimeShell>
   );
 }

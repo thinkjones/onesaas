@@ -19,12 +19,19 @@ function startOfDay(d: Date): Date {
  * Day boundaries are computed in the browser timezone.
  */
 export function formatRunListTime(iso: string): string {
-  const d = new Date(iso);
-  const today = startOfDay(new Date());
-  const day = startOfDay(d);
-  const daysAgo = Math.round((today.getTime() - day.getTime()) / 86_400_000);
-  const dayLabel = daysAgo <= 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : dateFmt.format(d);
-  return `${dayLabel} ${timeFmt.format(d)}`;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const today = startOfDay(new Date());
+    const day = startOfDay(d);
+    const daysAgo = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+    const dayLabel = daysAgo <= 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : dateFmt.format(d);
+    return `${dayLabel} ${timeFmt.format(d)}`;
+  } catch {
+    // One corrupt stamp must not kill the whole list (this runs inside
+    // RunsList's map) — fall back to the raw string.
+    return iso;
+  }
 }
 
 /** Full stamp for the inspector meta block: "Oct 28, 10:42 AM"-style. */
