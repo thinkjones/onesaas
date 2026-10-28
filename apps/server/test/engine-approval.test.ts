@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { vi } from 'vitest';
 import type { Edge, StepInstance, StepRun, Workflow } from '@dad/shared';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';
@@ -428,4 +429,150 @@ test('resumeAll fails an interrupted act step without re-running it', async () =
   expect(d.error).toBe("I was interrupted while doing this. Press Retry if it didn't happen.");
   expect(d.input).toEqual({ threadId: 't1', body: 'hi' });
   expect(d.durationMs).toBeUndefined();
+});
+
+test('resolving mid-wave runs the in-flight sibling exactly once and converges to done', async () => {
+  const { repo, ctxBase } = setup();
+  let slowCalls = 0;
+  let joinCalls = 0;
+  let joinInput: unknown;
+  const engine = createEngine({
+    repo,
+    executors: {
+      'trigger.manual': echoExecutor([], 'trigger'),
+      'approval.ask': realExecutors['approval.ask']!,
+      'ai.write': (async () => {
+        slowCalls += 1;
+        await new Promise((r) => setTimeout(r, 250));
+        return { output: { text: 'slow done' }, why: 'Slow.' };
+      }) as Executor,
+      'gmail.draftReply': (async (_config, input) => {
+        joinCalls += 1;
+        joinInput = input;
+        return { output: { drafted: true }, why: 'Joined.' };
+      }) as Executor,
+    },
+    ctx: ctxBase,
+  });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [
+        mkStep('approve', 'approval.ask', { inputs: { text: 'needs review' } }),
+        mkStep('slow', 'ai.write', { config: WRITE_CONFIG, inputs: { context: '{{trigger}}' } }),
+        mkStep('join', 'gmail.draftReply', {
+          inputs: { threadId: 't1', body: '{{approve.text}}' },
+        }),
+      ],
+      edges: [
+        { from: 'trigger', to: 'approve' },
+        { from: 'trigger', to: 'slow' },
+        { from: 'approve', to: 'join' },
+        { from: 'slow', to: 'join' },
+      ],
+    }),
+  );
+
+  // Start without awaiting: wave 2 runs approve (parks fast) + slow (250ms)
+  // in parallel, so the approval is resolvable while slow is in flight.
+  const startP = engine.start('wf1', { payload: 1 });
+  let runId: string | undefined;
+  for (let i = 0; i < 200 && runId === undefined; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+    const first = repo.listRuns()[0];
+    const full = first ? repo.getRun(first.id) : undefined;
+    if (full?.steps.find((s) => s.stepId === 'approve')?.status === 'waiting') runId = first!.id;
+  }
+  expect(runId).toBeTruthy();
+  // Prove the race is real: the sibling must still be in flight when we
+  // resolve, otherwise this test would pass vacuously.
+  expect(repo.getRun(runId!)!.steps.find((s) => s.stepId === 'slow')!.status).toBe('running');
+
+  const resolveP = engine.resolveApproval(runId!, 'approve', { action: 'approve' });
+  const [, resolved] = await Promise.all([startP, resolveP]);
+
+  expect(slowCalls).toBe(1);
+  expect(joinCalls).toBe(1);
+  expect(joinInput).toEqual({ threadId: 't1', body: 'needs review' });
+  expect(resolved.status).toBe('done');
+  const final = repo.getRun(runId!)!;
+  expect(final.run.status).toBe('done');
+  // Stuck-shape guard: a waiting run whose steps are ALL terminal is
+  // unresolvable (no waiting step left to resolve) and resumeAll-ignored.
+  const stuck =
+    final.run.status === 'waiting' &&
+    final.steps.every(
+      (s) => s.status === 'done' || s.status === 'skipped' || s.status === 'failed' || s.status === 'waiting',
+    );
+  expect(stuck).toBe(false);
+});
+
+test('resumeAll skips a poison run and still resumes healthy runs', async () => {
+  const { repo, ctxBase } = setup();
+  const payload = { payload: 1 };
+  // Healthy interrupted run, created FIRST...
+  repo.saveWorkflow(
+    mkWorkflow({
+      id: 'healthy',
+      steps: [mkStep('a', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } })],
+      edges: [{ from: 'trigger', to: 'a' }],
+    }),
+  );
+  const healthy = repo.createRun({
+    workflowId: 'healthy',
+    workflowVersion: 1,
+    triggerPayload: payload,
+    status: 'running',
+  });
+  craftStepRun(repo, healthy.id, 'trigger', { status: 'done', input: payload, output: payload });
+  craftStepRun(repo, healthy.id, 'a', { status: 'running', input: { text: 't' } });
+
+  // ...then the poison run, so listRuns (newest-first) hits it FIRST. A
+  // cyclic def saves fine (no cycle check on write) but throws 'Workflow has
+  // a cycle' out of continueRun's topoOrder, before its finalizer.
+  repo.saveWorkflow(
+    mkWorkflow({
+      id: 'poison',
+      steps: [mkStep('p', 'ai.extract', { config: EXTRACT_CONFIG, inputs: { text: 't' } })],
+      edges: [
+        { from: 'trigger', to: 'p' },
+        { from: 'p', to: 'trigger' },
+      ],
+    }),
+  );
+  const poison = repo.createRun({
+    workflowId: 'poison',
+    workflowVersion: 1,
+    triggerPayload: payload,
+    status: 'running',
+  });
+  craftStepRun(repo, poison.id, 'trigger', { status: 'done', input: payload, output: payload });
+  craftStepRun(repo, poison.id, 'p', { status: 'pending' });
+
+  let aCalls = 0;
+  const engine = createEngine({
+    repo,
+    executors: {
+      'trigger.manual': echoExecutor([], 'trigger'),
+      'ai.extract': (async () => {
+        aCalls += 1;
+        return { output: { ok: true }, why: 'Extracted.' };
+      }) as Executor,
+    },
+    ctx: ctxBase,
+  });
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  let warnCalls: unknown[][];
+  try {
+    await engine.resumeAll();
+  } finally {
+    // Capture before restore: mockRestore clears the recorded calls.
+    warnCalls = warn.mock.calls.slice();
+    warn.mockRestore();
+  }
+
+  expect(aCalls).toBe(1);
+  expect(repo.getRun(healthy.id)!.run.status).toBe('done');
+  expect(repo.getRun(poison.id)!.run.status).toBe('running');
+  expect(warnCalls!).toHaveLength(1);
+  expect(warnCalls![0]![0]).toContain(poison.id);
 });

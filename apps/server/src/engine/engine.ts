@@ -33,6 +33,13 @@ export function createEngine(d: {
   const { repo, executors, ctx: ctxBase } = d;
   const events = new EventEmitter();
   events.setMaxListeners(0); // Singleton engine + per-connection SSE subscribers (Task 9): never warn.
+  // Per-run continueRun tails: resolving an approval while a sibling wave is
+  // still in flight must not start a second loop on the same run (the
+  // resolving pass would load in-flight `running` rows as ready and RE-RUN
+  // them, then finalize from a stale status map). Engine-instance scope, not
+  // module scope: createEngine runs per boot and per test, and a module-level
+  // map would leak tails across tests.
+  const tails = new Map<string, Promise<unknown>>();
 
   function emit(e: EngineEvent): void {
     // A listener must never break a run: one throwing subscriber (e.g. SSE in
@@ -54,7 +61,24 @@ export function createEngine(d: {
   // loop unchanged. Waiting steps park the loop: `waiting` is terminal for
   // the wave loop (never re-run) but blocks the ready rule (neither done
   // nor skipped), so dependents keep their pending rows.
+  //
+  // Serialized per run id via a promise-chain mutex: a pass that arrives
+  // while another is in flight (resolve-during-wave) waits for the earlier
+  // pass to settle, then reloads fresh state. Deadlock-free: no caller nests
+  // continueRun. Only the CHAIN is guarded (prev.catch): the pass itself
+  // rejects to its own awaiter, and the finally-cleanup only deletes its own
+  // tail so a newer waiter is never unlinked.
   async function continueRun(runId: string): Promise<Run> {
+    const prev = tails.get(runId) ?? Promise.resolve();
+    const cur = prev.catch(() => {}).then(() => doContinueRun(runId));
+    tails.set(runId, cur);
+    try {
+      return await cur;
+    } finally {
+      if (tails.get(runId) === cur) tails.delete(runId);
+    }
+  }
+  async function doContinueRun(runId: string): Promise<Run> {
     const loaded = repo.getRun(runId);
     if (!loaded) throw new Error(`Unknown run: ${runId}`);
     let run = loaded.run;
@@ -429,63 +453,78 @@ export function createEngine(d: {
   // settles it. Runs are processed in listRuns order (newest-first); runs are
   // independent so the order is irrelevant. NOTE: listRuns loads every run;
   // fine for a single household's history, revisit with pagination if the
-  // runs table ever grows unbounded.
+  // runs table ever grows unbounded. Boot-only contract: no live run shares
+  // the repo while this runs, so no locking against concurrent writers.
   async function resumeAll(): Promise<void> {
     const runs = repo.listRuns();
     for (const r of runs) {
       if (r.status !== 'running' && r.status !== 'waiting') continue;
       if (r.status === 'waiting') continue;
-      const loaded = repo.getRun(r.id);
-      const wf = repo.getWorkflow(r.workflowId, r.workflowVersion);
-      if (!loaded || !wf) continue;
-      const kindById = new Map<string, string>([
-        [wf.trigger.id, catalog[wf.trigger.type]?.kind ?? ''],
-      ]);
-      for (const s of wf.steps) kindById.set(s.id, catalog[s.type]?.kind ?? '');
-      // Only these kinds are provably side-effect-free; anything else (act,
-      // unknown types, cross-version drift) fails safe as act below.
-      const rerunnable = new Set(['trigger', 'fetch', 'enrich', 'store']);
-      let sawAct = false;
-      for (const sr of loaded.steps) {
-        if (sr.status !== 'running') continue;
-        const kind = kindById.get(sr.stepId);
-        if (!kind || !rerunnable.has(kind)) {
-          sawAct = true;
-          // The attempt never finished, so durationMs stays undefined; the
-          // input is kept for the retry hint's context.
-          const failed: StepRun = {
-            id: sr.id,
-            runId: r.id,
-            stepId: sr.stepId,
-            status: 'failed',
-            input: sr.input,
-            error: "I was interrupted while doing this. Press Retry if it didn't happen.",
-            startedAt: sr.startedAt,
-          };
-          repo.upsertStepRun(failed);
-          emit({ type: 'step', stepRun: failed });
-        } else {
-          // Fresh pending: same id/runId/stepId/startedAt, everything else
-          // cleared (upsert replaces all mutable fields).
-          const pending: StepRun = {
-            id: sr.id,
-            runId: r.id,
-            stepId: sr.stepId,
-            status: 'pending',
-            startedAt: sr.startedAt,
-          };
-          repo.upsertStepRun(pending);
-          emit({ type: 'step', stepRun: pending });
-        }
+      // One poison run (e.g. a corrupted def that throws out of continueRun)
+      // must not abort the loop: boot runs once with no retry, so a throw
+      // here would strand every healthy run after it as `running` forever.
+      try {
+        await resumeOneRunning(r.id);
+      } catch (err) {
+        console.warn(
+          `resumeAll: skipping run ${r.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      if (sawAct) {
-        // Failed runs launch nothing new: other pendings stay pending.
-        repo.updateRun(r.id, { status: 'failed', endedAt: new Date().toISOString() });
-        emit({ type: 'run', run: repo.getRun(r.id)!.run });
-        continue;
-      }
-      await continueRun(r.id);
     }
+  }
+
+  async function resumeOneRunning(runId: string): Promise<void> {
+    const loaded = repo.getRun(runId);
+    const r = loaded?.run;
+    const wf = r ? repo.getWorkflow(r.workflowId, r.workflowVersion) : undefined;
+    if (!loaded || !r || !wf) return;
+    const kindById = new Map<string, string>([
+      [wf.trigger.id, catalog[wf.trigger.type]?.kind ?? ''],
+    ]);
+    for (const s of wf.steps) kindById.set(s.id, catalog[s.type]?.kind ?? '');
+    // Only these kinds are provably side-effect-free; anything else (act,
+    // unknown types, cross-version drift) fails safe as act below.
+    const rerunnable = new Set(['trigger', 'fetch', 'enrich', 'store']);
+    let sawAct = false;
+    for (const sr of loaded.steps) {
+      if (sr.status !== 'running') continue;
+      const kind = kindById.get(sr.stepId);
+      if (!kind || !rerunnable.has(kind)) {
+        sawAct = true;
+        // The attempt never finished, so durationMs stays undefined; the
+        // input is kept for the retry hint's context.
+        const failed: StepRun = {
+          id: sr.id,
+          runId: r.id,
+          stepId: sr.stepId,
+          status: 'failed',
+          input: sr.input,
+          error: "I was interrupted while doing this. Press Retry if it didn't happen.",
+          startedAt: sr.startedAt,
+        };
+        repo.upsertStepRun(failed);
+        emit({ type: 'step', stepRun: failed });
+      } else {
+        // Fresh pending: same id/runId/stepId/startedAt, everything else
+        // cleared (upsert replaces all mutable fields).
+        const pending: StepRun = {
+          id: sr.id,
+          runId: r.id,
+          stepId: sr.stepId,
+          status: 'pending',
+          startedAt: sr.startedAt,
+        };
+        repo.upsertStepRun(pending);
+        emit({ type: 'step', stepRun: pending });
+      }
+    }
+    if (sawAct) {
+      // Failed runs launch nothing new: other pendings stay pending.
+      repo.updateRun(r.id, { status: 'failed', endedAt: new Date().toISOString() });
+      emit({ type: 'run', run: repo.getRun(r.id)!.run });
+      return;
+    }
+    await continueRun(runId);
   }
 
   return { start, resolveApproval, resumeAll, events };
