@@ -38,6 +38,12 @@ const SQLITE_TYPE: Record<ColumnType, string> = {
   email: 'TEXT',
 };
 
+const KNOWN_TYPES: ReadonlySet<string> = new Set(['text', 'number', 'boolean', 'date', 'email']);
+
+// Physical system columns present on every table; reserved against user columns,
+// but allowed as exact-match where-keys.
+const RESERVED_COLUMNS: ReadonlySet<string> = new Set(['id', 'created_at', 'updated_at']);
+
 /**
  * Sanitise a table or column name: lowercase, collapse each maximal run of
  * non-`[a-z0-9]` to a single `_`, trim leading/trailing `_`, and prefix
@@ -62,6 +68,7 @@ function physicalTableName(sanitised: string): string {
 
 function toStored(type: ColumnType, value: unknown): unknown {
   if (value === null || value === undefined) return value;
+  if (value instanceof Date) return value.toISOString();
   if (type === 'boolean') return value ? 1 : 0;
   return value;
 }
@@ -142,16 +149,48 @@ export function createTableStore(db: Database): TableStore {
         .prepare('SELECT "name" FROM "_tables" WHERE "name" = ?')
         .get(clean.name) as { name: string } | undefined;
       if (existing) throw new Error(`Table already exists: ${clean.name}`);
+      for (const c of clean.columns) {
+        if (!KNOWN_TYPES.has(c.type)) {
+          throw new Error(`Unknown column type: ${c.type} for column ${c.name}`);
+        }
+      }
+      const seen = new Map<string, string>();
+      clean.columns.forEach((c, i) => {
+        const prev = seen.get(c.name);
+        if (prev !== undefined) {
+          throw new Error(
+            `Duplicate column after sanitising: "${prev}" and "${def.columns[i]!.name}" both become ${c.name}`,
+          );
+        }
+        seen.set(c.name, def.columns[i]!.name);
+      });
+      clean.columns.forEach((c, i) => {
+        if (RESERVED_COLUMNS.has(c.name)) {
+          throw new Error(
+            `Reserved column name: "${def.columns[i]!.name}" becomes ${c.name}, which is reserved (id, created_at, updated_at)`,
+          );
+        }
+      });
+      const names = new Set(clean.columns.map((c) => c.name));
+      if (!names.has(clean.displayField)) {
+        throw new Error(`Unknown column: ${clean.displayField} for table ${clean.name}`);
+      }
+      if (clean.keyField !== undefined && !names.has(clean.keyField)) {
+        throw new Error(`Unknown column: ${clean.keyField} for table ${clean.name}`);
+      }
       const cols = clean.columns
         .map((c) => `${qident(c.name)} ${SQLITE_TYPE[c.type]}`)
         .join(', ');
-      db.exec(
-        `CREATE TABLE ${qident(physicalTableName(clean.name))} ("id" INTEGER PRIMARY KEY${cols ? `, ${cols}` : ''}, "created_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL)`,
-      );
-      db.prepare('INSERT INTO "_tables" ("name", "def") VALUES (?, ?)').run(
-        clean.name,
-        JSON.stringify(clean),
-      );
+      const runCreate = db.transaction(() => {
+        db.exec(
+          `CREATE TABLE ${qident(physicalTableName(clean.name))} ("id" INTEGER PRIMARY KEY${cols ? `, ${cols}` : ''}, "created_at" TEXT NOT NULL, "updated_at" TEXT NOT NULL)`,
+        );
+        db.prepare('INSERT INTO "_tables" ("name", "def") VALUES (?, ?)').run(
+          clean.name,
+          JSON.stringify(clean),
+        );
+      });
+      runCreate();
       return clean;
     },
 
@@ -225,7 +264,17 @@ export function createTableStore(db: Database): TableStore {
           continue; // Unknown where key — ignored, symmetric with writes.
         }
         const type = types.get(col);
-        if (!type) continue;
+        if (!type) {
+          // System columns allow exact-match filtering; truly unknown keys stay ignored.
+          if (!RESERVED_COLUMNS.has(col)) continue;
+          if (value === null || value === undefined) {
+            clauses.push(`${qident(col)} IS NULL`);
+          } else {
+            clauses.push(`${qident(col)} = ?`);
+            params.push(value);
+          }
+          continue;
+        }
         if (value === null || value === undefined) {
           clauses.push(`${qident(col)} IS NULL`);
         } else {
@@ -236,6 +285,9 @@ export function createTableStore(db: Database): TableStore {
       let sql = `SELECT * FROM ${qident(physicalTableName(def.name))}`;
       if (clauses.length > 0) sql += ` WHERE ${clauses.join(' AND ')}`;
       if (o?.limit !== undefined) {
+        if (typeof o.limit !== 'number' || !Number.isInteger(o.limit) || o.limit < 0) {
+          throw new Error(`Invalid limit: ${o.limit}`);
+        }
         sql += ' LIMIT ?';
         params.push(o.limit);
       }
