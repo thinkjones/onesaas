@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router';
 import ChoreReducersPage from './pages/ChoreReducersPage.tsx';
+import DesignPreviewPage from './pages/DesignPreviewPage.tsx';
 import HomePage from './pages/HomePage.tsx';
 import ListsPage from './pages/ListsPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
@@ -15,6 +16,7 @@ export default function AppRoutes() {
         <Route path="reducers/:workflowId" element={<WorkflowPage />} />
         <Route path="lists" element={<ListsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="design" element={<DesignPreviewPage />} />
       </Route>
     </Routes>
   );

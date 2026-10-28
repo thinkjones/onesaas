@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './tokens.css';
+@import '../design/tokens.css';
 
 @theme inline {
   --color-background: hsl(var(--background));
@@ -20,6 +21,9 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-warning: hsl(var(--warning));
   --color-success: hsl(var(--success));
+  --color-info: hsl(var(--info));
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
