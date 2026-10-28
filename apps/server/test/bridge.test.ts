@@ -383,6 +383,72 @@ describe('bridge attach() with fakes', () => {
     bridge.send({ type: 'pong' });
     expect(bridge.connected()).toBe(false);
   });
+
+  test('a throwing onTrigger subscriber does not starve later ones', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    bridge.onTrigger(() => {
+      throw new Error('bad subscriber');
+    });
+    const seen: unknown[] = [];
+    bridge.onTrigger((t) => seen.push(t));
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    ws.onmessage!(JSON.stringify({ type: 'hello', token }));
+    const trigger = { type: 'trigger', workflowId: 'w', triggerType: 'gmailButton', payload: {} };
+    expect(() => ws.onmessage!(JSON.stringify(trigger))).not.toThrow();
+    expect(seen).toEqual([trigger]);
+    // Bridge still functional afterwards.
+    ws.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
+    expect(bridge.connected()).toBe(true);
+  });
+
+  test('a throwing onReady subscriber does not starve later ones', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    bridge.onReady(() => {
+      throw new Error('bad subscriber');
+    });
+    let readyCount = 0;
+    bridge.onReady(() => readyCount++);
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    expect(() => ws.onmessage!(JSON.stringify({ type: 'hello', token }))).not.toThrow();
+    expect(readyCount).toBe(1);
+    expect(ws.sent).toEqual([{ type: 'ready', buttons: [] }]);
+    expect(bridge.connected()).toBe(true);
+    // Bridge still functional afterwards.
+    ws.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
+  });
+
+  test('same-socket re-hello does not fail pending calls', async () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    ws.onmessage!(JSON.stringify({ type: 'hello', token }));
+    let settled: string | null = null;
+    const pending = bridge
+      .call('gmail', 'read', {}, 500)
+      .then(
+        () => 'resolved',
+        (err) => `rejected: ${(err as Error).message}`,
+      )
+      .then((s) => {
+        settled = s;
+      });
+    ws.onmessage!(JSON.stringify({ type: 'hello', token }));
+    // Still pending right after re-hello: not failed.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBeNull();
+    await pending;
+    expect(settled).toBe(`rejected: ${GMAIL_MSG}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -501,6 +567,30 @@ describe('bridge over real sockets', () => {
     const firstClosed = waitClose(first);
     send(second, { type: 'hello', token });
     expect(await secondInbox.next()).toEqual({ type: 'ready', buttons: [] });
+    await expect(firstClosed.then((c) => c.code)).resolves.toBe(4400);
+    expect(bridge.connected()).toBe(true);
+  });
+
+  test('replacement fails the old socket\'s pending calls immediately', async () => {
+    const { pairing, bridge, port } = await setup();
+    const first = await connect(port);
+    const firstInbox = new Inbox(first);
+    const token = await pairAndHello(first, firstInbox, pairing.start().code);
+
+    // Pending call that is never answered, with a long timeout.
+    const pending = bridge.call('gmail', 'read', {}, 5000);
+    const started = Date.now();
+    const assertion = expectRejectMessage(pending, GMAIL_MSG);
+
+    const second = await connect(port);
+    const secondInbox = new Inbox(second);
+    const firstClosed = waitClose(first);
+    send(second, { type: 'hello', token });
+    expect(await secondInbox.next()).toEqual({ type: 'ready', buttons: [] });
+
+    // Fails fast: well under the 5s timeout, with the exact site message.
+    await assertion;
+    expect(Date.now() - started).toBeLessThan(2000);
     await expect(firstClosed.then((c) => c.code)).resolves.toBe(4400);
     expect(bridge.connected()).toBe(true);
   });

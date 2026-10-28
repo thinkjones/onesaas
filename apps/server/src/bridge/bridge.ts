@@ -94,11 +94,28 @@ export function createBridge(o: {
           ws.close(4401, 'Invalid token');
           break;
         }
-        if (active !== null && active !== ws) active.close(4400, 'Replaced');
+        // Replacement only: same-socket re-hello must NOT fail pending.
+        if (active !== null && active !== ws) {
+          active.close(4400, 'Replaced');
+          // The cmd went to a now-dead socket, so its result can never
+          // legitimately arrive: fail fast instead of hanging to the timeout.
+          // This clears the map, so the old socket's late async onclose
+          // no-ops (active is already the new socket) and cannot re-reject.
+          failAllPending();
+        }
         active = ws;
         // Buttons start empty; Task 9 sends the real set via onReady.
         sendTo(ws, { type: 'ready', buttons: [] });
-        for (const fn of readyFns) fn();
+        // Each subscriber is isolated: one throwing handler must not starve
+        // the rest (Task 9's onTrigger starts runs — a handler bug must not
+        // silently drop triggers). No logger in M1, so swallow silently.
+        for (const fn of readyFns) {
+          try {
+            fn();
+          } catch {
+            // Isolated above: a bad subscriber must not break the rest.
+          }
+        }
         break;
       }
       case 'ping': {
@@ -109,7 +126,15 @@ export function createBridge(o: {
       case 'trigger': {
         // Auth required: pre-auth triggers are dropped.
         if (!isActive) break;
-        for (const fn of triggerFns) fn(msg);
+        // Per-subscriber isolation (see hello branch): a throwing handler
+        // must not starve later subscribers or break the socket.
+        for (const fn of triggerFns) {
+          try {
+            fn(msg);
+          } catch {
+            // Isolated above: a bad subscriber must not break the rest.
+          }
+        }
         break;
       }
       case 'result': {
