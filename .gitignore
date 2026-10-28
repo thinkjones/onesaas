@@ -44,3 +44,4 @@ dist
 # Local data and secrets
 data/
 .env*
+.worktrees/
