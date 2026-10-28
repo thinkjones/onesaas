@@ -98,7 +98,7 @@ export default defineContentScript({
         refresh();
       }
     });
-    observer.observe(document.querySelector('div[role="main"]') ?? document.body, {
+    observer.observe(document.querySelector(SELECTORS.mainRoot) ?? document.body, {
       childList: true,
       subtree: true,
     });

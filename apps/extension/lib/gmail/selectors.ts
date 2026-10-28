@@ -30,6 +30,8 @@ export const SELECTORS = {
   buttonsContainer: 'div.dad-gmail-buttons',
   /** Status pill inside one of our buttons. */
   statusPill: '.dad-status-pill',
+  /** Gmail main pane; MutationObserver root (falls back to body). */
+  mainRoot: 'div[role="main"]',
 } as const;
 
 /**

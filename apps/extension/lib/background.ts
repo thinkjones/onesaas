@@ -76,6 +76,7 @@ export const NO_ANSWER = 'No answer from the app. Is it running?';
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const PING_EVERY_MS = 20000;
 const PAIR_TIMEOUT_MS = 5000;
+const TRIGGER_TIMEOUT_MS = 5000;
 
 interface PendingPair {
   resolve: (reply: { ok: true } | { ok: false; error: string }) => void;
@@ -102,6 +103,8 @@ export function createBackground(deps: {
   let pingTimer: unknown = null;
   let pendingPair: PendingPair | null = null;
   let openWaiters: Array<() => void> = [];
+  let readyWaiters: Array<() => void> = [];
+  let helloAcked = false;
   let disposed = false;
 
   const isOpen = () => socket !== null && socket.readyState === WebSocket.OPEN;
@@ -129,6 +132,7 @@ export function createBackground(deps: {
     if (disposed) return;
     const ws = new WebSocket(WS_URL);
     socket = ws;
+    helloAcked = false;
     ws.onopen = () => {
       failures = 0;
       clearPing();
@@ -145,6 +149,7 @@ export function createBackground(deps: {
     };
     ws.onclose = () => {
       clearPing();
+      helloAcked = false;
       if (disposed) return;
       // Backoff 1, 2, 5, 10s, then stay at 10s.
       const delay = RECONNECT_DELAYS_MS[Math.min(failures, RECONNECT_DELAYS_MS.length - 1)]!;
@@ -168,6 +173,22 @@ export function createBackground(deps: {
         resolve(true);
       };
       openWaiters.push(done);
+    });
+  }
+
+  /** Same shape as waitForOpen, but for the server's hello-ack (`ready`). */
+  function waitForReady(ms: number): Promise<boolean> {
+    if (helloAcked) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = timers.setTimeout(() => {
+        readyWaiters = readyWaiters.filter((w) => w !== done);
+        resolve(false);
+      }, ms);
+      const done = () => {
+        timers.clearTimeout(timer);
+        resolve(true);
+      };
+      readyWaiters.push(done);
     });
   }
 
@@ -225,7 +246,12 @@ export function createBackground(deps: {
       }
       case 'ready': {
         // Store nothing, forward nothing: buttons always arrive separately
-        // (and are [] in M1 anyway).
+        // (and are [] in M1 anyway). But mark the hello acked so queued
+        // triggers may send.
+        helloAcked = true;
+        const waiters = readyWaiters;
+        readyWaiters = [];
+        for (const w of waiters) w();
         break;
       }
       case 'buttons': {
@@ -290,6 +316,32 @@ export function createBackground(deps: {
     });
   }
 
+  /**
+   * Queue one trigger until the socket is open AND the hello is acked. A
+   * click-after-idle wakes a fresh worker whose socket is still connecting;
+   * sending immediately would no-op (or the server would drop the pre-auth
+   * trigger), losing the first click silently.
+   */
+  async function sendTrigger(workflowId: unknown, email: unknown): Promise<void> {
+    connect();
+    const start = Date.now();
+    const opened = await waitForOpen(TRIGGER_TIMEOUT_MS);
+    // On timeout the trigger is DROPPED: 5s covers wake+hello in practice, a
+    // second click always works (the socket is open+authed by then), and M1
+    // keeps no persisted queue.
+    if (!opened) return;
+    const remaining = TRIGGER_TIMEOUT_MS - (Date.now() - start);
+    if (remaining <= 0) return;
+    const ready = await waitForReady(remaining);
+    if (!ready) return;
+    send({
+      type: 'trigger',
+      workflowId,
+      triggerType: 'gmailButton',
+      payload: email,
+    });
+  }
+
   browser.runtime.onMessage.addListener((message: unknown) => {
     const msg = (message ?? {}) as Record<string, unknown>;
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
@@ -299,13 +351,7 @@ export function createBackground(deps: {
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload.
-      send({
-        type: 'trigger',
-        workflowId: msg['workflowId'],
-        triggerType: 'gmailButton',
-        payload: msg['email'],
-      });
-      return undefined;
+      return sendTrigger(msg['workflowId'], msg['email']);
     }
     return undefined;
   });
@@ -329,6 +375,7 @@ export function createBackground(deps: {
         pendingPair = null;
       }
       openWaiters = [];
+      readyWaiters = [];
       try {
         socket?.close();
       } catch {

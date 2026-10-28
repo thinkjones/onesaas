@@ -17,7 +17,7 @@ export interface OpenEmail {
  * agree on what "the open thread" is.
  */
 export function readThreadId(doc: Document): string {
-  const attr = doc.querySelector('h2.hP[data-legacy-thread-id]')?.getAttribute(
+  const attr = doc.querySelector(`${SELECTORS.subject}[data-legacy-thread-id]`)?.getAttribute(
     'data-legacy-thread-id',
   );
   if (attr) return attr;

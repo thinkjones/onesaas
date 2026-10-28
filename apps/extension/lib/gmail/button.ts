@@ -28,7 +28,9 @@ export function injectButtons(
   const toolbar = resolveToolbar(doc);
   if (!toolbar) return;
 
-  let container = toolbar.querySelector(':scope > div.dad-gmail-buttons') as HTMLElement | null;
+  let container = toolbar.querySelector(
+    `:scope > ${SELECTORS.buttonsContainer}`,
+  ) as HTMLElement | null;
   if (!container) {
     container = doc.createElement('div');
     container.className = 'dad-gmail-buttons';

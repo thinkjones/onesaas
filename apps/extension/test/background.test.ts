@@ -378,6 +378,8 @@ describe('trigger relay', () => {
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
     lastSocket().sent.length = 0;
     const email = {
       from: 'sarah@example.com',
@@ -391,6 +393,55 @@ describe('trigger relay', () => {
     expect(sentJson(lastSocket())).toEqual([
       { type: 'trigger', workflowId: 'wf1', triggerType: 'gmailButton', payload: email },
     ]);
+    bg.dispose();
+  });
+
+  it('queues the trigger until the socket is open and hello is acked', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    const email = {
+      from: 'sarah@example.com',
+      fromName: 'Sarah Lee',
+      subject: 'Catering',
+      body: 'hi',
+      threadId: 'thread_fixture_abc123',
+    };
+    const doneP = t.runtimeMessage({ action: 'trigger', workflowId: 'wf1', email }) as Promise<void>;
+    await flush();
+    expect(lastSocket().sent).toHaveLength(0);
+    lastSocket().open();
+    await flush();
+    // Hello went out on open, but the trigger still waits for the ready ack.
+    expect(sentJson(lastSocket())).toEqual([{ type: 'hello', token: 'tok' }]);
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await doneP;
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'hello', token: 'tok' },
+      { type: 'trigger', workflowId: 'wf1', triggerType: 'gmailButton', payload: email },
+    ]);
+    bg.dispose();
+  });
+
+  it('drops the trigger when ready never arrives (no hang)', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    const email = {
+      from: 'sarah@example.com',
+      fromName: 'Sarah Lee',
+      subject: 'Catering',
+      body: 'hi',
+      threadId: 'thread_fixture_abc123',
+    };
+    const doneP = t.runtimeMessage({ action: 'trigger', workflowId: 'wf1', email }) as Promise<void>;
+    await flush();
+    lastSocket().open();
+    await flush();
+    const assertion = expect(doneP).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
+    expect(sentJson(lastSocket())).toEqual([{ type: 'hello', token: 'tok' }]);
     bg.dispose();
   });
 

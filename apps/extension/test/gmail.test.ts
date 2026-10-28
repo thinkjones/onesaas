@@ -3,6 +3,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { readOpenEmail } from '../lib/gmail/read.js';
 import { draftReply } from '../lib/gmail/draftReply.js';
 import { injectButtons, setButtonStatus } from '../lib/gmail/button.js';
+import { SELECTORS } from '../lib/gmail/selectors.js';
 import fixture from './fixtures/gmail-thread.html?raw';
 
 beforeEach(() => {
@@ -97,7 +98,12 @@ describe('setButtonStatus', () => {
 
 describe('draftReply', () => {
   it('fills the reply box with the given text', async () => {
+    const replyControl = document.querySelector(
+      `${SELECTORS.replyButton}, ${SELECTORS.replyFallback}`,
+    ) as HTMLElement;
+    const clickSpy = vi.spyOn(replyControl, 'click');
     const out = await draftReply(document, 'Thanks Sarah — please lock it in!');
+    expect(clickSpy).toHaveBeenCalled();
     expect(out).toEqual({ drafted: true });
     expect(document.querySelector('div[aria-label="Message Body"]')!.textContent).toBe(
       'Thanks Sarah — please lock it in!',
