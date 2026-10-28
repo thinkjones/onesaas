@@ -86,6 +86,53 @@ test('chatJson throws on missing content', async () => {
   ).rejects.toThrow(/^Model output did not match schema/);
 });
 
+test('chatJson throws on non-JSON prose content', async () => {
+  const { client } = fakeClient({
+    choices: [{ message: { content: 'not json{' } }],
+    usage: { prompt_tokens: 10, completion_tokens: 20 },
+  });
+  const gateway = createGateway({ client: client as never });
+  await expect(
+    gateway.chatJson({ role: 'builder', system: 'sys', user: 'usr', schema: itemSchema, schemaName: 'item' }),
+  ).rejects.toThrow(/^Model output did not match schema/);
+});
+
+test('chatJson passes through roles override model', async () => {
+  const { client, calls } = fakeClient({
+    choices: [{ message: { content: '{"name":"hammer","qty":2}' } }],
+    usage: { prompt_tokens: 10, completion_tokens: 20 },
+  });
+  const gateway = createGateway({ client: client as never, roles: { planner: 'custom-model' } });
+  const result = await gateway.chatJson({
+    role: 'planner',
+    system: 'sys',
+    user: 'usr',
+    schema: itemSchema,
+    schemaName: 'item',
+  });
+  expect(result.model).toBe('custom-model');
+  const sent = calls[0] as Record<string, unknown>;
+  expect(sent['model']).toBe('custom-model');
+});
+
+test('chatJson uses planner default model', async () => {
+  const { client, calls } = fakeClient({
+    choices: [{ message: { content: '{"name":"hammer","qty":2}' } }],
+    usage: { prompt_tokens: 10, completion_tokens: 20 },
+  });
+  const gateway = createGateway({ client: client as never });
+  const result = await gateway.chatJson({
+    role: 'planner',
+    system: 'sys',
+    user: 'usr',
+    schema: itemSchema,
+    schemaName: 'item',
+  });
+  expect(result.model).toBe('muse-wonder-1.0');
+  const sent = calls[0] as Record<string, unknown>;
+  expect(sent['model']).toBe('muse-wonder-1.0');
+});
+
 test('chatJson defaults tokens to zero when usage is missing', async () => {
   const { client } = fakeClient({
     choices: [{ message: { content: '{"name":"hammer","qty":2}' } }],

@@ -27,36 +27,43 @@ const rootDir = process.cwd();
 const photoPath = process.env['SMOKE_PHOTO_PATH'] ?? join(rootDir, 'scripts', 'fixtures', 'mug.jpg');
 const helloPath = join(rootDir, 'scripts', 'fixtures', 'hello.wav');
 
-function fail(model: string, err: unknown): void {
+function fail(model: string, err: unknown): boolean {
   const detail = err instanceof Error ? err.message : String(err);
   console.log(`\u2717 ${model}: ${detail.split('\n')[0]}`);
+  return false;
 }
 
-async function checkSpark(client: OpenAI): Promise<void> {
+async function checkSpark(client: OpenAI): Promise<boolean> {
   try {
     const res = await client.chat.completions.create({
       model: 'muse-spark-1.3',
       messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
     });
-    console.log(`\u2713 spark: ${JSON.stringify(res.choices[0]?.message.content)}`);
+    const text = res.choices[0]?.message.content;
+    if (!text) throw new Error('empty content');
+    console.log(`\u2713 spark: ${JSON.stringify(text)}`);
+    return true;
   } catch (err) {
-    fail('spark', err);
+    return fail('spark', err);
   }
 }
 
-async function checkWonder(client: OpenAI): Promise<void> {
+async function checkWonder(client: OpenAI): Promise<boolean> {
   try {
     const res = await client.chat.completions.create({
       model: 'muse-wonder-1.0',
       messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
     });
-    console.log(`\u2713 wonder: ${JSON.stringify(res.choices[0]?.message.content)}`);
+    const text = res.choices[0]?.message.content;
+    if (!text) throw new Error('empty content');
+    console.log(`\u2713 wonder: ${JSON.stringify(text)}`);
+    return true;
   } catch (err) {
-    fail('wonder', err);
+    return fail('wonder', err);
   }
 }
 
-async function checkImage(client: OpenAI): Promise<void> {
+async function checkImage(client: OpenAI): Promise<boolean> {
   try {
     const res = await client.images.generate({
       model: 'muse-image-1.0',
@@ -76,8 +83,9 @@ async function checkImage(client: OpenAI): Promise<void> {
     const outPath = join(rootDir, 'data', 'smoke-image.png');
     writeFileSync(outPath, bytes);
     console.log(`\u2713 image: wrote data/smoke-image.png (${bytes.length} bytes)`);
+    return true;
   } catch (err) {
-    fail('image', err);
+    return fail('image', err);
   }
 }
 
@@ -98,7 +106,7 @@ function collectText(node: unknown, out: string[]): void {
   }
 }
 
-async function checkSam(apiKey: string): Promise<void> {
+async function checkSam(apiKey: string): Promise<boolean> {
   try {
     const photo = readFileSync(photoPath);
     const dataUrl = `data:image/jpeg;base64,${photo.toString('base64')}`;
@@ -126,18 +134,21 @@ async function checkSam(apiKey: string): Promise<void> {
     const joined = texts.join('\n');
     const masks = (joined.match(/<\|mask;/g) ?? []).length;
     console.log(`\u2713 sam: ${masks} mask(s)`);
+    return true;
   } catch (err) {
-    fail('sam', err);
+    return fail('sam', err);
   }
 }
 
-async function checkTranscribe(apiKey: string): Promise<void> {
+async function checkTranscribe(apiKey: string): Promise<boolean> {
   try {
     const audio = readFileSync(helloPath);
     const form = new FormData();
     form.append(
       'request',
-      JSON.stringify({ model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK' }),
+      new Blob([JSON.stringify({ model: 'muse-voice-transcribe-1.0', audioEncoding: 'WAV', mode: 'PUSH_TO_TALK' })], {
+        type: 'application/json',
+      }),
     );
     form.append('audio', new Blob([new Uint8Array(audio)], { type: 'audio/wav' }), 'hello.wav');
     const sessionId = `smoke-${Date.now()}`;
@@ -148,17 +159,19 @@ async function checkTranscribe(apiKey: string): Promise<void> {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const body = (await res.json()) as { transcript?: unknown };
+    if (!body.transcript) throw new Error('empty content');
     console.log(`\u2713 transcribe: ${JSON.stringify(body.transcript)}`);
+    return true;
   } catch (err) {
-    fail('transcribe', err);
+    return fail('transcribe', err);
   }
 }
 
-async function checkGlimmer(): Promise<void> {
+async function checkGlimmer(): Promise<boolean> {
   const baseURL = process.env['GLIMMER_BASE_URL'];
   if (!baseURL) {
     console.log('○ glimmer: skipped (GLIMMER_BASE_URL not set)');
-    return;
+    return true;
   }
   try {
     const client = new OpenAI({ baseURL, apiKey: process.env['MODEL_API_KEY'] ?? 'smoke' });
@@ -166,9 +179,12 @@ async function checkGlimmer(): Promise<void> {
       model: 'muse-glimmer-1.0',
       messages: [{ role: 'user', content: 'Reply with the single word: ready' }],
     });
-    console.log(`\u2713 glimmer: ${JSON.stringify(res.choices[0]?.message.content)}`);
+    const text = res.choices[0]?.message.content;
+    if (!text) throw new Error('empty content');
+    console.log(`\u2713 glimmer: ${JSON.stringify(text)}`);
+    return true;
   } catch (err) {
-    fail('glimmer', err);
+    return fail('glimmer', err);
   }
 }
 
@@ -185,12 +201,15 @@ async function main(): Promise<void> {
     return;
   }
   const client = new OpenAI({ baseURL: BASE_URL, apiKey });
-  await checkSpark(client);
-  await checkWonder(client);
-  await checkImage(client);
-  await checkSam(apiKey);
-  await checkTranscribe(apiKey);
-  await checkGlimmer();
+  const results = [
+    await checkSpark(client),
+    await checkWonder(client),
+    await checkImage(client),
+    await checkSam(apiKey),
+    await checkTranscribe(apiKey),
+    await checkGlimmer(),
+  ];
+  if (results.includes(false)) process.exitCode = 1;
 }
 
 void main();
