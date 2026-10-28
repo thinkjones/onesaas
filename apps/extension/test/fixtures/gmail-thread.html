@@ -1,0 +1,47 @@
+<!--
+  SYNTHETIC FIXTURE — hand-authored, NOT saved from Gmail.
+  Approximates the Gmail DOM as of Oct 2026 using the selectors in
+  docs/plans/2026-10-28-m1-foundation-and-thin-slice.md. MUST be replaced
+  with a real saved thread (DevTools "Copy outerHTML" of div[role=main],
+  private bits removed) before trusting adapter behavior. All data below
+  is clearly fake (Sarah Lee / sarah@example.com / fixturethread0001).
+-->
+<div role="main">
+  <div class="nH">
+    <!-- Thread subject + thread id anchor -->
+    <h2 class="hP" data-legacy-thread-id="fixturethread0001">Catering quote for Saturday</h2>
+
+    <!-- Older message in the thread: readOpenEmail must ignore this and read the LAST div.a3s -->
+    <div class="adn ads">
+      <div class="gs">
+        <span class="gD" email="dad@example.com">Dad</span>
+      </div>
+      <div class="a3s">Hi Sarah, could you send over a quote for 40 people this Saturday?</div>
+    </div>
+
+    <!-- Newest message -->
+    <div class="adn ads">
+      <div class="gs">
+        <div class="gE iv gt">
+          <span class="gD" email="sarah@example.com">Sarah Lee</span>
+        </div>
+        <!-- Message header actions container (toolbar anchor) -->
+        <div role="toolbar" aria-label="Message actions">
+          <div role="button" data-tooltip="Reply" aria-label="Reply">↩</div>
+          <div role="button" data-tooltip="More" aria-label="More">⋮</div>
+        </div>
+      </div>
+      <div class="a3s">
+        Hi! For 40 people this Saturday we can do $18 per head, delivery included.
+        Let me know if you want to go ahead and I will lock it in.
+        <div class="gmail_quote">
+          On Tue, Oct 27, 2026 at 3:01 PM Dad &lt;dad@example.com&gt; wrote:<br>
+          Hi Sarah, could you send over a quote for 40 people this Saturday?
+        </div>
+      </div>
+    </div>
+
+    <!-- Reply box markup (present once Reply is open; included so draftReply can fill it) -->
+    <div aria-label="Message Body" contenteditable="true" role="textbox"></div>
+  </div>
+</div>
