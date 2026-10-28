@@ -1,0 +1,128 @@
+{
+  "description": "When you click the button in Gmail, save the sender as a customer and draft a warm reply.",
+  "edges": [
+    {
+      "from": "trigger",
+      "to": "extract"
+    },
+    {
+      "from": "extract",
+      "to": "save"
+    },
+    {
+      "from": "save",
+      "to": "write"
+    },
+    {
+      "from": "write",
+      "to": "draft"
+    }
+  ],
+  "id": "flow-1",
+  "name": "Save as lead & reply",
+  "status": "on",
+  "steps": [
+    {
+      "config": {
+        "fields": [
+          {
+            "description": "The customer's full name",
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "description": "The customer's email address",
+            "name": "email",
+            "type": "email"
+          },
+          {
+            "description": "What the customer is asking for, in a few words",
+            "name": "need",
+            "type": "text"
+          },
+          {
+            "description": "How urgent the request seems (low, normal or high)",
+            "name": "urgency",
+            "type": "text"
+          }
+        ],
+        "instructions": "Extract the customer's details from this email."
+      },
+      "id": "extract",
+      "inputs": {
+        "text": "From {{trigger.email.fromName}} <{{trigger.email.from}}>\nSubject: {{trigger.email.subject}}\n\n{{trigger.email.body}}"
+      },
+      "position": {
+        "x": 0,
+        "y": 120
+      },
+      "summary": "Read the name, email, need and urgency from the email.",
+      "title": "Extract details",
+      "type": "ai.extract"
+    },
+    {
+      "config": {
+        "keyField": "email",
+        "table": "customers"
+      },
+      "id": "save",
+      "inputs": {
+        "row": "{{extract}}"
+      },
+      "position": {
+        "x": 0,
+        "y": 240
+      },
+      "summary": "Save the customer to the Customers list.",
+      "title": "Save to Customers",
+      "type": "table.upsert"
+    },
+    {
+      "config": {
+        "instructions": "Write a short, warm reply that thanks them and says we'll get back to them about their need within one business day. Sign off as the owner.",
+        "tone": "friendly"
+      },
+      "id": "write",
+      "inputs": {
+        "context": "{{extract}}"
+      },
+      "position": {
+        "x": 0,
+        "y": 360
+      },
+      "summary": "Write a short, warm reply.",
+      "title": "Write reply",
+      "type": "ai.write"
+    },
+    {
+      "config": {},
+      "id": "draft",
+      "inputs": {
+        "body": "{{write.text}}",
+        "threadId": "{{trigger.email.threadId}}"
+      },
+      "position": {
+        "x": 0,
+        "y": 480
+      },
+      "summary": "Draft the reply in Gmail.",
+      "title": "Draft reply",
+      "type": "gmail.draftReply"
+    }
+  ],
+  "trigger": {
+    "config": {
+      "label": "✨ Save as lead & reply"
+    },
+    "id": "trigger",
+    "inputs": {},
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "summary": "Runs when you click the button in Gmail.",
+    "title": "Gmail button",
+    "type": "trigger.gmailButton"
+  },
+  "version": 1
+}

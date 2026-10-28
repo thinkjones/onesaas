@@ -1,0 +1,76 @@
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { Workflow } from '@dad/shared';
+import OpenAI from 'openai';
+import { createApp } from './app.js';
+import { createBridge } from './bridge/bridge.js';
+import { createPairing, createSettingsStore } from './bridge/pairing.js';
+import { openDb } from './db/connection.js';
+import { createRepo } from './db/repo.js';
+import { createEngine } from './engine/engine.js';
+import { createGateway } from './models/gateway.js';
+import flow1 from './seed/flow1.json' with { type: 'json' };
+import { executors } from './steps/registry.js';
+import { createTableStore } from './tables/store.js';
+import { registerGmailButtonTrigger } from './triggers/gmailButton.js';
+
+/**
+ * Composition root: opens the DB, builds tables/repo/settings/pairing/bridge,
+ * gateway/engine, registers triggers, seeds flow 1 + the customers table, and
+ * returns the app plus every handle tests need.
+ */
+export function createServer(opts?: { dbFile?: string }): {
+  app: ReturnType<typeof createApp>;
+  db: ReturnType<typeof openDb>;
+  tables: ReturnType<typeof createTableStore>;
+  repo: ReturnType<typeof createRepo>;
+  pairing: ReturnType<typeof createPairing>;
+  bridge: ReturnType<typeof createBridge>;
+  gateway: ReturnType<typeof createGateway>;
+  engine: ReturnType<typeof createEngine>;
+} {
+  const dbFile = opts?.dbFile ?? 'data/app.db';
+  // File DBs need their directory to exist; :memory: has no path to create.
+  if (dbFile !== ':memory:') mkdirSync(dirname(dbFile), { recursive: true });
+  const db = openDb(dbFile);
+  const tables = createTableStore(db);
+  const repo = createRepo(db);
+  const pairing = createPairing(createSettingsStore(db));
+  const bridge = createBridge({ pairing });
+
+  const apiKey = process.env['MODEL_API_KEY'];
+  // The client requires SOME apiKey string at construction; 'unconfigured' is
+  // a placeholder that only surfaces if an AI step actually runs (it fails
+  // with an auth error then), so the server still boots for non-AI work.
+  if (!apiKey) console.warn('MODEL_API_KEY not set — AI steps will fail');
+  const gateway = createGateway({
+    client: new OpenAI({ apiKey: apiKey ?? 'unconfigured', baseURL: 'https://api.meta.ai/v1' }),
+  });
+
+  // Full Task 8 bridge satisfies the registry's { call } surface structurally
+  // (proven by the typecheck, not a cast).
+  const engine = createEngine({ repo, executors, ctx: { gateway, tables, bridge } });
+  registerGmailButtonTrigger({ bridge, engine, repo });
+
+  // Seed flow 1 only into an empty workflow store (never overwrite user edits).
+  // Workflow.parse fails loud on a broken seed file.
+  if (repo.listWorkflows().length === 0) repo.saveWorkflow(Workflow.parse(flow1));
+  if (!tables.getTable('customers')) {
+    tables.createTable({
+      name: 'customers',
+      label: 'Customers',
+      columns: [
+        { name: 'name', label: 'Name', type: 'text' },
+        { name: 'email', label: 'Email', type: 'email' },
+        { name: 'need', label: 'Need', type: 'text' },
+        { name: 'urgency', label: 'Urgency', type: 'text' },
+      ],
+      displayField: 'name',
+      keyField: 'email',
+    });
+  }
+
+  // AppDeps grows with repo + engine; app.ts casts on read per existing style.
+  const app = createApp({ bridge, pairing, repo, engine });
+  return { app, db, tables, repo, pairing, bridge, gateway, engine };
+}
