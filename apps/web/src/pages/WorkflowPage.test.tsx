@@ -81,7 +81,8 @@ function LocationProbe({ onSearch }: { onSearch: (search: string) => void }) {
 }
 
 function renderPage(onAgentPrefill: (text: string) => void, onSearch: (search: string) => void) {
-  const fetch = vi.fn(async (input: string | URL | Request) => {
+  const agentPosts: unknown[] = [];
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     const json = async () => {
       if (url === '/api/workflows') return [workflow()];
@@ -89,9 +90,15 @@ function renderPage(onAgentPrefill: (text: string) => void, onSearch: (search: s
       if (url === '/api/runs/run-1') return RUN_DETAIL;
       if (url === '/api/workflows/flow-1') return DESIGN_DETAIL;
       if (url === '/api/workflows/flow-1/ops') return { ok: true, workflow: DESIGN_DETAIL, note: 'ok' };
+      if (url === '/api/workflows/flow-1/agent' && init?.method !== 'POST') return [];
+      if (url === '/api/workflows/flow-1/agent' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as unknown;
+        agentPosts.push(body);
+        return {};
+      }
       throw new Error(`unexpected fetch: ${url}`);
     };
-    return { ok: true, status: 200, json } as Response;
+    return { ok: true, status: 202, json } as Response;
   });
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -107,6 +114,7 @@ function renderPage(onAgentPrefill: (text: string) => void, onSearch: (search: s
       </TooltipProvider>
     </QueryClientProvider>,
   );
+  return { agentPosts };
 }
 
 beforeEach(() => {
@@ -152,5 +160,51 @@ describe('WorkflowPage fix-this-step seam', () => {
     expect(onAgentPrefill).toHaveBeenCalledWith(
       '"Pick out the details" stopped with: I could not read the email. Can you help me fix it?',
     );
+  });
+});
+
+describe('WorkflowPage helper panel', () => {
+  const HANDOFF =
+    '"Pick out the details" stopped with: I could not read the email. Can you help me fix it?';
+
+  function panelInput(): HTMLElement {
+    return screen.getByRole('textbox', { name: 'Message the helper' });
+  }
+
+  test('the panel shows in runtime mode and is still there in design mode', async () => {
+    renderPage(() => {}, () => {});
+    // Runtime mode (default): the failed run's Fix button plus the helper panel.
+    expect(await screen.findByText('Fix this step')).toBeDefined();
+    expect(panelInput()).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Design' }));
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
+    expect(panelInput()).toBeDefined();
+  });
+
+  test('the panel collapses and reopens', async () => {
+    renderPage(() => {}, () => {});
+    expect(await screen.findByText('Fix this step')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
+    expect(screen.queryByRole('textbox', { name: 'Message the helper' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    expect(panelInput()).toBeDefined();
+  });
+
+  test('"Fix this step" prefill lands in the panel input, sends, and never resurrects', async () => {
+    const { agentPosts } = renderPage(() => {}, () => {});
+    fireEvent.click(await screen.findByText('Fix this step'));
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
+    expect((panelInput() as HTMLTextAreaElement).value).toBe(HANDOFF);
+
+    // Sending delivers the handoff text and clears the input…
+    fireEvent.keyDown(panelInput(), { key: 'Enter', code: 'Enter' });
+    await screen.findByText(HANDOFF);
+    expect(agentPosts).toEqual([{ text: HANDOFF }]);
+
+    // …and a collapse/reopen cycle proves the seam cleared: a stale prefill
+    // would refill the remounted panel's input.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    expect((panelInput() as HTMLTextAreaElement).value).toBe('');
   });
 });

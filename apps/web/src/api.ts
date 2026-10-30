@@ -285,6 +285,48 @@ export type AgentEvent =
  */
 export const PENDING_BUILT_TIMEOUT_MS = 20_000;
 
+/** POST /api/workflows {name, description}: a blank reducer (steps come later). */
+export function createWorkflow(body: { name: string; description: string }): Promise<Workflow> {
+  return postJson('/api/workflows', body);
+}
+
+export function useCreateWorkflow() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; description: string }) => createWorkflow(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['workflows'] });
+    },
+  });
+}
+
+/**
+ * Mirrors apps/server/src/agent/conversations.ts TranscriptEntry (the web
+ * package cannot import server code, so the shape is redeclared here like
+ * EngineEvent). One visible row: Dad's sends plus the agent's `say` and `ask`
+ * (activity/plan/built/test are live-only and never persist).
+ */
+export interface AgentTranscriptEntry {
+  role: 'dad' | 'agent';
+  text: string;
+  ask?: { question: string; options: string[] };
+  at: number;
+}
+
+/** GET /api/workflows/:id/agent: the persisted visible transcript. */
+export function getAgentTranscript(workflowId: string): Promise<AgentTranscriptEntry[]> {
+  return getJson(`/api/workflows/${encodeURIComponent(workflowId)}/agent`);
+}
+
+/**
+ * POST /api/workflows/:id/agent {text}: one turn (202, runs in the
+ * background). A second send while the turn runs is a 409 carrying the
+ * server's plain-words busy message — callers surface it, never crash.
+ */
+export function sendAgentMessage(workflowId: string, text: string): Promise<void> {
+  return postJson(`/api/workflows/${encodeURIComponent(workflowId)}/agent`, { text });
+}
+
 /**
  * Subscribes to one workflow's agent events over SSE. A dedicated EventSource
  * (useLiveEvents ignores agent events): cheap enough for one design screen,

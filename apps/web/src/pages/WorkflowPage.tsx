@@ -1,7 +1,9 @@
-import { SearchX, TriangleAlert } from 'lucide-react';
+import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router';
+import { useLocation, useParams, useSearchParams } from 'react-router';
+import AgentPanel from '../agent/AgentPanel.tsx';
 import { useWorkflow } from '../api.ts';
+import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
 import EmptyState from '../design/EmptyState.tsx';
 import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
@@ -25,21 +27,28 @@ export interface WorkflowPageProps {
  * - ?run=/?step=: validated in RuntimeView (newest run / closed inspector);
  *   DesignView reuses ?step= for its selection.
  *
- * Task 7 seam: this page holds `agentPrefill` state. "Fix this step" sets it
- * to `"<title>" stopped with: <error>. Can you help me fix it?` and opens
- * design mode on the failed step; Task 7's AgentPanel consumes the state as
- * its initial input. Nothing renders it yet — the handoff is pinned by
- * WorkflowPage.test.tsx via the `onAgentPrefill` probe.
+ * The helper panel sits on the right (380px, collapsible) in BOTH modes, at
+ * the same tree position so switching modes never remounts it mid-turn. "Fix
+ * this step" sets `agentPrefill` to `"<title>" stopped with: <error>. Can you
+ * help me fix it?` and opens design mode on the failed step; the panel
+ * consumes the state as its initial input (clearing it on consume and on
+ * send). The handoff string is pinned by WorkflowPage.test.tsx via the
+ * `onAgentPrefill` probe. HomePage's one-sentence start arrives as location
+ * state (`agentPrompt`) and is captured once per mount as the opening send.
  */
 export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const workflowQuery = useWorkflow(workflowId ?? '');
   const mode = parseModeParam(params.get('mode'));
-  // Task 7 consumes this (AgentPanel initial input); until then it is
-  // write-only state + the probe above.
   const [agentPrefill, setAgentPrefill] = useState<string | undefined>();
-  void agentPrefill;
+  // Collapsed state lives here per page-mount (no persistence yet).
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [initialPrompt] = useState<string | undefined>(() => {
+    const state = location.state as { agentPrompt?: unknown } | null;
+    return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
+  });
 
   const handleModeChange = useCallback(
     (next: WorkflowMode) => {
@@ -69,6 +78,8 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   const handleRequestRuntime = useCallback(() => handleModeChange('runtime'), [handleModeChange]);
 
+  const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
+
   if (workflowQuery.isPending) return <p className="text-base">Loading chore reducer…</p>;
   if (workflowQuery.isError || !workflowQuery.data) {
     if (workflowQuery.isError) {
@@ -93,11 +104,31 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">{workflowQuery.data.name}</h1>
       <ModeSwitch mode={mode} onModeChange={handleModeChange} />
-      {mode === 'design' ? (
-        <DesignView workflowId={workflowQuery.data.id} onRequestRuntime={handleRequestRuntime} />
-      ) : (
-        <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
-      )}
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          {mode === 'design' ? (
+            <DesignView workflowId={workflowQuery.data.id} onRequestRuntime={handleRequestRuntime} />
+          ) : (
+            <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+          )}
+        </div>
+        {panelCollapsed ? (
+          <AppButton variant="outline" onClick={() => setPanelCollapsed(false)}>
+            <PanelRightOpen />
+            Show helper
+          </AppButton>
+        ) : (
+          <div className="w-[380px] shrink-0">
+            <AgentPanel
+              workflowId={workflowQuery.data.id}
+              prefill={agentPrefill}
+              onPrefillConsumed={handlePrefillConsumed}
+              initialPrompt={initialPrompt}
+              onCollapse={() => setPanelCollapsed(true)}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
