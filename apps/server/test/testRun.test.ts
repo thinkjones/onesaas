@@ -218,6 +218,59 @@ test('testRun throws for an unknown workflow', async () => {
   await expect(testRun('nope')).rejects.toThrow('Unknown workflow: nope');
 });
 
+// A trigger-only workflow: just the trigger step, no edges.
+function triggerOnlyWorkflow(id: string, type: string) {
+  return Workflow.parse({
+    id,
+    name: id,
+    description: id,
+    version: 1,
+    status: 'on',
+    trigger: {
+      id: 'trigger',
+      type,
+      title: 'Trigger',
+      summary: 'Runs by hand.',
+      config: {},
+      inputs: {},
+      position: { x: 0, y: 0 },
+    },
+    steps: [],
+    edges: [],
+  });
+}
+
+test('a manual-trigger test run reports usedSample=false and no sample prefix', async () => {
+  const { repo, testRun } = disconnected();
+  const wf = triggerOnlyWorkflow('manual-1', 'trigger.manual');
+  repo.saveWorkflow(wf);
+
+  const { run, steps, usedSample } = await testRun('manual-1');
+
+  expect(usedSample).toBe(false);
+  expect(run.status).toBe('done');
+  expect(steps.map((s) => [s.stepId, s.status])).toEqual([['trigger', 'done']]);
+  const story = buildRunStory(wf, steps, { usedSample });
+  expect(story[0]).not.toBe(SAMPLE_PREFIX);
+  expect(story).toEqual(['Runs by hand.']);
+});
+
+test('testRun fails fast when an email trigger type has no sample', async () => {
+  const { repo, testRun } = disconnected();
+  // trigger.email takes the email branch but has no catalog entry (hence no
+  // sample): the run must fail here, not later as a cryptic step failure.
+  repo.saveWorkflow(triggerOnlyWorkflow('email-1', 'trigger.email'));
+  await expect(testRun('email-1')).rejects.toThrow('No sample for trigger type: trigger.email');
+});
+
+test('testRun fails fast when a non-email trigger type has no sample', async () => {
+  const { repo, testRun } = disconnected();
+  repo.saveWorkflow(triggerOnlyWorkflow('sched-1', 'trigger.smokeSignal'));
+  await expect(testRun('sched-1')).rejects.toThrow(
+    'No sample for trigger type: trigger.smokeSignal',
+  );
+});
+
 test('a pre-kind runs table migrates in place with old runs staying live', () => {
   const db = openDb(':memory:');
   // An old app.db: the runs table as created before `kind` existed.

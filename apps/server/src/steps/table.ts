@@ -35,9 +35,21 @@ upsertExecutor.preview = async (config, input, ctx) => {
   const table = config.table as string;
   const keyField = config.keyField as string;
   const row = input.row as Record<string, unknown>;
+  // READ-ONLY GUARD PARITY with the live path (store.upsert): the table-def
+  // lookup, keyField column membership, and the email check are pure reads,
+  // so the preview fails exactly like a real run would (same messages) —
+  // `query` alone would ignore an unknown where-key and skip validation.
+  // Full-row insert validation stays preview-exempt by design: a preview
+  // must never write, so only the key guards are mirrored here.
+  const def = ctx.tables.getTable(table);
+  if (!def) throw new Error(`Unknown table: ${table}`);
+  const key = sanitiseName(keyField);
+  if (!def.columns.some((c) => c.name === key)) {
+    throw new Error(`Unknown column: ${keyField} for table ${table}`);
+  }
   const keyEntry = Object.entries(row).find(([k]) => {
     try {
-      return sanitiseName(k) === sanitiseName(keyField);
+      return sanitiseName(k) === key;
     } catch {
       return false;
     }
@@ -45,6 +57,10 @@ upsertExecutor.preview = async (config, input, ctx) => {
   const keyValue = keyEntry?.[1];
   if (keyValue === null || keyValue === undefined) {
     throw new Error(`Missing value for key field: ${keyField}`);
+  }
+  const keyType = def.columns.find((c) => c.name === key)!.type;
+  if (keyType === 'email' && !String(keyValue).includes('@')) {
+    throw new Error(`Invalid email for column ${key}`);
   }
   const existing = ctx.tables.query(table, { where: { [keyField]: keyValue }, limit: 1 });
   const found = existing[0];
