@@ -9,7 +9,9 @@ import type { ListSummary, ViewData, ViewDef } from './lists/types.ts';
 export type EngineEvent =
   | { type: 'run'; run: Run }
   | { type: 'step'; stepRun: StepRun }
-  | { type: 'notify'; text: string };
+  | { type: 'notify'; text: string }
+  // M5 Task 4: a background mood-image run finished — the stored set changed.
+  | { type: 'mood'; fileIds: string[] };
 
 /** GET /api/runs/:id shape. `workflow` is the run's OWN pinned version. */
 export interface RunDetail {
@@ -595,6 +597,9 @@ export function useLiveEvents(): void {
         // by prefix instead of per workflow.
         void client.invalidateQueries({ queryKey: ['run', e.stepRun.runId] });
         void client.invalidateQueries({ queryKey: ['runs'] });
+      } else if (e.type === 'mood') {
+        // A mood run landed: refetch settings so the backdrop live-updates.
+        void client.invalidateQueries({ queryKey: ['settings'] });
       } else if (e.type === 'notify') {
         // A notify step's in-app toast. Agent envelopes also arrive on this
         // stream but carry no EngineEvent type, so they fall through silently.

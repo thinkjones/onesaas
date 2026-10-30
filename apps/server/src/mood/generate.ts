@@ -49,7 +49,8 @@ export interface MoodDeps {
  * Generates the 4 mood images in parallel via `image.generate`, saves each
  * with source `mood`, stores the ids on `settings.moodFileIds`, and returns
  * them in scene order. A failed generate (or save) is skipped, so one
- * failure still stores the 3 that worked.
+ * failure still stores the 3 that worked. When all 4 fail the stored set is
+ * left untouched and returned, so the caller emits the stored value.
  */
 export async function generateMoodSet(
   d: MoodDeps,
@@ -65,6 +66,9 @@ export async function generateMoodSet(
   );
   // allSettled preserves input order, so the survivors stay in scene order.
   const ids = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+  // Total failure must not wipe a prior good set: keep the stored ids and
+  // return them so the emitted event matches what is stored.
+  if (ids.length === 0) return d.settings.get().moodFileIds;
   d.settings.update({ moodFileIds: ids });
   return ids;
 }

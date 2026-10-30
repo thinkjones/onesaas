@@ -88,6 +88,19 @@ describe('generateMoodSet', () => {
     expect(ids).toHaveLength(3);
     expect(settings.get().moodFileIds).toEqual(ids);
   });
+
+  test('all-4 failure preserves the prior stored set instead of wiping it', async () => {
+    settings.update({ moodFileIds: ['old-1', 'old-2', 'old-3', 'old-4'] });
+    const image = fakeImage(async () => {
+      throw new Error('image backend down');
+    });
+
+    const ids = await generateMoodSet({ image, files, settings }, { businessWhat: 'bakery' });
+
+    expect(image.generate).toHaveBeenCalledTimes(4);
+    expect(ids).toEqual(['old-1', 'old-2', 'old-3', 'old-4']);
+    expect(settings.get().moodFileIds).toEqual(['old-1', 'old-2', 'old-3', 'old-4']);
+  });
 });
 
 describe('mood routes', () => {

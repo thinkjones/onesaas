@@ -138,6 +138,17 @@ describe('useLiveEvents reconnect', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  test('mood events refresh the settings query so the backdrop live-updates', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    renderLiveEvents();
+    await act(async () => {
+      MockEventSource.instances[0]!.onmessage!({
+        data: JSON.stringify({ type: 'mood', fileIds: ['m1', 'm2', 'm3', 'm4'] }),
+      });
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['settings'] });
+  });
+
   test('agent envelopes on the shared stream are ignored, not crashed on', async () => {
     const spy = vi.spyOn(client, 'invalidateQueries');
     renderLiveEvents();
