@@ -702,6 +702,86 @@ test('after create_workflow the prompt rebuilds from the new reducer', async () 
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
 });
 
+test('after create_workflow the new reducer is busy-guarded until the turn ends', async () => {
+  const s = setup([]);
+  const resolvers: ((v: ChatToolsResult) => void)[] = [];
+  const switchResult = {
+    message: {
+      role: 'assistant',
+      content: null,
+      refusal: null,
+      tool_calls: [
+        {
+          id: 'call_1_0',
+          type: 'function',
+          function: {
+            name: 'create_workflow',
+            arguments: JSON.stringify({ name: 'Photo posts', description: 'Turns photos into posts.' }),
+          },
+        },
+      ],
+    },
+    toolCalls: [
+      {
+        id: 'call_1_0',
+        name: 'create_workflow',
+        args: { name: 'Photo posts', description: 'Turns photos into posts.' },
+      },
+    ],
+    model: 'test-model',
+    tokens: { input: 0, output: 0 },
+    costUsd: 0,
+  } as never as ChatToolsResult;
+  const textResult = (text: string): ChatToolsResult =>
+    ({
+      message: { role: 'assistant', content: text, refusal: null },
+      toolCalls: [],
+      model: 'test-model',
+      tokens: { input: 0, output: 0 },
+      costUsd: 0,
+    }) as never;
+  const gated: Gateway = {
+    chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
+    chatTools: (o: ChatToolsOptions) => {
+      s.calls.push(o);
+      // First model call switches reducers; the second waits at the gate so
+      // the turn is still in flight while Dad's page shows the new reducer.
+      if (s.calls.length === 1) return Promise.resolve(switchResult);
+      return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
+    },
+  };
+  const agent = createBuilderAgent({
+    gateway: gated,
+    ops: s.ops,
+    tables: s.tables,
+    repo: s.repo,
+    engine: {} as never,
+    events: s.agentEvents,
+    conversations: s.conversations,
+    testRun: s.testRun,
+  });
+  const turn = agent.send(s.wf.id, 'build both');
+  const deadline = Date.now() + 2000;
+  while (s.calls.length < 2) {
+    if (Date.now() > deadline) throw new Error('second model call never started');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  const switched = s.seen.filter((e) => e.event.type === 'switched');
+  expect(switched).toHaveLength(1);
+  const newId = (switched[0]!.event as { type: string; workflowId: string }).workflowId;
+  expect(newId).not.toBe(s.wf.id);
+  // Dad was auto-navigated to the new reducer mid-turn: a send there must
+  // wait for this turn instead of interleaving a second one.
+  expect(agent.isBusy(s.wf.id)).toBe(true);
+  expect(agent.isBusy(newId)).toBe(true);
+  await expect(agent.send(newId, 'meanwhile')).rejects.toThrow(AgentBusyError);
+  resolvers.splice(0).forEach((r) => r(textResult('both built')));
+  await turn;
+  expect(agent.isBusy(s.wf.id)).toBe(false);
+  expect(agent.isBusy(newId)).toBe(false);
+});
+
 test('endTurn with sibling calls runs the whole response then stops', async () => {
   const { agent, seen, calls, conversations, wf } = setup([
     {

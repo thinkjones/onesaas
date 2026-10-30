@@ -11,6 +11,10 @@ import fixture from './fixtures/meta-composer.html?raw';
 
 const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+// The server's dataUrl() returns the STORED mime (image/jpeg for every
+// non-PNG upload), so the clipboard payload must carry the data URL's own
+// mime — never a hardcoded image/png.
+const JPEG_1PX = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////////////////////////2wBDAf////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAAAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AH//Z';
 
 // Minimal ClipboardItem stand-in: captures what would be written so the test
 // can assert the mime type and blob without a real clipboard.
@@ -59,6 +63,22 @@ describe('prepareDraftPost', () => {
     expect(PASTE_HINT).toBe(
       "Your photo is copied. Click here and press ⌘V, then Publish when you're happy.",
     );
+  });
+
+  it('copies a JPEG photo under image/jpeg, not image/png', async () => {
+    const result = await prepareDraftPost(document, {
+      text: 'Fresh sourdough this Saturday!',
+      imageDataUrl: JPEG_1PX,
+    });
+    expect(result).toEqual({ textFilled: true, imageCopied: true });
+    const write = navigator.clipboard.write as unknown as ReturnType<typeof vi.fn>;
+    expect(write).toHaveBeenCalledTimes(1);
+    const items = write.mock.calls[0]![0] as FakeClipboardItem[];
+    expect(items).toHaveLength(1);
+    expect(items[0]!.types).toEqual(['image/jpeg']);
+    const blob = items[0]!.data['image/jpeg'] as Blob;
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('image/jpeg');
   });
 
   it('shows no hint and copies nothing when no photo is given', async () => {

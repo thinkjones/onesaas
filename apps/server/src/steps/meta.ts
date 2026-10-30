@@ -25,27 +25,45 @@ export const draftPostExecutor: Executor = async (_config, input, ctx) => {
   // The content script navigates to the composer when the tab is elsewhere
   // and reports { navigated: true }; re-call once it settles (same shape as
   // the calendar readDay retry).
+  let last: { navigated?: unknown; textFilled?: unknown; imageCopied?: unknown } | null | undefined;
   for (let attempt = 0; attempt < MAX_DRAFT_ATTEMPTS; attempt += 1) {
-    const out = (await ctx.bridge.call('meta', 'draftPost', payload, undefined, {
+    last = (await ctx.bridge.call('meta', 'draftPost', payload, undefined, {
       tab: 'active',
-    })) as { navigated?: unknown } | null | undefined;
-    if (out?.navigated !== true) break;
+    })) as typeof last;
+    if (last?.navigated !== true) break;
     if (attempt === MAX_DRAFT_ATTEMPTS - 1) {
       throw new Error("The Business Suite page didn't finish loading.");
     }
     await sleep(COMPOSER_SETTLE_MS);
   }
+  // Fail closed: only a confirmed fill counts as prepared. A missing send
+  // key is protocol-valid (and version skew can send garbage), so anything
+  // but textFilled === true — and imageCopied === true when a photo went
+  // along — is a loud step failure, never a false "prepared".
+  if (last?.textFilled !== true) {
+    throw new Error("The post text wasn't filled in Business Suite.");
+  }
+  if (image !== undefined && last?.imageCopied !== true) {
+    throw new Error("The photo wasn't copied to the clipboard.");
+  }
   return {
     output: { prepared: true },
-    why: 'Prepared the post in Meta Business Suite; paste the photo and press Publish.',
+    why:
+      image !== undefined
+        ? 'Prepared the post in Meta Business Suite; paste the photo and press Publish.'
+        : 'Prepared the post in Meta Business Suite; check the text and press Publish.',
   };
 };
 
 // Test-mode preview: describes the post without touching Business Suite.
-draftPostExecutor.preview = async () => {
+draftPostExecutor.preview = async (_config, input) => {
+  const { image } = input as { image?: FileRef };
   return {
     output: { prepared: true },
-    why: 'In a real run I would open a new post in Meta Business Suite with this text and photo.',
+    why:
+      image !== undefined
+        ? 'In a real run I would open a new post in Meta Business Suite with this text and photo.'
+        : 'In a real run I would open a new post in Meta Business Suite with this text.',
   };
 };
 

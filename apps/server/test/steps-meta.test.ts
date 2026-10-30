@@ -55,6 +55,9 @@ describe('meta.draftPost', () => {
       tab: 'active',
     });
     expect(result.output).toEqual({ prepared: true });
+    expect(result.why).toBe(
+      "Prepared the post in Meta Business Suite; check the text and press Publish.",
+    );
   });
 
   test('retries once the tab navigates to the composer', async () => {
@@ -69,6 +72,49 @@ describe('meta.draftPost', () => {
     );
     expect(call).toHaveBeenCalledTimes(2);
     expect(result.output).toEqual({ prepared: true });
+  });
+
+  test('fails closed when the bridge reports the text was not filled', async () => {
+    const call = vi.fn(async () => ({ textFilled: false, imageCopied: true }));
+    await expect(
+      executors['meta.draftPost']!(
+        {},
+        IMAGE_INPUT,
+        makeCtx(
+          { files: { dataUrl: vi.fn(async () => DATA_URL) } as unknown as StepContext['files'] },
+          { call } as unknown as Bridge,
+        ),
+      ),
+    ).rejects.toThrow("The post text wasn't filled in Business Suite.");
+  });
+
+  test('fails closed when the bridge sends no output at all', async () => {
+    const call = vi.fn(async () => undefined);
+    await expect(
+      executors['meta.draftPost']!({}, { text: 'Hello.' }, makeCtx({}, { call } as unknown as Bridge)),
+    ).rejects.toThrow("The post text wasn't filled in Business Suite.");
+  });
+
+  test('fails closed when the composer never finishes loading', async () => {
+    const call = vi.fn(async () => ({ navigated: true }));
+    await expect(
+      executors['meta.draftPost']!({}, { text: 'Hello.' }, makeCtx({}, { call } as unknown as Bridge)),
+    ).rejects.toThrow("The Business Suite page didn't finish loading.");
+    expect(call).toHaveBeenCalledTimes(3);
+  });
+
+  test('fails closed when the photo was sent but not copied', async () => {
+    const call = vi.fn(async () => ({ textFilled: true, imageCopied: false }));
+    await expect(
+      executors['meta.draftPost']!(
+        {},
+        IMAGE_INPUT,
+        makeCtx(
+          { files: { dataUrl: vi.fn(async () => DATA_URL) } as unknown as StepContext['files'] },
+          { call } as unknown as Bridge,
+        ),
+      ),
+    ).rejects.toThrow("The photo wasn't copied to the clipboard.");
   });
 
   test('fails readably when photo storage is unavailable', async () => {
@@ -92,6 +138,20 @@ describe('meta.draftPost', () => {
       'In a real run I would open a new post in Meta Business Suite with this text and photo.',
     );
     expect(catalog['meta.draftPost']!.outputSchema.safeParse(result.output).success).toBe(true);
+  });
+
+  test('preview mentions no photo when no photo is given', async () => {
+    const call = vi.fn();
+    const result = await executors['meta.draftPost']!.preview!(
+      {},
+      { text: 'Just words.' },
+      makeCtx({}, { call } as unknown as Bridge),
+    );
+    expect(call).not.toHaveBeenCalled();
+    expect(result.output).toEqual({ prepared: true });
+    expect(result.why).toBe(
+      'In a real run I would open a new post in Meta Business Suite with this text.',
+    );
   });
 });
 

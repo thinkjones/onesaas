@@ -105,6 +105,15 @@ export const flow4ExampleUser =
  * Business Suite). Step ids are shortened like flow 2's. No test_run, no
  * activate: a test or activation would target only the second reducer, and
  * the turn is for building both — Dad turns both on himself.
+ *
+ * LIMITATION (email branch, steps 3–4): `where` must be a record, so
+ * bindings can't express {email: X} — the lookup filters on the WHOLE
+ * extract output (name, email, need, urgency), and a returning customer
+ * with a new need matches zero rows (count 0). The classify step therefore
+ * compares emails — sender vs {{lookup.rows[0].email}}, "same email =
+ * known, regardless of count" — instead of trusting count. (Upsert is
+ * keyed by email, so at most one row can match a sender: rows[0] is the
+ * whole candidate set.)
  */
 export const flow4Example = `Example: "${flow4ExampleUser}"
 
@@ -136,11 +145,11 @@ Tool calls (email branch):
 
 3. add_step {"type": "table.query", "title": "Look up customer", "summary": "Find this sender in the Customers list.", "config": {"table": "customers"}, "inputs": {"where": "{{extract}}"}, "after": "<the extract step's id>"} — the whole extract output doubles as the lookup filter (name, email, need and urgency are all Customer columns).
 
-4. add_step {"type": "ai.classify", "title": "Check if new", "summary": "Check whether this sender is a new customer.", "config": {"question": "Is this person new?", "options": ["yes", "no"]}, "inputs": {"text": "From {{extract.name}} <{{extract.email}}> about {{extract.need}}. Matching customers: {{lookup.count}}."}, "after": "<the lookup step's id>"}
+4. add_step {"type": "ai.classify", "title": "Check if new", "summary": "Check whether this sender is a new customer.", "config": {"question": "Is this person new? The sender is known when their email matches the known customer email, regardless of the matching-customers count — only a blank known customer email means new.", "options": ["yes", "no"]}, "inputs": {"text": "From {{extract.name}} <{{extract.email}}> about {{extract.need}}. Matching customers: {{lookup.count}}. Known customer email: {{lookup.rows[0].email}}."}, "after": "<the lookup step's id>"}
 
 5. add_step {"type": "notify", "title": "Flag new customer", "summary": "Tell Dad when a new customer emails.", "config": {}, "inputs": {"text": "New customer: {{extract.name}}"}, "after": "<the sort step's id>"} — then connect {"from": "<the sort step's id>", "to": "<the flag step's id>", "when": "<the sort step's id>.choice == 'yes'"} to make that wire conditional.
 
-6. add_step {"type": "table.upsert", "title": "Save to Customers", "summary": "Save the customer to the Customers list.", "config": {"table": "customers", "keyField": "email"}, "inputs": {"row": "{{extract}}"}, "after": "<the extract step's id>"} — a second wire out of the extract step, beside the lookup branch.
+6. add_step {"type": "table.upsert", "title": "Save to Customers", "summary": "Save the customer to the Customers list.", "config": {"table": "customers", "keyField": "email"}, "inputs": {"row": "{{extract}}"}, "after": "<the lookup step's id>"} — chained AFTER the lookup, never beside it: the lookup must read the list before this save writes, or a new customer would match their own just-saved row and the flag would never fire.
 
 7. add_step {"type": "ai.write", "title": "Write reply", "summary": "Write a short, warm reply.", "config": {"instructions": "Write a short, warm reply that thanks them and says we'll get back to them about their need within one business day. Sign off as the owner.", "tone": "friendly"}, "inputs": {"context": "{{extract}}"}, "after": "<the save step's id>"}
 

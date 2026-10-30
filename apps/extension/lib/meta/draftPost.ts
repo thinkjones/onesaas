@@ -13,13 +13,22 @@ export function isOnComposerPage(href: string): boolean {
   return href.startsWith(COMPOSER_URL);
 }
 
-function dataUrlToPngBlob(dataUrl: string): Blob {
+// The server's dataUrl() returns the STORED mime (image/jpeg for every
+// non-PNG upload), so the Blob type and the ClipboardItem key both come off
+// the data URL itself — a hardcoded image/png would mislabel JPEG bytes and
+// Chrome would reject the write or paste garbage. Bare base64 with no
+// header keeps the old default.
+function dataUrlMime(dataUrl: string): string {
+  return /^data:([^;,]+)/.exec(dataUrl)?.[1] ?? 'image/png';
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
   const comma = dataUrl.indexOf(',');
   const base64 = comma === -1 ? dataUrl : dataUrl.slice(comma + 1);
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes.buffer], { type: 'image/png' });
+  return new Blob([bytes.buffer], { type: dataUrlMime(dataUrl) });
 }
 
 function fillComposer(box: HTMLElement, doc: Document, text: string): void {
@@ -80,8 +89,9 @@ function showPasteHint(doc: Document): void {
 
 /**
  * Fill the Business Suite composer with `text`, copy the photo to the
- * clipboard as image/png (the host page has no automation-safe upload), and
- * point a hint at the media area telling Dad to paste and press Publish.
+ * clipboard under its own mime type (the host page has no
+ * automation-safe upload), and point a hint at the media area telling Dad
+ * to paste and press Publish.
  * Reliability-ladder position: selectors, then hand off to Dad (no Send,
  * Publish or Post click — the global M4 constraint).
  */
@@ -98,7 +108,8 @@ export async function prepareDraftPost(
   try {
     const clipboard = doc.defaultView?.navigator.clipboard;
     if (!clipboard) throw new Error('no clipboard');
-    await clipboard.write([new ClipboardItem({ 'image/png': dataUrlToPngBlob(o.imageDataUrl) })]);
+    const mime = dataUrlMime(o.imageDataUrl);
+    await clipboard.write([new ClipboardItem({ [mime]: dataUrlToBlob(o.imageDataUrl) })]);
   } catch {
     throw new Error("I couldn't copy the photo to the clipboard.");
   }
