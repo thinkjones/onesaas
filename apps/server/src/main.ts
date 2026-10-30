@@ -168,6 +168,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     appSettings,
     setTimezone,
     files,
+    image,
     // The voice proxy holds the key server-side; the browser never sees it.
     voice: { apiKey },
   });

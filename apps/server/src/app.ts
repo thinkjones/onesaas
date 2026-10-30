@@ -15,6 +15,8 @@ import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
+import type { ImageModels } from './models/image.js';
+import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
 import type { SettingsStore } from './settings/store.js';
 import type { TableStore } from './tables/store.js';
 import type { ViewStore } from './views/store.js';
@@ -63,6 +65,7 @@ export function createApp(deps: AppDeps): Hono {
   const files = deps.files as FileStore | undefined;
   const views = deps.views as ViewStore | undefined;
   const voice = deps.voice as VoiceProxyOptions | undefined;
+  const image = deps.image as ImageModels | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -146,6 +149,39 @@ export function createApp(deps: AppDeps): Hono {
     // Timezone goes through setTimezone so live AI steps see it immediately.
     if (timezone !== undefined) setTimezone(timezone);
     return c.json(appSettings.get());
+  });
+
+  // Mood backgrounds (M5 Task 4). POST draws Dad's business in the
+  // background (202 immediately) and emits { type: 'mood', fileIds } on
+  // /api/events when done; GET reports the stored set plus whether a run is
+  // in flight. A POST while a run is in flight is a no-op 202 (no duplicate
+  // spend). The business description comes from the saved settings (Task 5's
+  // Next saves first), falling back to the default-business scenes.
+  let moodGenerating = false;
+  app.get('/api/mood', (c) => {
+    if (!appSettings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json({ fileIds: appSettings.get().moodFileIds, generating: moodGenerating });
+  });
+
+  app.post('/api/mood/generate', (c) => {
+    if (!appSettings || !image || !files) {
+      return c.json({ error: 'Server not configured' }, 500);
+    }
+    if (moodGenerating) return c.json({}, 202);
+    moodGenerating = true;
+    const stored = appSettings.get().businessWhat?.trim();
+    const businessWhat = stored ? stored : DEFAULT_MOOD_BUSINESS_WHAT;
+    generateMoodSet({ image, files, settings: appSettings }, { businessWhat })
+      .then((fileIds) => {
+        engine?.events.emit('event', { type: 'mood', fileIds });
+      })
+      .catch((err) => {
+        console.error('[mood] generation failed:', err);
+      })
+      .finally(() => {
+        moodGenerating = false;
+      });
+    return c.json({}, 202);
   });
 
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the

@@ -9,6 +9,7 @@ import {
   PENDING_BUILT_TIMEOUT_MS,
   getRun,
   useAgentEvents,
+  useSettings,
   useTestRun,
   useWorkflowDetail,
   useWorkflowOp,
@@ -19,6 +20,7 @@ import {
   type WorkflowOpName,
 } from '../api.ts';
 import WorkflowCanvas, { type CanvasOp, type GhostStep } from '../canvas/WorkflowCanvas.tsx';
+import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import { resolveStepId } from '../runtime/params.ts';
 import { sound } from '../sound/sound.ts';
 import SoundControl from '../sound/SoundControl.tsx';
@@ -82,6 +84,8 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
   // Ambient loops while the design screen is mounted; unmounting (e.g.
   // switching to runtime mode) stops them.
   useSound(true);
+  // The generated mood set for the backdrop (defaults until a set lands).
+  const { settings } = useSettings();
 
   const [ghosts, setGhosts] = useState<GhostStep[]>([]);
   const [ghostEdges, setGhostEdges] = useState<Edge[]>([]);
@@ -496,7 +500,8 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
           desktop widths, where palette + canvas + inspector fit one line). */}
       <div className="flex flex-wrap gap-4">
         <StepPalette onAddStep={(type) => void handleAddStep(type)} disabled={op.isPending} />
-        <div className="min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
+        <div className="relative min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
+          <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
           <WorkflowCanvas
             workflow={detail}
             mode="design"
