@@ -379,11 +379,11 @@ describe('AgentPanel prefill', () => {
 });
 
 describe('AgentPanel chrome', () => {
-  test('the mic button is a disabled placeholder', async () => {
+  test('the mic button offers push-to-talk', async () => {
     renderPanel({ transcript: [] });
     await screen.findByText('Tell me what you want this chore reducer to do.');
-    const mic = screen.getByRole('button', { name: 'Voice coming soon' }) as HTMLButtonElement;
-    expect(mic.disabled).toBe(true);
+    const mic = screen.getByRole('button', { name: 'Hold to talk' }) as HTMLButtonElement;
+    expect(mic.disabled).toBe(false);
   });
 
   test('the collapse button reports back to the page', async () => {

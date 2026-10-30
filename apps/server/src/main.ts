@@ -168,6 +168,8 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     appSettings,
     setTimezone,
     files,
+    // The voice proxy holds the key server-side; the browser never sees it.
+    voice: { apiKey },
   });
   return { app, db, tables, views, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
 }

@@ -1,7 +1,8 @@
-import { Mic, PanelRightClose } from 'lucide-react';
+import { PanelRightClose } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
+import MicButton from '../voice/MicButton.tsx';
 import Message from './Message.tsx';
 import { useAgent } from './useAgent.ts';
 
@@ -20,9 +21,9 @@ export interface AgentPanelProps {
 
 /**
  * The helper chat: transcript (Dad right, agent left, activity as small grey
- * lines, asks as chips) with a textarea + Send below and a placeholder mic
- * button (M5 wires voice). Only the LATEST ask renders clickable chips —
- * older ones stay visible but disabled, and everything locks while busy.
+ * lines, asks as chips) with a textarea + Send below and a push-to-talk mic
+ * button. Only the LATEST ask renders clickable chips — older ones stay
+ * visible but disabled, and everything locks while busy.
  */
 export default function AgentPanel({
   workflowId,
@@ -147,15 +148,7 @@ export default function AgentPanel({
           }}
         />
         <div className="flex items-center justify-between gap-2">
-          <AppButton
-            variant="outline"
-            size="icon"
-            disabled
-            title="Voice coming soon"
-            aria-label="Voice coming soon"
-          >
-            <Mic />
-          </AppButton>
+          <MicButton onSend={submitChip} />
           <AppButton onClick={submitInput} disabled={busy || input.trim().length === 0}>
             Send
           </AppButton>

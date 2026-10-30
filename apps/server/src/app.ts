@@ -18,6 +18,7 @@ import type { TestRunResult } from './engine/testRun.js';
 import type { SettingsStore } from './settings/store.js';
 import type { TableStore } from './tables/store.js';
 import type { ViewStore } from './views/store.js';
+import { createVoiceHandlers, type VoiceProxyOptions } from './voice/proxy.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
 
@@ -61,6 +62,7 @@ export function createApp(deps: AppDeps): Hono {
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
   const files = deps.files as FileStore | undefined;
   const views = deps.views as ViewStore | undefined;
+  const voice = deps.voice as VoiceProxyOptions | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -598,6 +600,16 @@ export function createApp(deps: AppDeps): Hono {
       }
     });
   });
+
+  // Push-to-talk (M5 Task 3): the browser streams PCM here and the proxy
+  // bridges it to Muse Voice Transcribe realtime, holding MODEL_API_KEY on
+  // the server side. Without a key the socket errors and closes.
+  app.get(
+    '/api/voice',
+    upgradeWebSocket(() =>
+      createVoiceHandlers({ apiKey: voice?.apiKey, upstreamUrl: voice?.upstreamUrl }),
+    ),
+  );
 
   app.get(
     '/ext',
