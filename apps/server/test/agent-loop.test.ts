@@ -298,6 +298,73 @@ test('noteManualChange inserts a system message seen by the next chatTools call'
   });
 });
 
+test('a mid-turn noteManualChange lands in the live conversation and the next model call', async () => {
+  const s = setup([]);
+  const resolvers: ((v: ChatToolsResult) => void)[] = [];
+  let n = 0;
+  const result = (message: object, toolCalls: ChatToolsResult['toolCalls']): ChatToolsResult =>
+    ({ message, toolCalls, model: 'test-model', tokens: { input: 0, output: 0 }, costUsd: 0 }) as never;
+  // Unknown tool: no side effects, just a Problem result so the loop continues.
+  const tool = (id: string): ChatToolsResult =>
+    result(
+      {
+        role: 'assistant',
+        content: null,
+        refusal: null,
+        tool_calls: [{ id, type: 'function', function: { name: 'teleport', arguments: '{}' } }],
+      },
+      [{ id, name: 'teleport', args: {} }],
+    );
+  const gated: Gateway = {
+    chatJson: s.gateway.chatJson,
+    chatTools: (o: ChatToolsOptions) => {
+      s.calls.push(o);
+      n += 1;
+      // First response returns a tool call immediately; later calls wait on the gate.
+      if (n === 1) return Promise.resolve(tool('call_1'));
+      return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
+    },
+  };
+  const agent = createBuilderAgent({
+    gateway: gated,
+    ops: s.ops,
+    tables: s.tables,
+    repo: s.repo,
+    engine: {} as never,
+    events: s.agentEvents,
+    conversations: s.conversations,
+    testRun: s.testRun,
+  });
+  const turn = agent.send(s.wf.id, 'go');
+  const waitForCalls = async (count: number): Promise<void> => {
+    const deadline = Date.now() + 2000;
+    while (s.calls.length < count) {
+      if (Date.now() > deadline) throw new Error(`model call ${count} never started`);
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+  await waitForCalls(2);
+  // The turn is genuinely in flight: busy, with the second model call awaiting the gate.
+  expect(agent.isBusy(s.wf.id)).toBe(true);
+  agent.noteManualChange(s.wf.id, 'Moved "Write reply" mid-turn.');
+  const note = 'Dad changed the canvas: Moved "Write reply" mid-turn.';
+  // The second call's snapshot was taken before the note, so it must NOT see it...
+  expect(
+    s.calls[1]!.messages.some((m) => (m as { content?: unknown }).content === note),
+  ).toBe(false);
+  resolvers.splice(0).forEach((r) => r(tool('call_2')));
+  await waitForCalls(3);
+  resolvers.splice(0).forEach((r) =>
+    r(result({ role: 'assistant', content: 'done', refusal: null }, [])),
+  );
+  await turn;
+  expect(s.calls).toHaveLength(3);
+  // ...but the NEXT model call (and the persisted history) must.
+  expect(s.calls[2]!.messages).toContainEqual({ role: 'system', content: note });
+  const reopened = createConversationStore(s.db);
+  expect(reopened.load(s.wf.id)!.messages).toContainEqual({ role: 'system', content: note });
+});
+
 test('the system prompt rebuilds from the latest workflow on every iteration', async () => {
   const { agent, calls, wf } = setup([
     { calls: [{ name: 'rename_workflow', args: { name: 'Renamed by agent' } }] },
