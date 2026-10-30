@@ -297,4 +297,22 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({ file: fileRefSchema }),
     outputSchema: z.object({ file: fileRefSchema }),
   },
+  'meta.draftPost': {
+    type: 'meta.draftPost',
+    kind: 'act',
+    title: 'Prepare Facebook post',
+    description: 'Opens a new post in Meta Business Suite with your text and photo.',
+    configSchema: z.object({}),
+    inputSchema: z.object({ text: z.string(), image: fileRefSchema.optional() }),
+    outputSchema: z.object({ prepared: z.literal(true) }),
+  },
+  notify: {
+    type: 'notify',
+    kind: 'act',
+    title: 'Show a message',
+    description: 'Shows you a message.',
+    configSchema: z.object({}),
+    inputSchema: z.object({ text: z.string() }),
+    outputSchema: z.object({ notified: z.literal(true) }),
+  },
 };

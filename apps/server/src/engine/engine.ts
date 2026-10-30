@@ -23,7 +23,7 @@ export type ApprovalDecision =
 export function createEngine(d: {
   repo: Repo;
   executors: Record<string, Executor>;
-  ctx: Omit<StepContext, 'signal'>;
+  ctx: Omit<StepContext, 'signal' | 'events'>;
 }): {
   start: (workflowId: string, triggerPayload: unknown, opts?: { kind?: Run['kind'] }) => Promise<Run>;
   resolveApproval: (runId: string, stepId: string, d: ApprovalDecision) => Promise<Run>;
@@ -221,7 +221,7 @@ export function createEngine(d: {
             ctxBase.testMode === true && typeof executor.preview === 'function'
               ? executor.preview
               : executor;
-          const result = await fn(step.config, input, { ...ctxBase, signal });
+          const result = await fn(step.config, input, { ...ctxBase, signal, events });
           // A waiting result parks the step: output validation is SKIPPED
           // because the output is provisional ({ proposed }, not the final
           // schema — the final output is written by resolveApproval). The

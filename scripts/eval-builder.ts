@@ -12,7 +12,7 @@ import OpenAI from 'openai';
 // typecheck and tsx runtime. (Shared's own main IS this src entry.)
 import { catalog, type Workflow } from '../packages/shared/src/index.js';
 import { createConversationStore } from '../apps/server/src/agent/conversations.js';
-import { flow2ExampleUser } from '../apps/server/src/agent/examples.js';
+import { flow2ExampleUser, flow4ExampleUser } from '../apps/server/src/agent/examples.js';
 import { createBuilderAgent } from '../apps/server/src/agent/loop.js';
 import type { AgentEvent } from '../apps/server/src/agent/tools.js';
 import { openDb } from '../apps/server/src/db/connection.js';
@@ -41,6 +41,29 @@ const FLOW2_STEPS = [
   'ai.write',
   'approval.ask',
   'gmail.draftReply',
+];
+
+// Flow 4 (M4 Task 7): the email branch is flow 1 plus the new-customer check;
+// the photo branch prepares the Meta post. The photo branch's row-shaping
+// ai.extract is build detail, not a required step (presence checks stay
+// lenient so equivalent shapings pass).
+const FLOW4_EMAIL_STEPS = [
+  'ai.extract',
+  'table.query',
+  'ai.classify',
+  'notify',
+  'table.upsert',
+  'ai.write',
+  'approval.ask',
+  'gmail.draftReply',
+];
+const FLOW4_PHOTO_STEPS = [
+  'image.cutout',
+  'image.generate',
+  'ai.write',
+  'table.insert',
+  'approval.ask',
+  'meta.draftPost',
 ];
 
 function setupCustomers(tables: TableStore): void {
@@ -75,7 +98,37 @@ interface EvalCase {
   name: string;
   firstSend: string;
   setupTables(tables: TableStore): void;
-  checks(built: Workflow, tables: TableStore): [string, boolean][];
+  /** Single-workflow checks (flows 1-2). */
+  checks?: (built: Workflow, tables: TableStore) => [string, boolean][];
+  /** Multi-workflow checks (flow 4): run against every workflow instead. */
+  checksAll?: (workflows: Workflow[], tables: TableStore) => [string, boolean][];
+}
+
+function setupPosts(tables: TableStore): void {
+  tables.createTable({
+    name: 'posts',
+    label: 'Posts',
+    columns: [
+      { name: 'caption', label: 'Caption', type: 'text' },
+      { name: 'image', label: 'Image', type: 'text' },
+    ],
+    displayField: 'caption',
+  });
+}
+
+/** The workflow with the most `want` step types (ties: first listed). */
+function bestMatch(workflows: Workflow[], want: string[]): Workflow | undefined {
+  let best: Workflow | undefined;
+  let bestHits = -1;
+  for (const wf of workflows) {
+    const types = wf.steps.map((s) => s.type);
+    const hits = want.filter((t) => types.includes(t)).length;
+    if (hits > bestHits) {
+      best = wf;
+      bestHits = hits;
+    }
+  }
+  return bestHits > 0 ? best : undefined;
 }
 
 const CASES: EvalCase[] = [
@@ -118,6 +171,64 @@ const CASES: EvalCase[] = [
         [`conditional edge with when ${wantWhen}`, edgeOk],
         emptyCheck(built, tables),
       ];
+    },
+  },
+  {
+    name: 'flow 4 (new customer + photo post)',
+    firstSend: flow4ExampleUser,
+    // Both lists pre-exist (the worked example teaches skipping
+    // create_table when the lists section already shows them): the 19-call
+    // build has one call of headroom under the 20-call cap, so the eval
+    // must not spend calls on table setup.
+    setupTables: (tables) => {
+      setupCustomers(tables);
+      setupPosts(tables);
+    },
+    checksAll: (workflows, tables) => {
+      const email = bestMatch(workflows, FLOW4_EMAIL_STEPS);
+      // One reducer matching both branches is a single-reducer build, not
+      // flow 4: the photo reducer must be a SEPARATE workflow.
+      let photo = bestMatch(workflows, FLOW4_PHOTO_STEPS);
+      if (photo && email && photo.id === email.id) photo = undefined;
+      const out: [string, boolean][] = [
+        [`two reducers built (found ${workflows.length})`, workflows.length >= 2],
+        ['email reducer found', email !== undefined],
+        ['photo reducer found', photo !== undefined],
+      ];
+      if (email) {
+        const stepTypes = email.steps.map((s) => s.type);
+        out.push([
+          `email trigger is ${email.trigger.type} (want trigger.gmailButton or trigger.email)`,
+          email.trigger.type === 'trigger.gmailButton' || email.trigger.type === 'trigger.email',
+        ]);
+        for (const t of FLOW4_EMAIL_STEPS) {
+          out.push([`email step ${t} present`, stepTypes.includes(t)]);
+        }
+        const classify = email.steps.find((s) => s.type === 'ai.classify');
+        const flag = email.steps.find((s) => s.type === 'notify');
+        const wantWhen = classify ? `${classify.id}.choice == 'yes'` : '(no classify step)';
+        out.push([
+          `conditional edge to notify with when ${wantWhen}`,
+          classify !== undefined &&
+            flag !== undefined &&
+            email.edges.some((e) => e.from === classify.id && e.to === flag.id && e.when === wantWhen),
+        ]);
+        const [label, ok] = emptyCheck(email, tables);
+        out.push([`email ${label}`, ok]);
+      }
+      if (photo) {
+        const stepTypes = photo.steps.map((s) => s.type);
+        out.push([
+          `photo trigger is ${photo.trigger.type} (want trigger.upload)`,
+          photo.trigger.type === 'trigger.upload',
+        ]);
+        for (const t of FLOW4_PHOTO_STEPS) {
+          out.push([`photo step ${t} present`, stepTypes.includes(t)]);
+        }
+        const [label, ok] = emptyCheck(photo, tables);
+        out.push([`photo ${label}`, ok]);
+      }
+      return out;
     },
   },
 ];
@@ -203,7 +314,9 @@ async function runCase(c: EvalCase, gateway: Gateway, track: () => { toolCalls: 
   }
 
   const built = repo.getWorkflow(wf.id)!;
-  const checks = c.checks(built, tables);
+  const checks = c.checksAll
+    ? c.checksAll(repo.listWorkflows(), tables)
+    : c.checks!(built, tables);
   for (const [label, ok] of checks) console.log(`  ${ok ? 'ok' : 'MISSING'}: ${label}`);
   const failed = checks.filter(([, ok]) => !ok);
   const t = track();

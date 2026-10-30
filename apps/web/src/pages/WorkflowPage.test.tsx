@@ -385,3 +385,94 @@ describe('WorkflowPage helper panel', () => {
     expect(agentPosts).toHaveLength(1);
   });
 });
+
+describe('WorkflowPage agent switch seam', () => {
+  class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    onmessage: ((msg: { data: string }) => void) | null = null;
+    close() {}
+    constructor() {
+      FakeEventSource.instances.push(this);
+    }
+  }
+
+  function photoWorkflow(): Workflow {
+    return {
+      id: 'wf-photo',
+      name: 'Photo posts',
+      description: 'Turns product photos into posts.',
+      version: 1,
+      status: 'off',
+      trigger: {
+        id: 'trigger',
+        type: 'trigger.upload',
+        title: 'Photo upload',
+        summary: 'Runs when you drop a photo.',
+        config: { prompt: 'Drop a product photo here' },
+        inputs: {},
+        position: { x: 100, y: 100 },
+      },
+      steps: [],
+      edges: [],
+    };
+  }
+
+  function PathProbe({ onPath }: { onPath: (path: string) => void }) {
+    const location = useLocation();
+    onPath(`${location.pathname}${location.search}`);
+    return null;
+  }
+
+  function emitAgentEvent(workflowId: string, event: unknown) {
+    const data = JSON.stringify({ type: 'agent', workflowId, event });
+    for (const inst of FakeEventSource.instances) inst.onmessage?.({ data });
+  }
+
+  test('a switched event navigates to the new reducer in design mode', async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+    // The server only lists the new reducer AFTER the switch: resolving the
+    // new page proves the handler invalidated the workflows list first.
+    let listed: Workflow[] = [workflow()];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        const json = async () => {
+          if (url === '/api/workflows') return listed;
+          if (url === '/api/runs?workflowId=flow-1') return [RUN];
+          if (url === '/api/runs/run-1') return RUN_DETAIL;
+          if (url === '/api/workflows/flow-1') return DESIGN_DETAIL;
+          if (url === '/api/workflows/flow-1/agent') return [];
+          if (url === '/api/workflows/wf-photo') return { ...photoWorkflow(), problems: [] };
+          if (url === '/api/workflows/wf-photo/agent') return [];
+          throw new Error(`unexpected fetch: ${url}`);
+        };
+        return { ok: true, status: 200, json } as Response;
+      }),
+    );
+    let path = '';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={['/reducers/flow-1']}>
+            <PathProbe onPath={(p) => { path = p; }} />
+            <Routes>
+              <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Test flow');
+    expect(path).toBe('/reducers/flow-1');
+
+    listed = [workflow(), photoWorkflow()];
+    await act(async () => {
+      emitAgentEvent('flow-1', { type: 'switched', workflowId: 'wf-photo' });
+    });
+    await screen.findByText('Photo posts');
+    expect(path).toBe('/reducers/wf-photo?mode=design');
+  });
+});

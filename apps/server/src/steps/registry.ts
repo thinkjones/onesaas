@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import type { FileStore } from '../files/store.js';
 import type { Gateway } from '../models/gateway.js';
 import type { ImageModels } from '../models/image.js';
@@ -7,6 +8,7 @@ import { askExecutor } from './approval.js';
 import { createEventExecutor, freeBusyExecutor } from './calendar.js';
 import { classifyExecutor } from './classify.js';
 import { cutoutExecutor, editExecutor, generateExecutor } from './image.js';
+import { draftPostExecutor, notifyExecutor } from './meta.js';
 import { insertExecutor, queryExecutor, upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
@@ -35,6 +37,10 @@ export interface StepContext {
   tables: TableStore;
   bridge: Bridge;
   signal: AbortSignal;
+  // The engine's own event emitter (injected per step like `signal`): the
+  // notify step emits its toast through it. Optional so older callers keep
+  // working; the engine always supplies it.
+  events?: EventEmitter;
   // Image models + file store for the image.* steps. Optional so older
   // callers keep working; the image executors fail readably when absent.
   image?: ImageModels;
@@ -109,4 +115,6 @@ export const executors: Record<string, Executor> = {
   'image.cutout': cutoutExecutor,
   'image.generate': generateExecutor,
   'image.edit': editExecutor,
+  'meta.draftPost': draftPostExecutor,
+  notify: notifyExecutor,
 };

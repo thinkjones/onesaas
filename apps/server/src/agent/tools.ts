@@ -19,6 +19,7 @@ export type AgentEvent =
   | { type: 'activity'; text: string }
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
+  | { type: 'switched'; workflowId: string }
   | { type: 'done' };
 
 export interface ToolContext {
@@ -508,6 +509,40 @@ const connect: ToolImpl = {
   },
 };
 
+const createWorkflow: ToolImpl = {
+  name: 'create_workflow',
+  description:
+    'Start a second chore reducer and keep building there. Use it when one sentence asks for two different jobs: finish the first reducer, then call this and build the second. Later calls in this turn target the new reducer.',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Short name, e.g. "Photo posts".' },
+      description: { type: 'string', description: 'One plain sentence saying what it does.' },
+    },
+    required: ['name', 'description'],
+    additionalProperties: false,
+  },
+  run: async (args: any, ctx: ToolContext) => {
+    const name = args?.name as unknown;
+    const description = args?.description as unknown;
+    if (typeof name !== 'string' || name.trim() === '') {
+      return problem('Give the new chore reducer a name.');
+    }
+    if (typeof description !== 'string' || description.trim() === '') {
+      return problem('Give the new chore reducer a description.');
+    }
+    const wf = ctx.ops.create({ name, description });
+    // Switch the conversation's target: everything after this call in the
+    // turn (including the loop's prompt rebuild) builds the new reducer.
+    ctx.workflowId = wf.id;
+    ctx.emit({ type: 'switched', workflowId: wf.id });
+    return {
+      result: `Created "${wf.name}" and switched to it. Set its trigger next.`,
+      activity: `Started a new chore reducer "${wf.name}".`,
+    };
+  },
+};
+
 const renameWorkflow: ToolImpl = {
   name: 'rename_workflow',
   description: 'Rename the chore reducer (and optionally change its description).',
@@ -578,7 +613,8 @@ const activate: ToolImpl = {
 const explain: ToolImpl = {
   name: 'explain',
   description:
-    'Look up a step, run, list or workflow so you can explain it to Dad in plain words. Read-only.',
+    'Look up a step, run, list or workflow so you can explain it to Dad in plain words. Read-only. Dad never sees the details, only a "looked it up" note — it cannot narrate progress. While building, prefer the Links line and the lists section above: they already show step ids and columns.',
+
   parameters: {
     type: 'object',
     properties: {
@@ -743,6 +779,7 @@ export const builderTools: AgentTool[] = [
   updateStep,
   removeStep,
   connect,
+  createWorkflow,
   renameWorkflow,
   testRunTool,
   activate,

@@ -320,6 +320,8 @@ test('every catalog entry has an executor', () => {
       'image.cutout',
       'image.edit',
       'image.generate',
+      'meta.draftPost',
+      'notify',
       'table.insert',
       'table.query',
       'table.upsert',

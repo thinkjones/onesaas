@@ -3,7 +3,7 @@ import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import AgentPanel from '../agent/AgentPanel.tsx';
-import { uploadPhoto, useWorkflow } from '../api.ts';
+import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
 import EmptyState from '../design/EmptyState.tsx';
@@ -32,7 +32,11 @@ export interface WorkflowPageProps {
  * Photo-triggered flows (trigger.upload) get an UploadDrop above the runtime
  * view: dropping a photo posts it to the upload route and jumps to the new
  * run. The helper panel sits on the right (380px, collapsible) in BOTH modes, at
- * the same tree position so switching modes never remounts it mid-turn. "Fix
+ * the same tree position so switching modes never remounts it mid-turn. When
+ * the agent starts a second reducer mid-turn (create_workflow), its `switched`
+ * event navigates this page to the new reducer's design view (the workflows
+ * list is invalidated first, so the new reducer resolves instead of showing
+ * not-found). "Fix
  * this step" sets `agentPrefill` to `"<title>" stopped with: <error>. Can you
  * help me fix it?` and opens design mode on the failed step; the panel
  * consumes the state as its initial input (clearing it on consume and on
@@ -74,6 +78,20 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     const state = location.state as { agentPrompt?: unknown } | null;
     return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
   });
+
+  // Follow the agent when it starts a second reducer: the `switched`
+  // event names the new reducer, and the web navigates there (design mode,
+  // where the build lands). Runs before the early returns below with every
+  // other hook; the handler no-ops until a switch arrives.
+  const handleAgentSwitch = useCallback(
+    (e: AgentEvent) => {
+      if (e.type !== 'switched') return;
+      void queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      navigate(`/reducers/${e.workflowId}?mode=design`);
+    },
+    [navigate, queryClient],
+  );
+  useAgentEvents(workflowId ?? '', handleAgentSwitch);
 
   const handleModeChange = useCallback(
     (next: WorkflowMode) => {

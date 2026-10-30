@@ -257,26 +257,26 @@ test('an argsError becomes a Problem result and the loop continues', async () =>
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
 });
 
-test('the 21st call is not executed and the tangled message is said', async () => {
-  expect(TOOL_CALL_CAP).toBe(20);
+test('the 31st call is not executed and the tangled message is said', async () => {
+  expect(TOOL_CALL_CAP).toBe(30);
   const { agent, calls, seen, conversations, wf } = setup([
-    { calls: Array.from({ length: 21 }, () => ({ name: 'add_step', args: { ...WRITE_ARGS } })) },
+    { calls: Array.from({ length: 31 }, () => ({ name: 'add_step', args: { ...WRITE_ARGS } })) },
   ]);
   await agent.send(wf.id, 'build lots');
   expect(calls).toHaveLength(1);
-  expect(seen.filter((s) => s.event.type === 'built')).toHaveLength(20);
+  expect(seen.filter((s) => s.event.type === 'built')).toHaveLength(30);
   const says = seen.filter((s) => s.event.type === 'say');
   expect(says).toHaveLength(1);
   expect(says[0]!.event).toEqual({ type: 'say', text: TANGLED_MESSAGE });
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
-  // Every assistant tool_call still gets a tool result (the 21st a not-run
+  // Every assistant tool_call still gets a tool result (the 31st a not-run
   // note) so the persisted history stays valid for the next model call.
   const conv = conversations.load(wf.id)!;
   const tools = conv.messages.filter((m) => m.role === 'tool') as unknown as {
     content: string;
   }[];
-  expect(tools).toHaveLength(21);
-  expect(tools[20]!.content.startsWith('Problem:')).toBe(true);
+  expect(tools).toHaveLength(31);
+  expect(tools[30]!.content.startsWith('Problem:')).toBe(true);
   expect(conv.messages[conv.messages.length - 1]).toMatchObject({
     role: 'assistant',
     content: TANGLED_MESSAGE,
@@ -669,6 +669,37 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
   const conv = reopened.load(s.wf.id)!;
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
   expect(conv.transcript[0]).toMatchObject({ role: 'dad', text: 'build it' });
+});
+
+test('after create_workflow the prompt rebuilds from the new reducer', async () => {
+  const { agent, calls, seen, wf } = setup([
+    {
+      calls: [
+        {
+          name: 'create_workflow',
+          args: { name: 'Photo posts', description: 'Turns product photos into posts.' },
+        },
+      ],
+    },
+    { text: 'both built' },
+  ]);
+  await agent.send(wf.id, 'build both');
+  expect(calls).toHaveLength(2);
+  // The second model call sees the NEW reducer (the switched target), not
+  // the send target.
+  const system = calls[1]!.messages.find((m) => m.role === 'system') as unknown as {
+    content: string;
+  };
+  expect(system.content).toContain('Name: Photo posts');
+  // The switched event keeps the ORIGINAL envelope (the open page), while
+  // naming the new reducer inside.
+  const switched = seen.filter((s) => s.event.type === 'switched');
+  expect(switched).toHaveLength(1);
+  expect(switched[0]!.workflowId).toBe(wf.id);
+  const event = switched[0]!.event as { type: string; workflowId: string };
+  expect(event.type).toBe('switched');
+  expect(event.workflowId).not.toBe(wf.id);
+  expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
 });
 
 test('endTurn with sibling calls runs the whole response then stops', async () => {

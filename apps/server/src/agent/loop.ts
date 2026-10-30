@@ -134,9 +134,11 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     let calls = 0;
     try {
       for (;;) {
-        // Rebuilt from the LATEST workflow every iteration: Dad may edit mid-turn.
-        const wf = repo.getWorkflow(workflowId);
-        if (!wf) throw new Error(`Unknown workflow: ${workflowId}`);
+        // Rebuilt from the LATEST workflow every iteration: Dad may edit
+        // mid-turn, and create_workflow may switch the target mid-turn — so
+        // this follows ctx.workflowId (the live target), not the send target.
+        const wf = repo.getWorkflow(ctx.workflowId);
+        if (!wf) throw new Error(`Unknown workflow: ${ctx.workflowId}`);
         const system = buildSystemPrompt({
           business: { timezone: serverTimezone() },
           workflow: wf,
@@ -168,7 +170,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
           const call = res.toolCalls[n]!;
           calls += 1;
           if (calls > TOOL_CALL_CAP) {
-            // The 21st call is NOT executed. This call and the rest of the
+            // The over-cap call is NOT executed. This call and the rest of the
             // response still get tool results — the API rejects an assistant
             // message whose tool_calls lack matching results on the next call.
             for (const skipped of res.toolCalls.slice(n)) {

@@ -70,12 +70,13 @@ function planEdges(n: number) {
   return Array.from({ length: n - 1 }, (_, i) => ({ from: `s${i + 1}`, to: `s${i + 2}` }));
 }
 
-test('builderTools exposes exactly the fourteen builder tools', () => {
+test('builderTools exposes exactly the fifteen builder tools', () => {
   expect(builderTools.map((t) => t.name).sort()).toEqual(
     [
       'ask_user',
       'propose_plan',
       'create_table',
+      'create_workflow',
       'set_trigger',
       'add_step',
       'update_step',
@@ -673,6 +674,33 @@ test('query_runs returns only runs for its own workflow', async () => {
   const out = await tool('query_runs').run({}, ctx);
   expect(out.result).toContain(ownRun.id);
   expect(out.result).not.toContain(otherRun.id);
+});
+
+test('create_workflow creates a workflow, switches the target, and emits switched', async () => {
+  const { ctx, events, repo } = setup();
+  const before = ctx.workflowId;
+  const out = await tool('create_workflow').run(
+    { name: 'Photo posts', description: 'Turns product photos into Facebook posts.' },
+    ctx,
+  );
+  expect(out.result.startsWith('Problem:')).toBe(false);
+  const created = repo.getWorkflow(ctx.workflowId)!;
+  expect(created.id).not.toBe(before);
+  expect(created.name).toBe('Photo posts');
+  const switched = events.filter((e) => e.type === 'switched');
+  expect(switched).toEqual([{ type: 'switched', workflowId: created.id }]);
+  expect(events.filter((e) => e.type === 'activity')).toHaveLength(1);
+});
+
+test('create_workflow without a name or description returns a Problem and switches nothing', async () => {
+  const { ctx, events } = setup();
+  const before = ctx.workflowId;
+  for (const args of [{ description: 'No name.' }, { name: 'No description.' }, {}]) {
+    const out = await tool('create_workflow').run(args, ctx);
+    expect(out.result.startsWith('Problem:')).toBe(true);
+  }
+  expect(ctx.workflowId).toBe(before);
+  expect(events.filter((e) => e.type === 'switched')).toEqual([]);
 });
 
 test('system prompt asks one question per call, max 3 per request', () => {

@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import type { FileRef, Run, StepRun, Workflow } from '@dad/shared';
 
 // Mirrors apps/server/src/engine/events.ts. The web package cannot import it
 // (server is not a dependency), so the shape is redeclared here.
-export type EngineEvent = { type: 'run'; run: Run } | { type: 'step'; stepRun: StepRun };
+export type EngineEvent =
+  | { type: 'run'; run: Run }
+  | { type: 'step'; stepRun: StepRun }
+  | { type: 'notify'; text: string };
 
 /** GET /api/runs/:id shape. `workflow` is the run's OWN pinned version. */
 export interface RunDetail {
@@ -317,6 +321,7 @@ export type AgentEvent =
   | { type: 'activity'; text: string }
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
+  | { type: 'switched'; workflowId: string }
   | { type: 'done' };
 
 /**
@@ -448,11 +453,15 @@ export function useLiveEvents(): void {
       if (e.type === 'run') {
         void client.invalidateQueries({ queryKey: ['run', e.run.id] });
         void client.invalidateQueries({ queryKey: ['runs', e.run.workflowId] });
-      } else {
+      } else if (e.type === 'step') {
         // Step events carry no workflowId, so the runs lists are invalidated
         // by prefix instead of per workflow.
         void client.invalidateQueries({ queryKey: ['run', e.stepRun.runId] });
         void client.invalidateQueries({ queryKey: ['runs'] });
+      } else if (e.type === 'notify') {
+        // A notify step's in-app toast. Agent envelopes also arrive on this
+        // stream but carry no EngineEvent type, so they fall through silently.
+        toast(e.text);
       }
     };
     const connect = () => {
