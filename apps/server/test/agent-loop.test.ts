@@ -589,3 +589,95 @@ test("ops onChange reaches the conversation only for Dad's edits", async () => {
   ops.move(wf.id, 'trigger', { x: 1, y: 1 });
   expect(conversations.load(wf.id)!.messages).toHaveLength(1);
 });
+
+test("a gateway failure on the first call still persists Dad's message and ends the turn", async () => {
+  const s = setup([]);
+  const boom: Gateway = {
+    chatJson: s.gateway.chatJson,
+    chatTools: async (o: ChatToolsOptions) => {
+      s.calls.push(o);
+      throw new Error('model exploded');
+    },
+  };
+  const agent = createBuilderAgent({
+    gateway: boom,
+    ops: s.ops,
+    tables: s.tables,
+    repo: s.repo,
+    engine: {} as never,
+    events: s.agentEvents,
+    conversations: s.conversations,
+    testRun: s.testRun,
+  });
+  await expect(agent.send(s.wf.id, 'hello?')).rejects.toThrow('model exploded');
+  expect(agent.isBusy(s.wf.id)).toBe(false);
+  // A terminal event is still emitted: done closes the turn.
+  expect(s.seen[s.seen.length - 1]!.event).toEqual({ type: 'done' });
+  // Dad sees a failure line, not silence.
+  const says = s.seen.filter((e) => e.event.type === 'say');
+  expect(says).toHaveLength(1);
+  expect((says[0]!.event as { text: string }).text).toContain('Something went wrong');
+  // Dad's message survived: a reopened store sees it.
+  const reopened = createConversationStore(s.db);
+  const conv = reopened.load(s.wf.id)!;
+  expect(conv.messages).toEqual([{ role: 'user', content: 'hello?' }]);
+  expect(conv.transcript.map((t) => t.role)).toEqual(['dad', 'agent']);
+});
+
+test('a mid-turn gateway failure persists the partial turn and ends it', async () => {
+  const s = setup([]);
+  const { gateway: scripted } = scriptedGateway([
+    { calls: [{ name: 'add_step', args: { ...WRITE_ARGS } }] },
+  ]);
+  let n = 0;
+  const flaky: Gateway = {
+    chatJson: s.gateway.chatJson,
+    chatTools: async (o: ChatToolsOptions) => {
+      n += 1;
+      s.calls.push(o);
+      if (n === 2) throw new Error('rate limited');
+      return scripted.chatTools(o);
+    },
+  };
+  const agent = createBuilderAgent({
+    gateway: flaky,
+    ops: s.ops,
+    tables: s.tables,
+    repo: s.repo,
+    engine: {} as never,
+    events: s.agentEvents,
+    conversations: s.conversations,
+    testRun: s.testRun,
+  });
+  await expect(agent.send(s.wf.id, 'build it')).rejects.toThrow('rate limited');
+  expect(agent.isBusy(s.wf.id)).toBe(false);
+  expect(s.calls).toHaveLength(2);
+  // One tool already executed: its built event was observed.
+  expect(s.seen.some((e) => e.event.type === 'built')).toBe(true);
+  expect(s.seen[s.seen.length - 1]!.event).toEqual({ type: 'done' });
+  // Partial state persisted: user + assistant + tool result.
+  const reopened = createConversationStore(s.db);
+  const conv = reopened.load(s.wf.id)!;
+  expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+  expect(conv.transcript[0]).toMatchObject({ role: 'dad', text: 'build it' });
+});
+
+test('endTurn with sibling calls runs the whole response then stops', async () => {
+  const { agent, seen, calls, conversations, wf } = setup([
+    {
+      calls: [
+        { name: 'add_step', args: { ...WRITE_ARGS } },
+        { name: 'ask_user', args: { question: 'Which list?', options: ['A', 'B'] } },
+      ],
+    },
+  ]);
+  await agent.send(wf.id, 'build and ask');
+  // The model is not called again after the endTurn response.
+  expect(calls).toHaveLength(1);
+  const kinds = seen.map((s) => s.event.type);
+  expect(kinds).toContain('built');
+  expect(kinds).toContain('ask');
+  expect(kinds[kinds.length - 1]).toBe('done');
+  const conv = conversations.load(wf.id)!;
+  expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool']);
+});
