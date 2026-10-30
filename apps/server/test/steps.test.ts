@@ -302,6 +302,8 @@ test('every catalog entry has an executor', () => {
       'ai.extract',
       'ai.write',
       'approval.ask',
+      'calendar.createEvent',
+      'calendar.freeBusy',
       'gmail.draftReply',
       'gmail.read',
       'table.upsert',

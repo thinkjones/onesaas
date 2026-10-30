@@ -2,6 +2,7 @@ import type { Gateway } from '../models/gateway.js';
 import type { TableStore } from '../tables/store.js';
 import { extractExecutor, writeExecutor } from './ai.js';
 import { askExecutor } from './approval.js';
+import { createEventExecutor, freeBusyExecutor } from './calendar.js';
 import { upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
@@ -10,14 +11,16 @@ import {
   readExecutor,
 } from './trigger.js';
 
-// Structural stand-in for the Task 8 bridge: only the call shape Task 6
-// needs. The real bridge satisfies this interface structurally.
+// Structural stand-in for the Task 8 bridge: the call shape executors need
+// (M4 adds the tab option: reads run in worker tabs, visible acts in the
+// active tab). The real bridge satisfies this interface structurally.
 export interface Bridge {
   call(
     site: 'gmail' | 'calendar' | 'meta',
     action: string,
     input: unknown,
     timeoutMs?: number,
+    opts?: { tab?: 'worker' | 'active' },
   ): Promise<unknown>;
 }
 
@@ -68,5 +71,7 @@ export const executors: Record<string, Executor> = {
   'table.upsert': upsertExecutor,
   'gmail.read': readExecutor,
   'gmail.draftReply': draftReplyExecutor,
+  'calendar.freeBusy': freeBusyExecutor,
+  'calendar.createEvent': createEventExecutor,
   'approval.ask': askExecutor,
 };

@@ -122,6 +122,32 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({ threadId: z.string(), body: z.string() }),
     outputSchema: z.object({ drafted: z.literal(true) }),
   },
+  'calendar.freeBusy': {
+    type: 'calendar.freeBusy',
+    kind: 'fetch',
+    title: 'Check calendar',
+    description: 'Checks whether a time is free on your calendar.',
+    configSchema: z.object({}),
+    inputSchema: z.object({ start: z.string(), end: z.string() }),
+    outputSchema: z.object({
+      free: z.boolean(),
+      clashes: z.array(z.object({ title: z.string(), start: z.string(), end: z.string() })),
+    }),
+  },
+  'calendar.createEvent': {
+    type: 'calendar.createEvent',
+    kind: 'act',
+    title: 'Add calendar event',
+    description: 'Adds an event to your calendar.',
+    configSchema: z.object({ titleTemplate: z.string().optional() }),
+    inputSchema: z.object({
+      title: z.string(),
+      start: z.string(),
+      end: z.string(),
+      details: z.string().optional(),
+    }),
+    outputSchema: z.object({ created: z.boolean() }),
+  },
   'approval.ask': {
     type: 'approval.ask',
     kind: 'act',

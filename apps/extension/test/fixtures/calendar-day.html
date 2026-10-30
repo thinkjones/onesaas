@@ -1,0 +1,33 @@
+<!--
+  SYNTHETIC FIXTURE — hand-authored, NOT saved from Google Calendar.
+  Approximates the Calendar day-view DOM: a role="grid" day container holding
+  event chips with data-eventid + descriptive aria-labels shaped as
+  "<title>, <Month D, YYYY>, <start> – <end>" (see lib/calendar/freeBusy.ts
+  for the assumed format). MUST be replaced with a real saved day view
+  (DevTools "Copy outerHTML" of the day grid, private bits removed) before
+  trusting adapter behavior. All data below is clearly fake.
+-->
+<div role="main">
+  <div role="grid" aria-label="Day view">
+    <div role="row">
+      <div role="gridcell">
+        <div role="button" data-eventid="evt_dentist_001" aria-label="Dentist checkup, November 3, 2026, 9:00 AM – 10:00 AM">Dentist checkup</div>
+      </div>
+    </div>
+    <div role="row">
+      <div role="gridcell">
+        <div role="button" data-eventid="evt_lunch_002" aria-label="Lunch with Priya, Bob, November 3, 2026, 12:00 PM – 1:00 PM">Lunch with Priya, Bob</div>
+      </div>
+    </div>
+    <div role="row">
+      <div role="gridcell">
+        <div role="button" data-eventid="evt_fence_003" aria-label="Fence quote – Sarah, November 3, 2026, 3:00 PM – 4:00 PM">Fence quote – Sarah</div>
+      </div>
+    </div>
+    <div role="row">
+      <div role="gridcell">
+        <div role="button" data-eventid="evt_holiday_004" aria-label="Election Day, November 3, 2026">Election Day</div>
+      </div>
+    </div>
+  </div>
+</div>
