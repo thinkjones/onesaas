@@ -57,6 +57,55 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({}),
     outputSchema: z.object({ payload: z.unknown() }),
   },
+  'trigger.email': {
+    type: 'trigger.email',
+    kind: 'trigger',
+    title: 'New email',
+    description: 'Runs when a new customer email arrives.',
+    sample: {
+      email: {
+        from: 'jordan@example.com',
+        fromName: 'Jordan Lee',
+        subject: 'Booking for Saturday evening',
+        snippet: 'Hi! Can I book a table for 4 this Saturday at 7pm? Thanks!',
+        threadId: 'thread_booking_001',
+      },
+    },
+    // The engine validates schemas as guards only (originals flow through),
+    // so this .default() NEVER applies at runtime: the email trigger module
+    // must apply it manually (config.onlyCustomerEmails ?? true). Same
+    // caveat as approval.ask's question default.
+    configSchema: z.object({
+      onlyCustomerEmails: z.boolean().default(true),
+      matching: z.string().optional(),
+    }),
+    inputSchema: z.object({}),
+    // No body: the inbox watcher reads list rows, which carry no message
+    // text. Flows that need the body add a gmail.read step on the threadId.
+    outputSchema: z.object({
+      email: z.object({
+        threadId: z.string(),
+        from: z.string(),
+        fromName: z.string(),
+        subject: z.string(),
+        snippet: z.string(),
+      }),
+    }),
+  },
+  'ai.classify': {
+    type: 'ai.classify',
+    kind: 'enrich',
+    title: 'Sort into options',
+    description: 'Sorts text into one of your options.',
+    configSchema: z.object({
+      question: z.string(),
+      // Guard-only default (see trigger.email above): the executor applies
+      // (config.options ?? ['yes', 'no']) manually.
+      options: z.array(z.string()).default(['yes', 'no']),
+    }),
+    inputSchema: z.object({ text: z.string() }),
+    outputSchema: z.object({ choice: z.string() }),
+  },
   'ai.extract': {
     type: 'ai.extract',
     kind: 'enrich',

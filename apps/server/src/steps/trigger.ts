@@ -25,6 +25,13 @@ export const manualExecutor: Executor = async (_config, input, _ctx) => {
   return { output: input, why: 'Started manually.' };
 };
 
+export const emailExecutor: Executor = async (_config, input, _ctx) => {
+  const { fromName, subject } = senderBits(
+    (input as Record<string, unknown> | null | undefined)?.['email'],
+  );
+  return { output: input, why: `A new email arrived from ${fromName} ("${subject}").` };
+};
+
 export const readExecutor: Executor = async (_config, input, ctx) => {
   const out = (await ctx.bridge.call('gmail', 'readOpenEmail', {
     threadId: (input as { threadId: string }).threadId,

@@ -68,6 +68,16 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function putJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as T;
+}
+
 export function getWorkflows(): Promise<Workflow[]> {
   return getJson('/api/workflows');
 }
@@ -109,6 +119,16 @@ export async function revokePairing(): Promise<{ revoked: boolean }> {
   const res = await fetch('/api/pairing/revoke', { method: 'POST' });
   if (!res.ok) await throwApiError(res);
   return (await res.json()) as { revoked: boolean };
+}
+
+/** GET /api/settings: the stored business timezone, or null when unset. */
+export function getSettings(): Promise<{ timezone: string | null }> {
+  return getJson('/api/settings');
+}
+
+/** PUT /api/settings: store the business timezone (IANA name). */
+export function putSettings(timezone: string): Promise<{ timezone: string }> {
+  return putJson('/api/settings', { timezone });
 }
 
 /** Subscribes to the SSE stream; closes the connection on unmount. */
@@ -360,6 +380,31 @@ export function useAgentEvents(workflowId: string, onEvent: (e: AgentEvent) => v
 
 /** Reconnect backoffs after an EventSource error; the last delay repeats. */
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000];
+
+/**
+ * First-load timezone sync: GETs the stored business timezone and, when none
+ * is stored, PUTs the browser's zone. Runs once per mount; a double-mount
+ * races two idempotent PUTs of the same value, which is harmless. Failures
+ * are swallowed: the server falls back to its own zone, so a failed sync
+ * must never break the app.
+ */
+export function useTimezoneSync(): void {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { timezone } = await getSettings();
+        if (cancelled || timezone) return;
+        await putSettings(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      } catch {
+        // Best-effort only (see above).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+}
 
 /**
  * Subscribes to /api/events once and invalidates run queries per event.

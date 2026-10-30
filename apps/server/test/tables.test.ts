@@ -219,6 +219,48 @@ test('date columns accept Date objects', () => {
   expect(rows[0]!['at']).toBe('2026-01-02T03:04:05.000Z');
 });
 
+test('datetime columns store ISO with offset verbatim', () => {
+  const store = freshStore();
+  store.createTable({
+    name: 'events',
+    label: 'Events',
+    columns: [{ name: 'starts_at', label: 'Starts at', type: 'datetime' }],
+    displayField: 'starts_at',
+  });
+  store.insert('events', { starts_at: '2026-10-30T19:00:00-07:00' });
+  const rows = store.query('events');
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!['starts_at']).toBe('2026-10-30T19:00:00-07:00');
+});
+
+test('datetime columns reject unparseable values', () => {
+  const store = freshStore();
+  store.createTable({
+    name: 'events',
+    label: 'Events',
+    columns: [{ name: 'starts_at', label: 'Starts at', type: 'datetime' }],
+    displayField: 'starts_at',
+  });
+  expect(() => store.insert('events', { starts_at: 'not a date at all xyz' })).toThrow(
+    'Invalid datetime for column starts_at',
+  );
+  expect(store.query('events')).toEqual([]);
+});
+
+test('datetime columns accept Date objects as ISO', () => {
+  const store = freshStore();
+  store.createTable({
+    name: 'events',
+    label: 'Events',
+    columns: [{ name: 'starts_at', label: 'Starts at', type: 'datetime' }],
+    displayField: 'starts_at',
+  });
+  store.insert('events', { starts_at: new Date('2026-10-30T19:00:00-07:00') });
+  const rows = store.query('events');
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!['starts_at']).toBe('2026-10-31T02:00:00.000Z');
+});
+
 test('query rejects negative or non-integer limit', () => {
   const store = freshStore();
   store.createTable({

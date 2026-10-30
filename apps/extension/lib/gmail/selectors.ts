@@ -32,6 +32,16 @@ export const SELECTORS = {
   statusPill: '.dad-status-pill',
   /** Gmail main pane; MutationObserver root (falls back to body). */
   mainRoot: 'div[role="main"]',
+  /** Unread inbox rows (read rows are tr.zA WITHOUT zE). */
+  inboxRow: 'tr.zA.zE',
+  /** Inbox list container; the watcher observes this (falls back to mainRoot). */
+  inboxList: 'div[role="main"] table tbody',
+  /** Sender chip inside a list row: text is the name, `email` attr the address. */
+  inboxSender: 'span.yP',
+  /** Subject line inside a list row. */
+  inboxSubject: 'span.bog',
+  /** Snippet (preview text) inside a list row. */
+  inboxSnippet: 'span.y2',
 } as const;
 
 /**

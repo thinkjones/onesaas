@@ -8,7 +8,7 @@ import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
 import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
-import type { Pairing } from './bridge/pairing.js';
+import { TIMEZONE_KEY, type Pairing, type PairingStore } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
@@ -54,6 +54,8 @@ export function createApp(deps: AppDeps): Hono {
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
   const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
+  const settings = deps.settings as PairingStore | undefined;
+  const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -85,6 +87,29 @@ export function createApp(deps: AppDeps): Hono {
     pairing.revoke();
     bridge.dropActive();
     return c.json({ revoked: true });
+  });
+
+  // Business timezone (IANA name). The web app GETs on first load and PUTs
+  // the browser zone when none is stored; AI steps read it via StepContext.
+  app.get('/api/settings', (c) => {
+    if (!settings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json({ timezone: settings.get(TIMEZONE_KEY) ?? null });
+  });
+
+  const settingsBody = z.object({ timezone: z.string().min(1) }).strict();
+
+  app.put('/api/settings', async (c) => {
+    if (!settings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid settings body' }, 400);
+    }
+    const parsed = settingsBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid settings body' }, 400);
+    setTimezone(parsed.data.timezone);
+    return c.json({ timezone: parsed.data.timezone });
   });
 
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the

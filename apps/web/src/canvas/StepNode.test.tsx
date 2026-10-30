@@ -39,4 +39,46 @@ describe('StepNode', () => {
     expect(screen.getByText('Dad checks the reply before it is drafted.')).toBeDefined();
     expect(screen.queryByText('Waiting for you')).toBeNull();
   });
+
+  test('a trigger.email box carries the Gmail-open note', () => {
+    const trigger: StepInstance = {
+      id: 'trigger',
+      type: 'trigger.email',
+      title: 'New email',
+      summary: 'Runs when a new customer email arrives.',
+      config: {},
+      inputs: {},
+      position: { x: 0, y: 0 },
+    };
+    const props = { id: trigger.id, data: { step: trigger, kind: 'trigger' } } as NodeProps<
+      Node<StepNodeData>
+    >;
+    render(
+      <ReactFlowProvider>
+        <StepNode {...props} />
+      </ReactFlowProvider>,
+    );
+    expect(screen.getByText('Works while Gmail is open in Chrome.')).toBeDefined();
+  });
+
+  test('other trigger boxes carry no Gmail-open note', () => {
+    const trigger: StepInstance = {
+      id: 'trigger',
+      type: 'trigger.gmailButton',
+      title: 'Gmail button',
+      summary: 'Runs when you click the button in Gmail.',
+      config: {},
+      inputs: {},
+      position: { x: 0, y: 0 },
+    };
+    const props = { id: trigger.id, data: { step: trigger, kind: 'trigger' } } as NodeProps<
+      Node<StepNodeData>
+    >;
+    render(
+      <ReactFlowProvider>
+        <StepNode {...props} />
+      </ReactFlowProvider>,
+    );
+    expect(screen.queryByText('Works while Gmail is open in Chrome.')).toBeNull();
+  });
 });

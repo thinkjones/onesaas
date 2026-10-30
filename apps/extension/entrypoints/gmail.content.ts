@@ -1,5 +1,6 @@
 import type { RunStatus } from '@dad/shared';
 import { SELECTORS } from '../lib/gmail/selectors.js';
+import { watchInbox } from '../lib/gmail/inboxWatcher.js';
 import { readOpenEmail, readThreadId } from '../lib/gmail/read.js';
 import { draftReply, WRONG_THREAD } from '../lib/gmail/draftReply.js';
 import { injectButtons, setButtonStatus, type WorkflowButtonItem } from '../lib/gmail/button.js';
@@ -116,6 +117,20 @@ export default defineContentScript({
     });
 
     refresh();
+
+    // Always-on email trigger: every new unread thread fans out server-side
+    // (workflowId '*') to all ON trigger.email workflows. No-ops in thread
+    // view (no list rows match there). Same drop-on-unreachable contract as
+    // button clicks; the watcher emits once per page session, so a dropped
+    // send waits for a reload. Accepted: list tabs re-render often, and a
+    // retry queue is M5 scope.
+    watchInbox(document, (email) => {
+      void browser.runtime
+        .sendMessage({ action: 'trigger', workflowId: '*', triggerType: 'email', email })
+        .catch(() => {
+          // Background unreachable (extension reloaded); drop like clicks do.
+        });
+    });
 
     // Late-tab pull: the server sends `buttons` only on hello, so a tab that
     // boots after that push (pair-then-open-Gmail, reload with socket up)

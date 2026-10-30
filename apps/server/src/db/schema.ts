@@ -35,6 +35,11 @@ export const conversations = sqliteTable('conversations', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const seenEmails = sqliteTable('seen_emails', {
+  threadId: text('thread_id').notNull().primaryKey(),
+  seenAt: text('seen_at').notNull(),
+});
+
 export const stepRuns = sqliteTable('step_runs', {
   id: text('id').notNull().primaryKey(),
   runId: text('run_id').notNull(),

@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS "step_runs" (
   "why" TEXT,
   "started_at" TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS "seen_emails" (
+  "thread_id" TEXT NOT NULL PRIMARY KEY,
+  "seen_at" TEXT NOT NULL
+);
 `;
 
 export interface Repo {

@@ -462,7 +462,11 @@ export function createBackground(deps: {
    * sending immediately would no-op (or the server would drop the pre-auth
    * trigger), losing the first click silently.
    */
-  async function sendTrigger(workflowId: unknown, email: unknown): Promise<void> {
+  async function sendTrigger(
+    workflowId: unknown,
+    email: unknown,
+    triggerType: unknown,
+  ): Promise<void> {
     connect();
     const start = Date.now();
     const opened = await waitForOpen(TRIGGER_TIMEOUT_MS);
@@ -474,10 +478,14 @@ export function createBackground(deps: {
     if (remaining <= 0) return;
     const ready = await waitForReady(remaining);
     if (!ready) return;
+    // Unknown/missing trigger types fall back to gmailButton (the only
+    // sender before the inbox watcher): the server drops unknown types, so
+    // guessing wrong here would lose the trigger silently.
+    const type = triggerType === 'email' ? 'email' : 'gmailButton';
     send({
       type: 'trigger',
       workflowId,
-      triggerType: 'gmailButton',
+      triggerType: type,
       payload: email,
     });
   }
@@ -507,8 +515,9 @@ export function createBackground(deps: {
     }
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
-      // through untouched as the trigger payload.
-      return sendTrigger(msg['workflowId'], msg['email']);
+      // through untouched as the trigger payload. The inbox watcher sends
+      // workflowId '*' with triggerType 'email' for server-side fan-out.
+      return sendTrigger(msg['workflowId'], msg['email'], msg['triggerType']);
     }
     if (msg['action'] === 'getButtons') {
       // Same shape as the fan-out so the content script reuses its

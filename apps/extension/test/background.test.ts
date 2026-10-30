@@ -720,6 +720,46 @@ describe('trigger relay', () => {
     expect(lastSocket().sent).toHaveLength(0);
     bg.dispose();
   });
+
+  it('passes triggerType email through for inbox-watcher fan-out', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    lastSocket().sent.length = 0;
+    const email = {
+      threadId: 'thread_fixture_abc123',
+      from: 'sarah@example.com',
+      fromName: 'Sarah Lee',
+      subject: 'Catering',
+      snippet: 'Do you cater?',
+    };
+    t.runtimeMessage({ action: 'trigger', workflowId: '*', triggerType: 'email', email });
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'trigger', workflowId: '*', triggerType: 'email', payload: email },
+    ]);
+    bg.dispose();
+  });
+
+  it('falls back to gmailButton for a missing triggerType', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    lastSocket().sent.length = 0;
+    const email = { threadId: 't1' };
+    t.runtimeMessage({ action: 'trigger', workflowId: 'wf1', email });
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'trigger', workflowId: 'wf1', triggerType: 'gmailButton', payload: email },
+    ]);
+    bg.dispose();
+  });
 });
 
 describe('reconnect + ping', () => {

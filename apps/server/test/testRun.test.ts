@@ -255,12 +255,14 @@ test('a manual-trigger test run reports usedSample=false and no sample prefix', 
   expect(story).toEqual(['Runs by hand.']);
 });
 
-test('testRun fails fast when an email trigger type has no sample', async () => {
+test('a trigger.email test run falls back to the booking sample', async () => {
   const { repo, testRun } = disconnected();
-  // trigger.email takes the email branch but has no catalog entry (hence no
-  // sample): the run must fail here, not later as a cryptic step failure.
   repo.saveWorkflow(triggerOnlyWorkflow('email-1', 'trigger.email'));
-  await expect(testRun('email-1')).rejects.toThrow('No sample for trigger type: trigger.email');
+  const { run, steps, usedSample } = await testRun('email-1');
+  expect(usedSample).toBe(true);
+  expect(run.status).toBe('done');
+  expect(run.triggerPayload).toEqual(catalog['trigger.email']!.sample);
+  expect(steps.map((s) => [s.stepId, s.status])).toEqual([['trigger', 'done']]);
 });
 
 test('testRun fails fast when a non-email trigger type has no sample', async () => {

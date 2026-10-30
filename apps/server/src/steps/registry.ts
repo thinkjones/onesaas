@@ -3,9 +3,11 @@ import type { TableStore } from '../tables/store.js';
 import { extractExecutor, writeExecutor } from './ai.js';
 import { askExecutor } from './approval.js';
 import { createEventExecutor, freeBusyExecutor } from './calendar.js';
+import { classifyExecutor } from './classify.js';
 import { upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
+  emailExecutor,
   gmailButtonExecutor,
   manualExecutor,
   readExecutor,
@@ -32,6 +34,23 @@ export interface StepContext {
   // True inside test runs ("Try it"): outside-world actions become previews.
   // Optional so existing live callers keep working; undefined means live.
   testMode?: boolean;
+  // Injectable clock + business timezone for date-aware AI steps. The
+  // composition root supplies both (timezone from settings, falling back to
+  // the server's Intl zone); tests fix them for deterministic prompts.
+  // Optional so older callers keep working: missing means "right now" in
+  // the server's own timezone.
+  now?: () => Date;
+  timezone?: string;
+}
+
+/** Wall-clock time for this run: the injected clock, else right now. */
+export function ctxNow(ctx: StepContext): Date {
+  return ctx.now?.() ?? new Date();
+}
+
+/** IANA business timezone for this run: settings, else the server zone. */
+export function ctxTimezone(ctx: StepContext): string {
+  return ctx.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 export interface ApprovalWait {
@@ -66,8 +85,10 @@ export type Executor = {
 export const executors: Record<string, Executor> = {
   'trigger.gmailButton': gmailButtonExecutor,
   'trigger.manual': manualExecutor,
+  'trigger.email': emailExecutor,
   'ai.extract': extractExecutor,
   'ai.write': writeExecutor,
+  'ai.classify': classifyExecutor,
   'table.upsert': upsertExecutor,
   'gmail.read': readExecutor,
   'gmail.draftReply': draftReplyExecutor,

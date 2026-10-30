@@ -33,16 +33,25 @@ export interface TableStore {
 // ColumnType → SQLite mapping:
 //   text → TEXT, number → REAL, boolean → INTEGER (true/false ↔ 1/0 on
 //   write/read), date → TEXT (ISO string, no format enforcement),
-//   email → TEXT + `@` validation on write.
+//   email → TEXT + `@` validation on write,
+//   datetime → TEXT (ISO with offset) + Date.parse validation on write.
 const SQLITE_TYPE: Record<ColumnType, string> = {
   text: 'TEXT',
   number: 'REAL',
   boolean: 'INTEGER',
   date: 'TEXT',
   email: 'TEXT',
+  datetime: 'TEXT',
 };
 
-const KNOWN_TYPES: ReadonlySet<string> = new Set(['text', 'number', 'boolean', 'date', 'email']);
+const KNOWN_TYPES: ReadonlySet<string> = new Set([
+  'text',
+  'number',
+  'boolean',
+  'date',
+  'email',
+  'datetime',
+]);
 
 // Physical system columns present on every table; reserved against user columns,
 // but allowed as exact-match where-keys.
@@ -87,6 +96,14 @@ function checkEmail(column: string, value: unknown): void {
   if (!String(value).includes('@')) throw new Error(`Invalid email for column ${column}`);
 }
 
+function checkDatetime(column: string, value: unknown): void {
+  if (value === null || value === undefined) return;
+  if (value instanceof Date) return;
+  if (Number.isNaN(Date.parse(String(value)))) {
+    throw new Error(`Invalid datetime for column ${column}`);
+  }
+}
+
 function sanitiseDef(def: TableDef): TableDef {
   return {
     name: sanitiseName(def.name),
@@ -127,6 +144,7 @@ export function createTableStore(db: Database): TableStore {
       const type = types.get(col);
       if (!type) continue;
       if (type === 'email') checkEmail(col, value);
+      if (type === 'datetime') checkDatetime(col, value);
       cells.push({ col, value: toStored(type, value) });
     }
     return cells;
@@ -235,6 +253,7 @@ export function createTableStore(db: Database): TableStore {
       }
       const keyType = def.columns.find((c) => c.name === key)!.type;
       if (keyType === 'email') checkEmail(key, keyValue);
+      if (keyType === 'datetime') checkDatetime(key, keyValue);
       const existing = db
         .prepare(
           `SELECT "id" FROM ${qident(physicalTableName(def.name))} WHERE ${qident(key)} = ?`,

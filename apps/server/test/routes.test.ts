@@ -118,3 +118,35 @@ test('GET /api/events streams engine events as SSE', async () => {
     await reader.cancel();
   }
 }, 5000);
+
+test('GET /api/settings returns null timezone on a fresh server', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const res = await app.request('/api/settings');
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ timezone: null });
+});
+
+test('PUT /api/settings stores the timezone and GET reads it back', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const put = await app.request('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ timezone: 'America/New_York' }),
+  });
+  expect(put.status).toBe(200);
+  expect(await put.json()).toEqual({ timezone: 'America/New_York' });
+  const get = await app.request('/api/settings');
+  expect(await get.json()).toEqual({ timezone: 'America/New_York' });
+});
+
+test('PUT /api/settings rejects empty and missing timezones', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  for (const body of ['{}', '{"timezone":""}', '{"timezone":42}']) {
+    const res = await app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    expect(res.status).toBe(400);
+  }
+});

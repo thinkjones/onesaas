@@ -11,6 +11,9 @@ export interface PairingStore {
 /** Storage key for the extension auth token. Lives outside M5's 'app' key. */
 export const EXTENSION_TOKEN_KEY = 'extension.token';
 
+/** Storage key for the business timezone (IANA name, posted by the web app). */
+export const TIMEZONE_KEY = 'app.timezone';
+
 const CODE_TTL_MS = 10 * 60 * 1000;
 
 export interface Pairing {

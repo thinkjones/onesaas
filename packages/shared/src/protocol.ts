@@ -62,7 +62,9 @@ export type ResultMessage = z.infer<typeof ResultMessage>;
 export const TriggerMessage = z.object({
   type: z.literal('trigger'),
   workflowId: z.string(),
-  triggerType: z.literal('gmailButton'),
+  // gmailButton: one workflow's button click. email: the inbox watcher fans
+  // out with workflowId '*' and the server starts every matching workflow.
+  triggerType: z.enum(['gmailButton', 'email']),
   payload: z.unknown(),
 });
 export type TriggerMessage = z.infer<typeof TriggerMessage>;
