@@ -1,19 +1,24 @@
+import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { Workflow } from '@dad/shared';
+import { Workflow, catalog } from '@dad/shared';
 import OpenAI from 'openai';
+import { createConversationStore } from './agent/conversations.js';
+import { createBuilderAgent, type BuilderAgent } from './agent/loop.js';
 import { createApp } from './app.js';
 import { createBridge } from './bridge/bridge.js';
 import { createPairing, createSettingsStore } from './bridge/pairing.js';
 import { openDb } from './db/connection.js';
 import { createRepo } from './db/repo.js';
 import { createEngine } from './engine/engine.js';
+import { createTestRunner } from './engine/testRun.js';
 import { createGateway } from './models/gateway.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
 import { createTableStore } from './tables/store.js';
 import { registerGmailButtonTrigger } from './triggers/gmailButton.js';
+import { createWorkflowOps } from './workflows/ops.js';
 
 // Warn-once: createServer() runs per test, so an unflagged warn would spam stderr.
 let warnedMissingKey = false;
@@ -32,6 +37,11 @@ export function createServer(opts?: { dbFile?: string }): {
   bridge: ReturnType<typeof createBridge>;
   gateway: ReturnType<typeof createGateway>;
   engine: ReturnType<typeof createEngine>;
+  ops: ReturnType<typeof createWorkflowOps>;
+  agent: BuilderAgent;
+  conversations: ReturnType<typeof createConversationStore>;
+  agentEvents: EventEmitter;
+  testRun: ReturnType<typeof createTestRunner>['testRun'];
 } {
   const dbFile = opts?.dbFile ?? 'data/app.db';
   // File DBs need their directory to exist; :memory: has no path to create.
@@ -59,6 +69,32 @@ export function createServer(opts?: { dbFile?: string }): {
   const engine = createEngine({ repo, executors, ctx: { gateway, tables, bridge } });
   registerGmailButtonTrigger({ bridge, engine, repo });
 
+  // ONE ops for the canvas routes and the builder agent. Dad's edits notify
+  // the agent's conversation; the agent's own ops must NOT self-notify.
+  const conversations = createConversationStore(db);
+  const agentEvents = new EventEmitter();
+  agentEvents.setMaxListeners(0); // Singleton + per-connection SSE subscribers: never warn.
+  let agent!: BuilderAgent;
+  const ops = createWorkflowOps({
+    repo,
+    tables,
+    catalog,
+    onChange: (wf, note, by) => {
+      if (by === 'dad') agent.noteManualChange(wf.id, note);
+    },
+  });
+  const { testRun } = createTestRunner({ repo, executors, ctx: { gateway, tables, bridge } });
+  agent = createBuilderAgent({
+    gateway,
+    ops,
+    tables,
+    repo,
+    engine,
+    events: agentEvents,
+    conversations,
+    testRun,
+  });
+
   // Seed flow 1 only into an empty workflow store (never overwrite user edits).
   // Workflow.parse fails loud on a broken seed file.
   if (repo.listWorkflows().length === 0) repo.saveWorkflow(Workflow.parse(flow1));
@@ -80,7 +116,7 @@ export function createServer(opts?: { dbFile?: string }): {
     });
   }
 
-  // AppDeps grows with repo + engine; app.ts casts on read per existing style.
-  const app = createApp({ bridge, pairing, repo, engine, tables });
-  return { app, db, tables, repo, pairing, bridge, gateway, engine };
+  // AppDeps grows with the shared ops + agent; app.ts casts on read per style.
+  const app = createApp({ bridge, pairing, repo, engine, tables, ops, agent, agentEvents });
+  return { app, db, tables, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun };
 }

@@ -4,7 +4,9 @@ import type { Workflow } from '@dad/shared';
 import { catalog } from '@dad/shared';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
+import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
 import type { Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
@@ -48,12 +50,17 @@ export function createApp(deps: AppDeps): Hono {
   const onWorkflowChange = deps.onWorkflowChange as
     | ((wf: Workflow, note: string, by: 'dad' | 'agent') => void)
     | undefined;
+  const agent = deps.agent as BuilderAgent | undefined;
+  const agentEvents = deps.agentEvents as EventEmitter | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
+  // The composition root shares ONE ops (so its onChange sees Dad's edits);
+  // direct createApp callers without one get a local instance as before.
   const ops =
-    repo && tables
+    (deps.ops as WorkflowOps | undefined) ??
+    (repo && tables
       ? createWorkflowOps({ repo, tables, catalog, onChange: onWorkflowChange })
-      : undefined;
+      : undefined);
 
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   injectors.set(app, injectWebSocket);
@@ -194,6 +201,38 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(fn(id, ...validatedArgs, { by: 'dad' }));
   });
 
+  const agentBody = z.object({ text: z.string().min(1) }).strict();
+
+  // One turn at a time per workflow: the 202 returns immediately and the turn
+  // runs in the background; a second send while busy is a 409.
+  app.post('/api/workflows/:id/agent', async (c) => {
+    if (!repo || !agent) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid agent body' }, 400);
+    }
+    const parsed = agentBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid agent body' }, 400);
+    // No await between the check and the send, so no second request can slip
+    // in: send sets the busy flag synchronously at call time.
+    if (agent.isBusy(id)) return c.json({ error: AGENT_BUSY_MESSAGE }, 409);
+    agent.send(id, parsed.data.text).catch((err) => {
+      console.error('[agent] turn failed:', err);
+    });
+    return c.json({}, 202);
+  });
+
+  app.get('/api/workflows/:id/agent', (c) => {
+    if (!repo || !agent) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    return c.json(agent.getTranscript(id));
+  });
+
   app.get('/api/runs', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     const workflowId = c.req.query('workflowId');
@@ -289,7 +328,11 @@ export function createApp(deps: AppDeps): Hono {
         // the stream) instead of surfacing an unhandled rejection.
         void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
       };
+      const onAgent = (e: { type: 'agent'; workflowId: string; event: unknown }): void => {
+        void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
+      };
       engine.events.on('event', onEvent);
+      agentEvents?.on('event', onAgent);
       try {
         await new Promise<void>((resolve) => {
           if (c.req.raw.signal.aborted) return resolve();
@@ -299,6 +342,7 @@ export function createApp(deps: AppDeps): Hono {
         // Always unsubscribe: one leaked listener per SSE connection would
         // accumulate on the singleton engine's emitter.
         engine.events.off('event', onEvent);
+        agentEvents?.off('event', onAgent);
       }
     });
   });

@@ -27,6 +27,13 @@ export const runs = sqliteTable('runs', {
   endedAt: text('ended_at'),
 });
 
+export const conversations = sqliteTable('conversations', {
+  workflowId: text('workflow_id').notNull().primaryKey(),
+  messages: text('messages').notNull(),
+  transcript: text('transcript').notNull().default('[]'),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const stepRuns = sqliteTable('step_runs', {
   id: text('id').notNull().primaryKey(),
   runId: text('run_id').notNull(),
