@@ -22,9 +22,12 @@ interface OutputField {
 /**
  * The escape step: runs the agent-written `code` (the body of
  * `(input) => output`) in a `node:vm` sandbox whose context holds ONLY the
- * deep-cloned input plus Math/Date/JSON/String/Number/Array/Object — no
- * require, process, fetch or globalThis leak — with a 250 ms timeout and
- * string/wasm code generation disabled. The output is validated against a
+ * deep-cloned input plus Math/Date/JSON/String/Number/Array/Object —
+ * direct reads of require/process/fetch throw, and string/wasm code
+ * generation is disabled — with a 250 ms timeout. Honest scope: this guards
+ * against buggy agent-written calculations, not malicious code (the host
+ * constructor chain stays reachable through the passed-in objects, so
+ * node:vm is not a security boundary here). The output is validated against a
  * zod object built at run time from `outputFields`; the why is the config's
  * `explanation`, one plain sentence the agent wrote for Dad.
  */
