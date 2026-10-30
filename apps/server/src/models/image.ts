@@ -1,4 +1,9 @@
-import { decodeMaskToRaster, parseImageStream, recordsOfKind } from '@meta-sam/parser';
+import {
+  decodeMaskToRaster,
+  InvalidSegmentationMaskError,
+  parseImageStream,
+  recordsOfKind,
+} from '@meta-sam/parser';
 import type { ResponsesEvent } from '@meta-sam/parser';
 import type OpenAI from 'openai';
 import sharp from 'sharp';
@@ -97,10 +102,22 @@ function clampBox(
   width: number,
   height: number,
 ): [number, number, number, number] | undefined {
-  const l = Math.min(Math.max(Math.round(left), 0), width - 1);
-  const t = Math.min(Math.max(Math.round(top), 0), height - 1);
-  const r = Math.min(Math.max(Math.round(right), l + 1), width);
-  const b = Math.min(Math.max(Math.round(bottom), t + 1), height);
+  const rl = Math.round(left);
+  const rt = Math.round(top);
+  const rr = Math.round(right);
+  const rb = Math.round(bottom);
+  const l = Math.min(Math.max(rl, 0), width - 1);
+  const t = Math.min(Math.max(rt, 0), height - 1);
+  const r = Math.min(Math.max(rr, l + 1), width);
+  const b = Math.min(Math.max(rb, t + 1), height);
+  // The parser validates boxes against the answer's own token frame, which
+  // need not be photo pixels. Clamping a mismatched frame would cut the wrong
+  // region and report success, so any clamp mutation throws loud instead.
+  if (l !== rl || t !== rt || r !== rr || b !== rb) {
+    throw new Error(
+      `SAM segmentation coordinates did not match this photo (box [${rl},${rt},${rr},${rb}] vs photo ${width}x${height}).`,
+    );
+  }
   if (r - l < 1 || b - t < 1) return undefined;
   return [l, t, r - l, b - t];
 }
@@ -185,8 +202,17 @@ async function parseMasks(body: unknown, width: number, height: number): Promise
   for (const record of recordsOfKind(result.records, 'mask')) {
     maskedIds.add(record.objectId);
     const score = record.confidence ?? 0;
+    // Only a broken mask payload falls through to the box fill below. The
+    // parser pre-validates payloads at parse time, so this ~never fires;
+    // operational failures (sharp in the raster pipeline) must throw loud
+    // rather than degrade silently into a rectangular cutout.
+    let raster: Uint8Array | undefined;
     try {
-      const raster = decodeMaskToRaster(record.mask);
+      raster = decodeMaskToRaster(record.mask);
+    } catch (err) {
+      if (!(err instanceof InvalidSegmentationMaskError)) throw err;
+    }
+    if (raster) {
       const placed = await rasterToPhotoMask(
         raster,
         record.mask.width,
@@ -199,8 +225,6 @@ async function parseMasks(body: unknown, width: number, height: number): Promise
         masks.push({ box: placed.box, maskPng: placed.maskPng, score });
         continue;
       }
-    } catch {
-      // A broken payload falls through to the box fill below.
     }
     const box = clampBox(
       record.bounds.left,

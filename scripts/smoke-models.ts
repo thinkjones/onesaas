@@ -1,8 +1,10 @@
 /**
  * Model smoke test. Run with: pnpm tsx scripts/smoke-models.ts
  *
- * Prints one check/cross line per model (Spark, Wonder, Image, SAM,
- * Transcribe, Glimmer). Needs MODEL_API_KEY in the environment.
+ * Prints one check/cross line per model (Spark, Wonder, Image, Image-edit,
+ * SAM, Transcribe, Glimmer). Needs MODEL_API_KEY in the environment.
+ * The SAM check sends the production metadata (one_bit masks + confidence)
+ * and fails if the answer carries no nonzero confidence.
  * Glimmer needs GLIMMER_BASE_URL too, and prints "skipped" without it.
  * The SAM photo defaults to scripts/fixtures/mug.jpg; override with
  * SMOKE_PHOTO_PATH.
@@ -63,29 +65,52 @@ async function checkWonder(client: OpenAI): Promise<boolean> {
   }
 }
 
+async function imageResponseBytes(
+  res: OpenAI.Images.ImagesResponse,
+): Promise<{ bytes: Buffer; via: string }> {
+  const first = res.data?.[0];
+  if (first?.b64_json) return { bytes: Buffer.from(first.b64_json, 'base64'), via: 'b64_json' };
+  if (first?.url) {
+    const dl = await fetch(first.url);
+    if (!dl.ok) throw new Error(`image download failed: HTTP ${dl.status}`);
+    return { bytes: Buffer.from(await dl.arrayBuffer()), via: 'url' };
+  }
+  throw new Error('image response had neither b64_json nor url');
+}
+
 async function checkImage(client: OpenAI): Promise<boolean> {
   try {
     const res = await client.images.generate({
       model: 'muse-image-1.0',
       prompt: 'soft watercolor of a small shop counter at dawn',
     });
-    const first = res.data?.[0];
-    let bytes: Buffer | null = null;
-    if (first?.b64_json) {
-      bytes = Buffer.from(first.b64_json, 'base64');
-    } else if (first?.url) {
-      const dl = await fetch(first.url);
-      if (!dl.ok) throw new Error(`image download failed: HTTP ${dl.status}`);
-      bytes = Buffer.from(await dl.arrayBuffer());
-    }
-    if (!bytes) throw new Error('image response had neither b64_json nor url');
+    const { bytes, via } = await imageResponseBytes(res);
     mkdirSync(join(rootDir, 'data'), { recursive: true });
     const outPath = join(rootDir, 'data', 'smoke-image.png');
     writeFileSync(outPath, bytes);
-    console.log(`\u2713 image: wrote data/smoke-image.png (${bytes.length} bytes)`);
+    console.log(`\u2713 image: wrote data/smoke-image.png (${bytes.length} bytes via ${via})`);
     return true;
   } catch (err) {
     return fail('image', err);
+  }
+}
+
+async function checkImageEdit(client: OpenAI): Promise<boolean> {
+  try {
+    const photo = readFileSync(photoPath);
+    const res = await client.images.edit({
+      model: 'muse-image-1.0',
+      image: new File([new Uint8Array(photo)], 'input.jpg', { type: 'image/jpeg' }),
+      prompt: 'make the background a soft warm gradient, keep the subject unchanged',
+    });
+    const { bytes, via } = await imageResponseBytes(res);
+    mkdirSync(join(rootDir, 'data'), { recursive: true });
+    const outPath = join(rootDir, 'data', 'smoke-image-edit.png');
+    writeFileSync(outPath, bytes);
+    console.log(`\u2713 image-edit: wrote data/smoke-image-edit.png (${bytes.length} bytes via ${via})`);
+    return true;
+  } catch (err) {
+    return fail('image-edit', err);
   }
 }
 
@@ -125,6 +150,11 @@ async function checkSam(apiKey: string): Promise<boolean> {
             ],
           },
         ],
+        // Mirror production (apps/server/src/models/image.ts): compact masks
+        // plus per-record confidence. The acceptance check below fails if the
+        // API ignores the confidence flag (all scores would read as 0 and
+        // best-pick would silently degrade to first-found).
+        metadata: { mask_encoding: 'one_bit', include_confidence: 'true' },
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -133,7 +163,15 @@ async function checkSam(apiKey: string): Promise<boolean> {
     collectText((body as { output?: unknown }).output ?? body, texts);
     const joined = texts.join('\n');
     const masks = (joined.match(/<\|mask;/g) ?? []).length;
-    console.log(`\u2713 sam: ${masks} mask(s)`);
+    const confidences = [...joined.matchAll(/;c=([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)/g)]
+      .map((m) => Number(m[1]))
+      .filter((c) => Number.isFinite(c) && c > 0);
+    if (masks > 0 && confidences.length === 0) {
+      throw new Error(
+        `metadata ignored? ${masks} mask(s) but no nonzero ;c= confidence in the answer`,
+      );
+    }
+    console.log(`\u2713 sam: ${masks} mask(s), ${confidences.length} nonzero confidence(s)`);
     return true;
   } catch (err) {
     return fail('sam', err);
@@ -194,6 +232,7 @@ async function main(): Promise<void> {
     console.log('\u2717 spark: MODEL_API_KEY not set');
     console.log('\u2717 wonder: MODEL_API_KEY not set');
     console.log('\u2717 image: MODEL_API_KEY not set');
+    console.log('\u2717 image-edit: MODEL_API_KEY not set');
     console.log('\u2717 sam: MODEL_API_KEY not set');
     console.log('\u2717 transcribe: MODEL_API_KEY not set');
     await checkGlimmer();
@@ -205,6 +244,7 @@ async function main(): Promise<void> {
     await checkSpark(client),
     await checkWonder(client),
     await checkImage(client),
+    await checkImageEdit(client),
     await checkSam(apiKey),
     await checkTranscribe(apiKey),
     await checkGlimmer(),
