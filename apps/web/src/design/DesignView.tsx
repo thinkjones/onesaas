@@ -478,9 +478,12 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         </AppButton>
       </div>
       {testResult && <TestResults story={testResult.story} />}
-      <div className="flex gap-4">
+      {/* Wraps instead of crushing: at narrow widths the canvas keeps a
+          usable minimum and the inspector drops below it (no change at
+          desktop widths, where palette + canvas + inspector fit one line). */}
+      <div className="flex flex-wrap gap-4">
         <StepPalette onAddStep={(type) => void handleAddStep(type)} disabled={op.isPending} />
-        <div className="min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+        <div className="min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
           <WorkflowCanvas
             workflow={detail}
             mode="design"

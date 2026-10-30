@@ -148,14 +148,69 @@ export async function revokePairing(): Promise<{ revoked: boolean }> {
   return (await res.json()) as { revoked: boolean };
 }
 
-/** GET /api/settings: the stored business timezone, or null when unset. */
-export function getSettings(): Promise<{ timezone: string | null }> {
+/**
+ * Mirrors apps/server/src/settings/store.ts Settings (the web package cannot
+ * import server code, so the shape is redeclared here like EngineEvent).
+ */
+export interface Settings {
+  businessName?: string;
+  businessWhat?: string;
+  /** IANA zone; '' until the first-load sync stores the browser zone. */
+  timezone: string;
+  theme: 'morning' | 'evening' | 'workshop';
+  textSize: 'normal' | 'large' | 'xlarge';
+  sound: { on: boolean; volume: number };
+  onboarded: boolean;
+  moodFileIds: string[];
+}
+
+/** PUT /api/settings takes a partial patch; sound is always sent whole. */
+export type SettingsPatch = Partial<Omit<Settings, 'sound'>> & { sound?: Settings['sound'] };
+
+/** GET /api/settings: the full settings document. */
+export function getSettings(): Promise<Settings> {
   return getJson('/api/settings');
 }
 
-/** PUT /api/settings: store the business timezone (IANA name). */
-export function putSettings(timezone: string): Promise<{ timezone: string }> {
-  return putJson('/api/settings', { timezone });
+/** PUT /api/settings: merge a patch into the settings document. */
+export function putSettings(patch: SettingsPatch): Promise<Settings> {
+  return putJson('/api/settings', patch);
+}
+
+/**
+ * The settings document plus an optimistic `update(patch)`: the UI (theme,
+ * text size) applies instantly and rolls back with a toast if the PUT fails.
+ * Shares the ['settings'] query with useBusinessTimezone below.
+ */
+export function useSettings(): {
+  settings: Settings | undefined;
+  update: (patch: SettingsPatch) => void;
+} {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const mutation = useMutation({
+    mutationFn: (patch: SettingsPatch) => putSettings(patch),
+    onMutate: async (patch) => {
+      await client.cancelQueries({ queryKey: ['settings'] });
+      const previous = client.getQueryData<Settings>(['settings']);
+      if (previous) {
+        client.setQueryData<Settings>(['settings'], {
+          ...previous,
+          ...patch,
+          sound: patch.sound ?? previous.sound,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _patch, context) => {
+      if (context?.previous) client.setQueryData(['settings'], context.previous);
+      toast('Could not save that change.');
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
+  return { settings: query.data, update: (patch) => mutation.mutate(patch) };
 }
 
 // --- Lists + views (M4 Task 8) ---
@@ -504,7 +559,7 @@ export function useTimezoneSync(): void {
       try {
         const { timezone } = await getSettings();
         if (cancelled || timezone) return;
-        await putSettings(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        await putSettings({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       } catch {
         // Best-effort only (see above).
       }

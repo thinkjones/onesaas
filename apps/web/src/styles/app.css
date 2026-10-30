@@ -34,12 +34,18 @@
 
 @layer base {
   html {
+    /* Overridden at runtime by ThemeProvider (theme + text size). */
     font-size: 17px;
   }
   body {
     @apply bg-background text-foreground;
-    /* System stack until M5 brings fonts. */
-    font-family:
-      system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  /* Nunito for headings, the home prompt and onboarding (M5). */
+  .font-display {
+    font-family: var(--font-display);
   }
 }

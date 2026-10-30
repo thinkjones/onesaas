@@ -8,13 +8,14 @@ import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
 import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
-import { TIMEZONE_KEY, type Pairing, type PairingStore } from './bridge/pairing.js';
+import { type Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
+import type { SettingsStore } from './settings/store.js';
 import type { TableStore } from './tables/store.js';
 import type { ViewStore } from './views/store.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
@@ -56,7 +57,7 @@ export function createApp(deps: AppDeps): Hono {
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
   const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
-  const settings = deps.settings as PairingStore | undefined;
+  const appSettings = deps.appSettings as SettingsStore | undefined;
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
   const files = deps.files as FileStore | undefined;
   const views = deps.views as ViewStore | undefined;
@@ -93,37 +94,56 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ revoked: true });
   });
 
-  // Business timezone (IANA name). The web app GETs on first load and PUTs
-  // the browser zone when none is stored; AI steps read it via StepContext.
+  // The full settings document (M5). The web app GETs on first load and PUTs
+  // the browser zone when none is stored; AI steps read the zone via StepContext.
   app.get('/api/settings', (c) => {
-    if (!settings) return c.json({ error: 'Server not configured' }, 500);
-    return c.json({ timezone: settings.get(TIMEZONE_KEY) ?? null });
+    if (!appSettings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(appSettings.get());
   });
 
-  const settingsBody = z.object({ timezone: z.string().min(1) }).strict();
+  // PUT takes a PARTIAL patch ({ theme: 'evening' }); every key is optional
+  // but validated when present. An empty object is a valid no-op.
+  const settingsPatchBody = z
+    .object({
+      businessName: z.string().optional(),
+      businessWhat: z.string().optional(),
+      timezone: z.string().optional(),
+      theme: z.enum(['morning', 'evening', 'workshop']).optional(),
+      textSize: z.enum(['normal', 'large', 'xlarge']).optional(),
+      sound: z.object({ on: z.boolean(), volume: z.number().min(0).max(1) }).strict().optional(),
+      onboarded: z.boolean().optional(),
+      moodFileIds: z.array(z.string()).optional(),
+    })
+    .strict();
 
   app.put('/api/settings', async (c) => {
-    if (!settings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
+    if (!appSettings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
     let raw: unknown;
     try {
       raw = await c.req.json();
     } catch {
       return c.json({ error: 'Invalid settings body' }, 400);
     }
-    const parsed = settingsBody.safeParse(raw);
+    const parsed = settingsPatchBody.safeParse(raw);
     if (!parsed.success) return c.json({ error: 'Invalid settings body' }, 400);
+    const { timezone, ...rest } = parsed.data;
     // The zone feeds Intl.DateTimeFormat in every AI step: a bad value throws
-    // on each run until overwritten, so reject (whitespace-only, non-IANA)
-    // with 400 and never persist invalid.
-    const tz = parsed.data.timezone;
-    if (tz.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
-    try {
-      new Intl.DateTimeFormat(undefined, { timeZone: tz });
-    } catch {
-      return c.json({ error: 'Invalid settings body' }, 400);
+    // on each run until overwritten, so reject (empty, whitespace-only,
+    // non-IANA) with 400 and never persist invalid.
+    if (timezone !== undefined) {
+      if (timezone.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
+      try {
+        new Intl.DateTimeFormat(undefined, { timeZone: timezone });
+      } catch {
+        return c.json({ error: 'Invalid settings body' }, 400);
+      }
     }
-    setTimezone(tz);
-    return c.json({ timezone: tz });
+    // Nothing is written until every field validates, so a bad patch leaves
+    // the stored settings untouched.
+    if (Object.keys(rest).length > 0) appSettings.update(rest);
+    // Timezone goes through setTimezone so live AI steps see it immediately.
+    if (timezone !== undefined) setTimezone(timezone);
+    return c.json(appSettings.get());
   });
 
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the

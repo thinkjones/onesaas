@@ -7,7 +7,7 @@ import { createConversationStore } from './agent/conversations.js';
 import { createBuilderAgent, type BuilderAgent } from './agent/loop.js';
 import { createApp } from './app.js';
 import { createBridge } from './bridge/bridge.js';
-import { createPairing, createSettingsStore, TIMEZONE_KEY } from './bridge/pairing.js';
+import { createPairing, createSettingsStore as createKvStore } from './bridge/pairing.js';
 import { openDb } from './db/connection.js';
 import { createRepo } from './db/repo.js';
 import { createEngine } from './engine/engine.js';
@@ -15,6 +15,7 @@ import { createTestRunner } from './engine/testRun.js';
 import { createFileStore } from './files/store.js';
 import { createGateway } from './models/gateway.js';
 import { createImageModels } from './models/image.js';
+import { createSettingsStore } from './settings/store.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
@@ -59,8 +60,10 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   // Photo bytes live next to the DB (data/files by default; both gitignored).
   const filesDir = opts?.filesDir ?? 'data/files';
   const files = createFileStore({ db, dir: filesDir });
-  const settings = createSettingsStore(db);
+  const settings = createKvStore(db);
   const pairing = createPairing(settings);
+  // The M5 settings document shares the same key-value table (key 'app').
+  const appSettings = createSettingsStore(db, settings);
   const bridge = createBridge({ pairing });
 
   const apiKey = process.env['MODEL_API_KEY'];
@@ -78,7 +81,8 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   // The one StepContext base: the engine and the test runner share it by
   // reference, so a PUT /api/settings updates live runs immediately (the
   // route mutates stepCtx.timezone through setTimezone below). Timezone is
-  // the stored business zone, else the server's own Intl zone.
+  // the stored business zone, else the server's own Intl zone (the store
+  // keeps '' until the web app's first-load sync posts the browser zone).
   const stepCtx = {
     gateway,
     tables,
@@ -86,10 +90,11 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     image,
     files,
     now: () => new Date(),
-    timezone: settings.get(TIMEZONE_KEY) ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezone:
+      appSettings.get().timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
   const setTimezone = (tz: string): void => {
-    settings.set(TIMEZONE_KEY, tz);
+    appSettings.update({ timezone: tz });
     stepCtx.timezone = tz;
   };
   // Full Task 8 bridge satisfies the registry's { call } surface structurally
@@ -160,7 +165,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     agent,
     agentEvents,
     testRun,
-    settings,
+    appSettings,
     setTimezone,
     files,
   });

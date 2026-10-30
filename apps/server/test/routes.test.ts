@@ -119,29 +119,58 @@ test('GET /api/events streams engine events as SSE', async () => {
   }
 }, 5000);
 
-test('GET /api/settings returns null timezone on a fresh server', async () => {
+test('GET /api/settings returns the default document on a fresh server', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
   const res = await app.request('/api/settings');
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ timezone: null });
+  expect(await res.json()).toEqual({
+    timezone: '',
+    theme: 'morning',
+    textSize: 'normal',
+    sound: { on: true, volume: 0.25 },
+    onboarded: false,
+    moodFileIds: [],
+  });
 });
 
-test('PUT /api/settings stores the timezone and GET reads it back', async () => {
+test('PUT /api/settings merges a patch and GET reads it back', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
   const put = await app.request('/api/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ timezone: 'America/New_York' }),
+    body: JSON.stringify({
+      businessName: 'Corner Bakery',
+      timezone: 'America/New_York',
+      theme: 'evening',
+    }),
   });
   expect(put.status).toBe(200);
-  expect(await put.json()).toEqual({ timezone: 'America/New_York' });
+  const body = (await put.json()) as Record<string, unknown>;
+  expect(body).toMatchObject({
+    businessName: 'Corner Bakery',
+    timezone: 'America/New_York',
+    theme: 'evening',
+    textSize: 'normal',
+  });
   const get = await app.request('/api/settings');
-  expect(await get.json()).toEqual({ timezone: 'America/New_York' });
+  expect(await get.json()).toEqual(body);
 });
 
-test('PUT /api/settings rejects empty and missing timezones', async () => {
+test('PUT /api/settings accepts an empty patch as a no-op', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
-  for (const body of ['{}', '{"timezone":""}', '{"timezone":42}']) {
+  const before = await (await app.request('/api/settings')).json();
+  const put = await app.request('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  expect(put.status).toBe(200);
+  expect(await put.json()).toEqual(before);
+});
+
+test('PUT /api/settings rejects empty and mistyped timezones', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  for (const body of ['{"timezone":""}', '{"timezone":42}']) {
     const res = await app.request('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -164,9 +193,35 @@ test('PUT /api/settings rejects whitespace-only and non-IANA zones and persists 
   for (const tz of ['   ', '\t', 'Mars/Olympus', 'America/New_York ', ' Europe/Paris']) {
     expect((await put(tz)).status).toBe(400);
   }
-  expect(await (await app.request('/api/settings')).json()).toEqual({ timezone: null });
+  expect(
+    ((await (await app.request('/api/settings')).json()) as Record<string, unknown>)['timezone'],
+  ).toBe('');
   // A valid zone still stores, and a later invalid PUT leaves it untouched.
   expect((await put('Europe/Paris')).status).toBe(200);
   expect((await put('Mars/Olympus')).status).toBe(400);
-  expect(await (await app.request('/api/settings')).json()).toEqual({ timezone: 'Europe/Paris' });
+  expect(
+    ((await (await app.request('/api/settings')).json()) as Record<string, unknown>)['timezone'],
+  ).toBe('Europe/Paris');
+});
+
+test('PUT /api/settings rejects bad theme, text size, sound and unknown keys', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const before = await (await app.request('/api/settings')).json();
+  for (const body of [
+    '{"theme":"noon"}',
+    '{"textSize":"huge"}',
+    '{"sound":{"on":true}}',
+    '{"sound":{"on":true,"volume":2}}',
+    '{"onboarded":"yes"}',
+    '{"bogus":1}',
+  ]) {
+    const res = await app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    expect(res.status).toBe(400);
+  }
+  // Failed patches persist nothing.
+  expect(await (await app.request('/api/settings')).json()).toEqual(before);
 });

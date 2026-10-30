@@ -51,7 +51,15 @@ function renderLists(opts?: {
       const id = url.slice('/api/views/'.length, -'/data'.length);
       return opts?.viewData ? opts.viewData(id) : ok({ value: 3 });
     }
-    if (url === '/api/settings') return ok({ timezone: null });
+    if (url === '/api/settings')
+      return ok({
+        timezone: '',
+        theme: 'morning',
+        textSize: 'normal',
+        sound: { on: true, volume: 0.25 },
+        onboarded: false,
+        moodFileIds: [],
+      });
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetch);
