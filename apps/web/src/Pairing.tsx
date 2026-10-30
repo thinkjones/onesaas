@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getPairingStatus, startPairing } from './api.ts';
+import { getPairingStatus, revokePairing, startPairing } from './api.ts';
 import AppButton from './design/AppButton.tsx';
 import AppCard from './design/AppCard.tsx';
 
@@ -49,6 +49,22 @@ export default function Pairing() {
     }
   }
 
+  // Escape hatch for the stranded state (server paired, this Chrome holds no
+  // token): revoke the server token and fall back to the start view so the
+  // user can pair this Chrome fresh.
+  async function unpair() {
+    setError(null);
+    try {
+      await revokePairing();
+      setCode(null);
+      const s = await getPairingStatus();
+      wasPaired.current = s.paired;
+      setStatus(s);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // Poll every 2s until the unpaired start state: after a code is issued until
   // it is redeemed, while paired-but-offline until Chrome connects, and while
   // connected (a server-side revoke must reflect here). Only the quiet
@@ -90,6 +106,9 @@ export default function Pairing() {
               extension — and this page will update on its own.
             </p>
           )}
+          <AppButton type="button" onClick={() => void unpair()}>
+            Unpair
+          </AppButton>
         </>
       ) : code === null ? (
         <>

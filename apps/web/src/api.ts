@@ -105,6 +105,12 @@ export function getPairingStatus(): Promise<{ paired: boolean; connected: boolea
   return getJson('/api/pairing/status');
 }
 
+export async function revokePairing(): Promise<{ revoked: boolean }> {
+  const res = await fetch('/api/pairing/revoke', { method: 'POST' });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as { revoked: boolean };
+}
+
 /** Subscribes to the SSE stream; closes the connection on unmount. */
 export function useEvents(onEvent: (e: EngineEvent) => void): void {
   const ref = useRef(onEvent);

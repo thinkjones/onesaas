@@ -171,6 +171,55 @@ test('code screen tells the user to enter it in the extension popup', async () =
   expect(await screen.findByText(/Enter this code in the extension popup/)).toBeDefined();
 });
 
+test('Unpair button revokes the pairing and returns to the start view', async () => {
+  // Stranded state: the server remembers a pairing this Chrome never
+  // completed (paired, but Chrome isn't connected).
+  let revoked = false;
+  const fetchMock = mockFetch((url, init) => {
+    if (url === '/api/pairing/revoke' && init?.method === 'POST') {
+      revoked = true;
+      return { revoked: true };
+    }
+    if (url === '/api/pairing/status') {
+      return revoked ? { paired: false, connected: false } : { paired: true, connected: false };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const { unmount } = render(<Pairing />);
+  fireEvent.click(await screen.findByText('Unpair'));
+  expect(await screen.findByText('Connect Chrome')).toBeDefined();
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/pairing/revoke',
+    expect.objectContaining({ method: 'POST' }),
+  );
+  unmount();
+});
+
+test('Unpair failure shows the error inline and stays paired', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pairing/status') {
+        return {
+          ok: true,
+          json: async () => ({ paired: true, connected: false }),
+        } as Response;
+      }
+      if (url === '/api/pairing/revoke' && init?.method === 'POST') {
+        return { ok: false, text: async () => 'boom' } as Response;
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  fireEvent.click(await screen.findByText('Unpair'));
+  expect(await screen.findByText(/boom/)).toBeDefined();
+  expect(screen.queryByText(/Paired, but Chrome isn't connected/)).not.toBeNull();
+  unmount();
+});
+
 test('unmount clears the poll interval', async () => {
   vi.stubGlobal(
     'fetch',
