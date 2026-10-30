@@ -20,8 +20,38 @@ export interface ChatJsonOptions<T> {
   schemaName: string;
 }
 
+export type AgentMessage = OpenAI.ChatCompletionMessageParam;
+
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: object;
+}
+
+export interface ParsedToolCall {
+  id: string;
+  name: string;
+  args: unknown;
+  argsError?: string;
+}
+
+export interface ChatToolsOptions {
+  role: ModelRole;
+  messages: AgentMessage[];
+  tools: ToolSpec[];
+}
+
+export interface ChatToolsResult {
+  message: OpenAI.ChatCompletionMessage;
+  toolCalls: ParsedToolCall[];
+  model: string;
+  tokens: { input: number; output: number };
+  costUsd: number;
+}
+
 export interface Gateway {
   chatJson<T>(o: ChatJsonOptions<T>): Promise<ChatJsonResult<T>>;
+  chatTools(o: ChatToolsOptions): Promise<ChatToolsResult>;
 }
 
 const DEFAULT_ROLES: Record<ModelRole, string> = {
@@ -74,6 +104,48 @@ export function createGateway(o: CreateGatewayOptions): Gateway {
       const output = completion.usage?.completion_tokens ?? 0;
       return {
         data: validated.data,
+        model,
+        tokens: { input, output },
+        costUsd: costUsd(model, input, output),
+      };
+    },
+    async chatTools(opts: ChatToolsOptions): Promise<ChatToolsResult> {
+      const model = roles[opts.role];
+      const completion = await client.chat.completions.create({
+        model,
+        messages: opts.messages,
+        tools: opts.tools.map((t) => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters as Record<string, unknown>,
+          },
+        })),
+        tool_choice: 'auto' as const,
+      });
+      const message = completion.choices[0]?.message as OpenAI.ChatCompletionMessage | undefined;
+      if (!message) {
+        throw new Error(`Model returned no message (model ${model})`);
+      }
+      const toolCalls: ParsedToolCall[] = [];
+      for (const tc of message.tool_calls ?? []) {
+        if (tc.type !== 'function') continue;
+        let args: unknown;
+        let argsError: string | undefined;
+        try {
+          args = JSON.parse(tc.function.arguments);
+        } catch (err) {
+          args = undefined;
+          argsError = `Arguments weren't valid JSON: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        toolCalls.push({ id: tc.id, name: tc.function.name, args, ...(argsError ? { argsError } : {}) });
+      }
+      const input = completion.usage?.prompt_tokens ?? 0;
+      const output = completion.usage?.completion_tokens ?? 0;
+      return {
+        message,
+        toolCalls,
         model,
         tokens: { input, output },
         costUsd: costUsd(model, input, output),
