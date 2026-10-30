@@ -8,6 +8,14 @@ items = [
   "skill:oil-oil/beautify-github-readme:skills/beautify-github-readme",
   "plugin:anthropics/claude-plugins-official:plugins/skill-creator",
   "plugin:anthropics/claude-plugins-official#twilio-developer-kit",
+  "plugin:anthropics/claude-plugins-official:external_plugins/playwright",
+  "plugin:anthropics/claude-plugins-official:plugins/playground",
+  "plugin:anthropics/claude-plugins-official:external_plugins/serena",
+  "plugin:anthropics/claude-plugins-official#shopify-ai-toolkit",
+  "plugin:anthropics/claude-plugins-official:plugins/code-modernization",
+  "copilot-plugin:thinkjones/fs-skills:.agy-plugin/code-architecture",
+  "copilot-plugin:thinkjones/fs-skills:.agy-plugin/eng-best-practices",
+  "skill:thinkjones/fs-skills:packs/book-factory/skills/diagram-design",
 ]
 
 [[packs.vendor-meta-hackathon.installs]]

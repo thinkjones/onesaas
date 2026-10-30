@@ -1,6 +1,6 @@
 # My Dad's AI Agent: Design Spec
 
-Date: 2026-10-28. Status: draft for review. Inputs: [[brief]], [[hackathon-application]], [[hackathon-participant-guide]].
+Date: 2026-10-28. Status: draft for review. Inputs: [[AgenticHarness/docs/meta-ai-hackathon-my-dads-ai-agent/plans/brief]], [[hackathon-application]], [[hackathon-participant-guide]].
 
 ## 1. Intent
 

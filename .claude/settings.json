@@ -1,17 +1,2 @@
 {
-  "enabledPlugins": {
-    "vendor-meta-hackathon@meta-ai-hackathon-my-dads-ai-agent-ipm": true,
-    "vendor-meta-hackathon-superpowers@meta-ai-hackathon-my-dads-ai-agent-ipm": true,
-    "vendor-meta-hackathon-ui-ux-pro-max@meta-ai-hackathon-my-dads-ai-agent-ipm": true,
-    "vendor-meta-hackathon-skill-creator@meta-ai-hackathon-my-dads-ai-agent-ipm": true,
-    "vendor-meta-hackathon-twilio-developer-kit@meta-ai-hackathon-my-dads-ai-agent-ipm": true
-  },
-  "extraKnownMarketplaces": {
-    "meta-ai-hackathon-my-dads-ai-agent-ipm": {
-      "source": {
-        "source": "directory",
-        "path": "/Users/thinkjones/dev/repos/__labs/meta-ai-hackathon-my-dads-ai-agent/.ipm"
-      }
-    }
-  }
 }

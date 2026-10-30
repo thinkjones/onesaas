@@ -73,6 +73,80 @@
         "ipm",
         "vendor-meta-hackathon"
       ]
+    },
+    {
+      "name": "vendor-meta-hackathon-playwright",
+      "source": {
+        "source": "git-subdir",
+        "url": "anthropics/claude-plugins-official",
+        "path": "external_plugins/playwright",
+        "sha": "ea10b213686c90bb1984b2016937310e05336cf3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-playground",
+      "source": {
+        "source": "git-subdir",
+        "url": "anthropics/claude-plugins-official",
+        "path": "plugins/playground",
+        "sha": "ea10b213686c90bb1984b2016937310e05336cf3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-serena",
+      "source": {
+        "source": "git-subdir",
+        "url": "anthropics/claude-plugins-official",
+        "path": "external_plugins/serena",
+        "sha": "ea10b213686c90bb1984b2016937310e05336cf3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "author": {
+        "name": "Shopify"
+      },
+      "category": "development",
+      "description": "Shopify's AI Toolkit provides 18 development skills for building on the Shopify platform, covering documentation search, API schema access, GraphQL and Liquid code validation, Hydrogen storefronts, Polaris UI extensions, store management via CLI, and onboarding guidance for both developers and merchants.",
+      "homepage": "https://shopify.dev",
+      "name": "vendor-meta-hackathon-shopify-ai-toolkit",
+      "source": {
+        "sha": "3c32168c6e4cb73f0b46243c82586176ca58bb48",
+        "source": "url",
+        "url": "https://github.com/Shopify/Shopify-AI-Toolkit.git"
+      },
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "name": "vendor-meta-hackathon-code-modernization",
+      "source": {
+        "source": "git-subdir",
+        "url": "anthropics/claude-plugins-official",
+        "path": "plugins/code-modernization",
+        "sha": "ea10b213686c90bb1984b2016937310e05336cf3"
+      },
+      "category": "",
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
     }
   ]
 }
