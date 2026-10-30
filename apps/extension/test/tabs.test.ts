@@ -342,3 +342,44 @@ describe('captureScreenshot stale-page rule', () => {
     expect(f.tabs.captureVisibleTab).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('navigateWorkerTab', () => {
+  it('navigates the worker tab to the url and waits for it to load', async () => {
+    const f = makeTabs();
+    const mgr = createTabManager({ tabs: f.tabs });
+    const url = 'https://mail.google.com/mail/u/0/#all/thread_abc123';
+
+    const tabId = await mgr.navigateWorkerTab('gmail', url);
+
+    expect(f.created).toHaveLength(1);
+    expect(tabId).toBeGreaterThan(100);
+    expect(f.updated).toContainEqual({ tabId, props: { url } });
+    expect(f.tabs.get).toHaveBeenCalledWith(tabId);
+  });
+
+  it('skips navigation when the worker tab already shows the url', async () => {
+    const f = makeTabs();
+    const mgr = createTabManager({ tabs: f.tabs });
+    const url = 'https://mail.google.com/mail/u/0/#all/thread_abc123';
+    await mgr.navigateWorkerTab('gmail', url);
+    f.updated.length = 0;
+
+    const tabId = await mgr.navigateWorkerTab('gmail', url);
+
+    expect(f.updated.find((u) => u.props['url'] !== undefined)).toBeUndefined();
+    expect(tabId).toBeGreaterThan(100);
+  });
+
+  it('a later screenshot shares the last-navigated url (no double navigate)', async () => {
+    const f = makeTabs({ existing: [{ id: 7, active: true, windowId: 1 }] });
+    const mgr = createTabManager({ tabs: f.tabs });
+    const url = 'https://mail.google.com/mail/u/0/#all/thread_abc123';
+    const tabId = await mgr.navigateWorkerTab('gmail', url);
+    f.updated.length = 0;
+
+    await mgr.captureScreenshot('gmail', url);
+
+    expect(f.updated.find((u) => u.props['url'] !== undefined)).toBeUndefined();
+    expect(tabId).toBeGreaterThan(0);
+  });
+});

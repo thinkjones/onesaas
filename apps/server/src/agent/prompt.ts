@@ -2,7 +2,7 @@ import { catalog, type Workflow } from '@dad/shared';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { TableDef } from '../tables/store.js';
 import type { checkWorkflow, WorkflowProblem } from '../workflows/validate.js';
-import { flow1Example } from './examples.js';
+import { flow1Example, flow2Example } from './examples.js';
 
 /** Section 1: role and voice. Fixed text — keep verbatim. */
 export const VOICE =
@@ -94,7 +94,7 @@ export function buildSystemPrompt(o: {
     catalogSection(),
     workflowSection(o.workflow, o.problems),
     tablesSection(o.tables),
-    ['# Worked example', flow1Example].join('\n\n'),
+    ['# Worked examples', flow1Example, flow2Example].join('\n\n'),
     [
       '# About the business',
       o.business.name ? `Name: ${o.business.name}` : 'Name: (not given yet)',

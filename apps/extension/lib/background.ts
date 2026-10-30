@@ -1,4 +1,5 @@
 import { ServerToExtension } from '@dad/shared';
+import { gmailThreadUrl } from './gmail/read.js';
 import {
   SITE_START_URL,
   SITE_TAB_QUERY,
@@ -385,10 +386,22 @@ export function createBackground(deps: {
     // codeless and byte-identical. Every other path carries codes; tab-reply
     // codes are forwarded on ALL paths (codeless replies stay identical).
     const legacy = site === 'gmail' && tab === 'active';
+    // A worker-tab read names its thread: navigate there first so the content
+    // script's open-thread check passes (reads without a threadId keep the
+    // plain worker tab). navigateWorkerTab never resolves null — only
+    // resolveActiveTab can, hence the null check below.
+    const threadId =
+      site === 'gmail' && action === 'readOpenEmail' && tab === 'worker'
+        ? ((input ?? {}) as Record<string, unknown>)['threadId']
+        : undefined;
     let tabId: number;
     try {
       const resolved =
-        tab === 'worker' ? await tabManager.getWorkerTab(site) : await resolveActiveTab(site);
+        typeof threadId === 'string' && threadId !== ''
+          ? await tabManager.navigateWorkerTab(site, gmailThreadUrl(threadId))
+          : tab === 'worker'
+            ? await tabManager.getWorkerTab(site)
+            : await resolveActiveTab(site);
       if (resolved === null) {
         fail(id, NO_TAB[site], legacy ? undefined : 'NOT_OPEN');
         return;

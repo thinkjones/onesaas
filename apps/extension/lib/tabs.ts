@@ -65,6 +65,13 @@ export interface TabManager {
   /** One pinned, inactive tab per site, created on demand and reused. */
   getWorkerTab(site: WorkerSite): Promise<number>;
   /**
+   * Navigate the site's worker tab to `url` (skipped when it already shows
+   * it) and wait for it to load. Shares lastUrl with screenshots, so a read
+   * followed by a capture of the same page navigates once. Failures carry
+   * code TIMEOUT.
+   */
+  navigateWorkerTab(site: WorkerSite, url: string): Promise<number>;
+  /**
    * Screenshot the site's worker tab (navigating to `url` first when given).
    * Returns a PNG data URL. Failures carry code TIMEOUT.
    */
@@ -175,6 +182,22 @@ export function createTabManager(o: {
     }
   }
 
+  async function navigateWorkerTab(site: WorkerSite, url: string): Promise<number> {
+    const tabId = await getWorkerTab(site);
+    // Same-page re-reads stay cheap; the lastUrl write keeps screenshots of
+    // the same page from navigating again.
+    if (lastUrl.get(tabId) !== url) {
+      try {
+        await tabs.update(tabId, { url });
+      } catch (err) {
+        throw new TabError('TIMEOUT', `Could not open the page: ${(err as Error).message}`);
+      }
+      lastUrl.set(tabId, url);
+      await waitForComplete(tabId);
+    }
+    return tabId;
+  }
+
   function captureScreenshot(site: WorkerSite, url?: string): Promise<{ dataUrl: string }> {
     const prev = captureChains.get(site) ?? Promise.resolve();
     // Chain on settled (both branches run the capture) so one failure never
@@ -264,5 +287,5 @@ export function createTabManager(o: {
     }
   }
 
-  return { getWorkerTab, captureScreenshot, waitForComplete };
+  return { getWorkerTab, navigateWorkerTab, captureScreenshot, waitForComplete };
 }

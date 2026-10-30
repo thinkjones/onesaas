@@ -227,11 +227,27 @@ export function createWorkflowOps(d: {
       if (!wf) return { ok: false, error: `Unknown workflow: ${id}` };
       if (!hasStep(wf, o.from)) return { ok: false, error: `Unknown step: ${o.from}` };
       if (!hasStep(wf, o.to)) return { ok: false, error: `Unknown step: ${o.to}` };
-      if (wf.edges.some((e) => e.from === o.from && e.to === o.to)) {
+      const existing = wf.edges.some((e) => e.from === o.from && e.to === o.to);
+      if (existing && o.when === undefined) {
         return {
           ok: false,
           error: `"${titleOf(wf, o.from)}" is already connected to "${titleOf(wf, o.to)}".`,
         };
+      }
+      if (existing) {
+        // Re-connect with a condition replaces the wire: same endpoints, so
+        // no new cycle is possible and no topo check is needed.
+        const edges = wf.edges.map((e) =>
+          e.from === o.from && e.to === o.to
+            ? { from: o.from, to: o.to, ...(o.when ? { when: o.when } : {}) }
+            : e,
+        );
+        return done(
+          `Changed when "${titleOf(wf, o.from)}" continues to "${titleOf(wf, o.to)}".`,
+          { ...wf, edges },
+          opts?.by ?? 'agent',
+          false,
+        );
       }
       const edges = [...wf.edges, { from: o.from, to: o.to, ...(o.when ? { when: o.when } : {}) }];
       try {

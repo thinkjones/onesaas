@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { readOpenEmail } from '../lib/gmail/read.js';
+import { gmailThreadUrl, readOpenEmail } from '../lib/gmail/read.js';
 import { draftReply } from '../lib/gmail/draftReply.js';
 import { injectButtons, setButtonStatus } from '../lib/gmail/button.js';
 import { SELECTORS } from '../lib/gmail/selectors.js';
@@ -35,6 +35,14 @@ describe('readOpenEmail', () => {
     document.querySelector('h2.hP')!.removeAttribute('data-legacy-thread-id');
     window.location.hash = '#inbox/18f3a9c2d4e5b607';
     expect(readOpenEmail(document).threadId).toBe('18f3a9c2d4e5b607');
+  });
+});
+
+describe('gmailThreadUrl', () => {
+  it('builds the all-mail thread URL the worker tab navigates to', () => {
+    expect(gmailThreadUrl('thread_abc123')).toBe(
+      'https://mail.google.com/mail/u/0/#all/thread_abc123',
+    );
   });
 });
 

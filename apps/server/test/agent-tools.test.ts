@@ -1,6 +1,6 @@
 import { Workflow, catalog } from '@dad/shared';
 import { vi } from 'vitest';
-import { flow1Example } from '../src/agent/examples.js';
+import { flow1Example, flow2Example } from '../src/agent/examples.js';
 import { TANGLED_MESSAGE, buildSystemPrompt } from '../src/agent/prompt.js';
 import { builderTools, type AgentEvent, type ToolContext } from '../src/agent/tools.js';
 import { openDb } from '../src/db/connection.js';
@@ -500,6 +500,7 @@ test('system prompt contains every catalog description, the fixed voice and the 
     expect(prompt).toContain(def.type);
   }
   expect(prompt).toContain(flow1Example);
+  expect(prompt).toContain(flow2Example);
   expect(prompt).toContain('America/Chicago');
   expect(prompt).toContain('Corner Bakery');
 });

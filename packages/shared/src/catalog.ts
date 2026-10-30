@@ -153,6 +153,29 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({ row: z.record(z.string(), z.unknown()) }),
     outputSchema: z.object({ id: z.number(), created: z.boolean() }),
   },
+  'table.insert': {
+    type: 'table.insert',
+    kind: 'store',
+    title: 'Add to list',
+    description: 'Adds a new row to one of your lists.',
+    configSchema: z.object({ table: z.string() }),
+    inputSchema: z.object({ row: z.record(z.string(), z.unknown()) }),
+    outputSchema: z.object({ id: z.number() }),
+  },
+  'table.query': {
+    type: 'table.query',
+    kind: 'fetch',
+    title: 'Find rows',
+    description: 'Finds rows in one of your lists.',
+    // Guard-only default (see trigger.email above): the executor applies
+    // (config.limit ?? 20) manually.
+    configSchema: z.object({ table: z.string(), limit: z.number().default(20) }),
+    inputSchema: z.object({ where: z.record(z.string(), z.unknown()).optional() }),
+    outputSchema: z.object({
+      rows: z.array(z.record(z.string(), z.unknown())),
+      count: z.number(),
+    }),
+  },
   'gmail.read': {
     type: 'gmail.read',
     kind: 'fetch',

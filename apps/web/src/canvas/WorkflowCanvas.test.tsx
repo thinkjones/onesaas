@@ -83,3 +83,71 @@ describe('WorkflowCanvas move op', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('WorkflowCanvas condition editing', () => {
+  function sortFlow(): Workflow {
+    const classify: StepInstance = {
+      id: 'classify',
+      type: 'ai.classify',
+      title: 'Sort',
+      summary: 'Sort.',
+      config: { question: 'Booking?', options: ['yes', 'no'] },
+      inputs: {},
+      position: { x: 300, y: 200 },
+    };
+    return {
+      ...WF,
+      steps: [classify, step('extract', { x: 500, y: 300 })],
+      edges: [
+        { from: 'trigger', to: 'classify' },
+        { from: 'classify', to: 'extract', when: "classify.choice == 'yes'" },
+      ],
+    };
+  }
+
+  test('a wire out of a sort step carries the picker; picking emits connect with when', () => {
+    const onChange = vi.fn();
+    render(
+      <WorkflowCanvas workflow={sortFlow()} mode="design" onSelectStep={() => {}} onChange={onChange} />,
+    );
+    const edges = lastFlowProps().edges!;
+    const wire = edges.find((e) => e.id === 'classify->extract')!;
+    const condition = (wire.data as { condition: { stepId: string; options: string[]; onConnect(when: string): void } })
+      .condition;
+    expect(condition.stepId).toBe('classify');
+    expect(condition.options).toEqual(['yes', 'no']);
+    act(() => {
+      condition.onConnect("classify.choice == 'no'");
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      op: 'connect',
+      from: 'classify',
+      to: 'extract',
+      when: "classify.choice == 'no'",
+    });
+  });
+
+  test('no picker on other wires or in runtime mode', () => {
+    const onChange = vi.fn();
+    render(
+      <WorkflowCanvas workflow={sortFlow()} mode="design" onSelectStep={() => {}} onChange={onChange} />,
+    );
+    const designEdges = lastFlowProps().edges!;
+    expect(
+      (designEdges.find((e) => e.id === 'trigger->classify')!.data as object),
+    ).not.toHaveProperty('condition');
+
+    render(
+      <WorkflowCanvas
+        workflow={sortFlow()}
+        mode="runtime"
+        onSelectStep={() => {}}
+        onChange={onChange}
+      />,
+    );
+    const runtimeEdges = lastFlowProps().edges!;
+    expect(
+      (runtimeEdges.find((e) => e.id === 'classify->extract')!.data as object),
+    ).not.toHaveProperty('condition');
+  });
+});

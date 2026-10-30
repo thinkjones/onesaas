@@ -26,6 +26,15 @@ export function readThreadId(doc: Document): string {
 }
 
 /**
+ * All-mail URL for a thread: the background navigates the Gmail worker tab
+ * here before a worker-tab read, so the content script's open-thread check
+ * sees the requested thread.
+ */
+export function gmailThreadUrl(threadId: string): string {
+  return `https://mail.google.com/mail/u/0/#all/${threadId}`;
+}
+
+/**
  * Read the open Gmail thread. Body is the LAST div.a3s: cloned, .gmail_quote
  * blocks removed from the clone (original DOM untouched), then textContent
  * trimmed. textContent — not innerText — because jsdom has no layout engine

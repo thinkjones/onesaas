@@ -1,6 +1,8 @@
-// Worked builder examples for the system prompt. Flow 1 only: M4 adds flows 2 and 4.
-// The tool calls below mirror apps/server/src/seed/flow1.json exactly (same step
-// types, titles, configs and bindings), so the agent learns the real shapes.
+// Worked builder examples for the system prompt. Flow 1 mirrors
+// apps/server/src/seed/flow1.json exactly (same step types, titles, configs
+// and bindings), so the agent learns the real shapes. Flow 2 is the M4
+// booking flow; its step ids below are shortened — the prompt tells the
+// builder to read the real ids off the Links line.
 
 export const flow1ExampleUser =
   'When I click the button in Gmail, save the sender as a customer and draft a warm reply.';
@@ -34,3 +36,56 @@ Tool calls:
 8. test_run {} — read the one-line-per-step preview, fix anything that failed.
 
 9. activate {} — the chore reducer is on.`;
+
+export const flow2ExampleUser =
+  'When someone emails asking to book a time, check my calendar, save the booking and put it in my calendar, then draft a confirmation for me to check.';
+
+/**
+ * Flow 2 as a worked example: the booking flow from the M4 plan (new email →
+ * read → sort → extract → calendar check → save → event → write → approval →
+ * draft). Step ids below are shortened ("sort", "extract", …): in a real
+ * build every add_step result shows up on the Links line with its full id
+ * (e.g. trigger → sort-booking-asks-k7m2p9), and the builder must use those
+ * real ids in "after", bindings and the "when" condition.
+ */
+export const flow2Example = `Example: "${flow2ExampleUser}"
+
+The builder thinks: a new email starts it on its own, then read the whole
+email, check it is a booking ask, pull out the details, check the calendar,
+save the booking, add the event, write a confirmation, check it with Dad,
+and draft it.
+
+New-email triggers carry no body, so the first step reads the full email.
+The sort keeps the plain yes/no options, and the extract step only runs on
+"yes" — added after the sort step first (a plain wire), then the same two
+steps are connected again with "when", which replaces the plain wire with
+the conditional one. Ids below are shortened; use the real ids from the
+Links line.
+
+Tool calls:
+
+1. create_table {"name": "bookings", "label": "Bookings", "columns": [{"name": "name", "label": "Name", "type": "text"}, {"name": "email", "label": "Email", "type": "email"}, {"name": "service", "label": "Service", "type": "text"}, {"name": "start", "label": "Start", "type": "datetime"}, {"name": "end", "label": "End", "type": "datetime"}, {"name": "status", "label": "Status", "type": "text"}], "displayField": "name"}
+
+2. set_trigger {"type": "trigger.email", "config": {}, "title": "New email", "summary": "Runs when a new customer email arrives."}
+
+3. add_step {"type": "gmail.read", "title": "Read email", "summary": "Read the full email.", "config": {}, "inputs": {"threadId": "{{trigger.email.threadId}}"}, "after": "trigger"}
+
+4. add_step {"type": "ai.classify", "title": "Sort booking asks", "summary": "Check whether the email asks to book an appointment.", "config": {"question": "Is this asking to book an appointment?", "options": ["yes", "no"]}, "inputs": {"text": "{{read.body}}"}, "after": "<the read step's id>"}
+
+5. add_step {"type": "ai.extract", "title": "Extract booking", "summary": "Pull the booking details out of the email.", "config": {"instructions": "Extract the booking details from this email.", "fields": [{"name": "name", "type": "text", "description": "Who wants to book"}, {"name": "email", "type": "email", "description": "Their email address"}, {"name": "service", "type": "text", "description": "What they want to book, in a few words"}, {"name": "start", "type": "datetime", "description": "When the booking starts"}, {"name": "end", "type": "datetime", "description": "When the booking ends"}]}, "inputs": {"text": "{{read.body}}"}, "after": "<the sort step's id>"} — then connect {"from": "<the sort step's id>", "to": "<the extract step's id>", "when": "<the sort step's id>.choice == 'yes'"} to make that wire conditional.
+
+6. add_step {"type": "calendar.freeBusy", "title": "Check calendar", "summary": "Check whether the time is free.", "config": {}, "inputs": {"start": "{{extract.start}}", "end": "{{extract.end}}"}, "after": "<the extract step's id>"}
+
+7. add_step {"type": "table.insert", "title": "Save booking", "summary": "Save the booking to the Bookings list.", "config": {"table": "bookings"}, "inputs": {"row": "{{extract}}"}, "after": "<the calendar step's id>"}
+
+8. add_step {"type": "calendar.createEvent", "title": "Add event", "summary": "Put the booking in the calendar.", "config": {}, "inputs": {"title": "Booking for {{extract.name}}", "start": "{{extract.start}}", "end": "{{extract.end}}"}, "after": "<the save step's id>"}
+
+9. add_step {"type": "ai.write", "title": "Write confirmation", "summary": "Write a confirmation, or offer another time when busy.", "config": {"instructions": "Write a short confirmation email for the booking below. When it says the slot is taken (free is false), offer the closest free time instead and ask if that works. Sign off as the owner.", "tone": "friendly"}, "inputs": {"context": "Name: {{extract.name}}, service: {{extract.service}}, start: {{extract.start}}, end: {{extract.end}}, free: {{check.free}}"}, "after": "<the event step's id>"}
+
+10. add_step {"type": "approval.ask", "title": "Approve confirmation", "summary": "Check the confirmation with you before drafting it.", "config": {}, "inputs": {"text": "{{write.text}}"}, "after": "<the write step's id>"}
+
+11. add_step {"type": "gmail.draftReply", "title": "Draft reply", "summary": "Draft the confirmation in Gmail.", "config": {}, "inputs": {"body": "{{approve.text}}", "threadId": "{{trigger.email.threadId}}"}, "after": "<the approve step's id>"}
+
+12. test_run {} — read the one-line-per-step preview. Reads need Dad's computer: when Gmail or Calendar is not open the read previews fail ("I need Gmail open in Chrome to do this") and the rest show skipped. That failure is environmental, not shape — keep the steps. The Problems line is the shape oracle: fix anything it names.
+
+13. activate {} — the chore reducer is on.`;

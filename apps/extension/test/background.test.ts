@@ -530,6 +530,64 @@ describe('worker tab routing', () => {
     ]);
     bg.dispose();
   });
+
+  it('navigates the Gmail worker tab to the thread, then reads it there', async () => {
+    const email = { from: 'bob@example.com', subject: 'booking', threadId: 'thread_abc123' };
+    const t = makeBrowser({ token: 'tok', tabs: [], tabReply: { ok: true, output: email } });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 'w3',
+      site: 'gmail',
+      action: 'readOpenEmail',
+      input: { threadId: 'thread_abc123' },
+      tab: 'worker',
+    });
+    await flush();
+    // The read lands in the navigated worker tab, and Dad's tabs are untouched.
+    expect(t.updated).toContainEqual({
+      tabId: t.tabMessages[0]?.tabId,
+      props: { url: 'https://mail.google.com/mail/u/0/#all/thread_abc123' },
+    });
+    expect(t.tabMessages).toEqual([
+      {
+        tabId: t.tabMessages[0]?.tabId,
+        msg: {
+          type: 'cmd',
+          id: 'w3',
+          action: 'readOpenEmail',
+          input: { threadId: 'thread_abc123' },
+        },
+      },
+    ]);
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 'w3', ok: true, output: email },
+    ]);
+    bg.dispose();
+  });
+
+  it('a worker gmail read without a threadId reads the worker tab as-is', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 'w4',
+      site: 'gmail',
+      action: 'readOpenEmail',
+      input: {},
+      tab: 'worker',
+    });
+    await flush();
+    expect(t.updated.find((u) => u.props['url'] !== undefined)).toBeUndefined();
+    expect(t.tabMessages).toHaveLength(1);
+    bg.dispose();
+  });
 });
 
 describe('active routing for new sites', () => {

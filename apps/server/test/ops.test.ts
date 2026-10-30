@@ -342,6 +342,50 @@ test('connect adds the edge; duplicates and unknown steps are refused', () => {
   });
 });
 
+test('re-connecting with a when replaces the edge instead of refusing', () => {
+  const { ops } = setup();
+  const wf = ops.create({ name: 'Sort', description: 'A sort.' });
+  const a = ops.addStep(wf.id, {
+    type: 'ai.classify',
+    title: 'Sort',
+    summary: 'Sort.',
+    config: { question: 'Booking?' },
+    inputs: {},
+    after: 'trigger',
+  });
+  expect(a.ok).toBe(true);
+  if (!a.ok) return;
+  const aId = a.workflow.steps[0]!.id;
+  const b = ops.addStep(wf.id, {
+    type: 'ai.extract',
+    title: 'Extract',
+    summary: 'Extract.',
+    config: {
+      instructions: 'Extract.',
+      fields: [{ name: 'name', type: 'text', description: 'Name' }],
+    },
+    inputs: {},
+    after: aId,
+  });
+  expect(b.ok).toBe(true);
+  if (!b.ok) return;
+  const bId = b.workflow.steps.find((s) => s.title === 'Extract')!.id;
+  const when = `${aId}.choice == 'yes'`;
+  const res = ops.connect(wf.id, { from: aId, to: bId, when });
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  expect(res.workflow.edges).toContainEqual({ from: aId, to: bId, when });
+  expect(res.workflow.edges.filter((e) => e.from === aId && e.to === bId)).toHaveLength(1);
+  expect(res.note).toBe('Changed when "Sort" continues to "Extract".');
+  // And again: the second condition replaces the first.
+  const again = ops.connect(wf.id, { from: aId, to: bId, when: `${aId}.choice == 'no'` });
+  expect(again.ok).toBe(true);
+  if (!again.ok) return;
+  expect(
+    again.workflow.edges.filter((e) => e.from === aId && e.to === bId),
+  ).toEqual([{ from: aId, to: bId, when: `${aId}.choice == 'no'` }]);
+});
+
 test('disconnect removes the edge; a missing edge is refused', () => {
   const { ops } = setup();
   const res = ops.disconnect('flow-1', { from: 'extract', to: 'save' });

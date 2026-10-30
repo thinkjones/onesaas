@@ -228,7 +228,7 @@ test('gmail.draftReply drafts via the bridge', async () => {
   expect(result.why).toBe('Saved the reply as a draft in Gmail.');
 });
 
-test('gmail.read reads via the bridge and names the sender and subject', async () => {
+test('gmail.read reads via the worker tab and names the sender and subject', async () => {
   const { gateway } = gatewayWithResponses(0, '{}');
   const email = {
     from: 'sarah@x.com',
@@ -244,7 +244,9 @@ test('gmail.read reads via the bridge and names the sender and subject', async (
     makeCtx(gateway, undefined, { call }),
   );
   expect(call).toHaveBeenCalledTimes(1);
-  expect(call).toHaveBeenCalledWith('gmail', 'readOpenEmail', { threadId: 't1' });
+  expect(call).toHaveBeenCalledWith('gmail', 'readOpenEmail', { threadId: 't1' }, undefined, {
+    tab: 'worker',
+  });
   expect(result.output).toEqual(email);
   expect(result.why).toBe('Read the email from Sarah Lee ("Need help").');
 });
@@ -315,6 +317,8 @@ test('every catalog entry has an executor', () => {
       'calendar.freeBusy',
       'gmail.draftReply',
       'gmail.read',
+      'table.insert',
+      'table.query',
       'table.upsert',
       'trigger.email',
       'trigger.gmailButton',

@@ -1,6 +1,78 @@
 import { sanitiseName } from '../tables/store.js';
 import type { Executor } from './registry.js';
 
+// Display value for a fresh row: the list's display column, else the
+// upsert-style 'someone' fallback (bookings and customers are people-shaped).
+function displayOf(
+  row: Record<string, unknown>,
+  displayField: string | undefined,
+): string {
+  const raw = displayField !== undefined ? row[displayField] : undefined;
+  return raw === null || raw === undefined ? 'someone' : String(raw);
+}
+
+export const insertExecutor: Executor = async (config, input, ctx) => {
+  const table = config.table as string;
+  const row = input.row as Record<string, unknown>;
+  const { id } = ctx.tables.insert(table, row);
+  // insert succeeded, so the table exists; still tolerate a missing def.
+  const def = ctx.tables.getTable(table);
+  const name = displayOf(row, def?.displayField);
+  const label = def?.label ?? table;
+  // No model/tokens/costUsd: the why is templated, this step calls no model.
+  return { output: { id }, why: `Added ${name} to ${label}.` };
+};
+
+// Test-mode preview: READ-ONLY mirror of the store guards above (unknown
+// table, bad email/datetime cells — same messages as a real run, via the
+// same sanitised-key matching), so "Try it" validates without writing. A
+// would-be row reports id 0.
+insertExecutor.preview = async (config, input, ctx) => {
+  const table = config.table as string;
+  const row = input.row as Record<string, unknown>;
+  const def = ctx.tables.getTable(table);
+  if (!def) throw new Error(`Unknown table: ${table}`);
+  const types = new Map(def.columns.map((c) => [c.name, c.type]));
+  for (const [rawKey, value] of Object.entries(row)) {
+    let col: string;
+    try {
+      col = sanitiseName(rawKey);
+    } catch {
+      continue; // Key sanitises to nothing — unknown, ignored like writes.
+    }
+    const type = types.get(col);
+    if (value === null || value === undefined) continue;
+    if (type === 'email' && !String(value).includes('@')) {
+      throw new Error(`Invalid email for column ${col}`);
+    }
+    if (
+      type === 'datetime' &&
+      !(value instanceof Date) &&
+      Number.isNaN(Date.parse(String(value)))
+    ) {
+      throw new Error(`Invalid datetime for column ${col}`);
+    }
+  }
+  const name = displayOf(row, def.displayField);
+  return { output: { id: 0 }, why: `In a real run I would add ${name} to ${def.label}.` };
+};
+
+export const queryExecutor: Executor = async (config, input, ctx) => {
+  const table = config.table as string;
+  // The catalog limit default never applies at runtime (guard-only schemas),
+  // so it lives here too. Keep the two in sync.
+  const limit = (config.limit as number | undefined) ?? 20;
+  const where = input.where as Record<string, unknown> | undefined;
+  const rows = ctx.tables.query(table, {
+    ...(where !== undefined ? { where } : {}),
+    limit,
+  });
+  // query succeeded, so the table exists; still tolerate a missing def.
+  const label = ctx.tables.getTable(table)?.label ?? table;
+  // No model/tokens/costUsd: the why is templated, this step calls no model.
+  return { output: { rows, count: rows.length }, why: `Found ${rows.length} in ${label}.` };
+};
+
 export const upsertExecutor: Executor = async (config, input, ctx) => {
   const table = config.table as string;
   const keyField = config.keyField as string;

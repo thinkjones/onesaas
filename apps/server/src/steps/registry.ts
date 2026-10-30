@@ -4,7 +4,7 @@ import { extractExecutor, writeExecutor } from './ai.js';
 import { askExecutor } from './approval.js';
 import { createEventExecutor, freeBusyExecutor } from './calendar.js';
 import { classifyExecutor } from './classify.js';
-import { upsertExecutor } from './table.js';
+import { insertExecutor, queryExecutor, upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
   emailExecutor,
@@ -90,6 +90,8 @@ export const executors: Record<string, Executor> = {
   'ai.write': writeExecutor,
   'ai.classify': classifyExecutor,
   'table.upsert': upsertExecutor,
+  'table.insert': insertExecutor,
+  'table.query': queryExecutor,
   'gmail.read': readExecutor,
   'gmail.draftReply': draftReplyExecutor,
   'calendar.freeBusy': freeBusyExecutor,

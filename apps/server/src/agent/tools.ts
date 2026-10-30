@@ -326,7 +326,10 @@ const createTable: ToolImpl = {
           properties: {
             name: { type: 'string' },
             label: { type: 'string' },
-            type: { type: 'string', enum: ['text', 'number', 'boolean', 'date', 'email'] },
+            type: {
+              type: 'string',
+              enum: ['text', 'number', 'boolean', 'date', 'email', 'datetime'],
+            },
           },
           required: ['name', 'label', 'type'],
           additionalProperties: false,
@@ -478,7 +481,8 @@ const removeStep: ToolImpl = {
 
 const connect: ToolImpl = {
   name: 'connect',
-  description: 'Connect two steps so one runs after the other. Refuses links that would loop.',
+  description:
+    'Connect two steps so one runs after the other. Connecting the same two steps again with "when" replaces the link with a conditional one. Refuses links that would loop.',
   parameters: {
     type: 'object',
     properties: {
