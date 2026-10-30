@@ -57,6 +57,8 @@ class SoundEngine implements Sound {
   private current = 0;
   private fading = false;
   private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Consecutive ambient load failures; bounds error recovery (see below). */
+  private consecutiveAmbientErrors = 0;
 
   unlock(): void {
     this.unlocked = true;
@@ -94,6 +96,8 @@ class SoundEngine implements Sound {
       if (el) {
         el.onended = null;
         el.ontimeupdate = null;
+        el.onerror = null;
+        el.onstalled = null;
         el.pause();
       }
     }
@@ -103,6 +107,7 @@ class SoundEngine implements Sound {
     this.volume = 0.5;
     this.ambientOn = false;
     this.current = 0;
+    this.consecutiveAmbientErrors = 0;
   }
 
   private applyAmbient(): void {
@@ -124,8 +129,14 @@ class SoundEngine implements Sound {
       el.ontimeupdate = () => this.maybeCrossfade(el!, i);
       // Fallback when timeupdate never fires within the window.
       el.onended = () => {
-        if (this.ambientOn && this.current === i) this.startLoop(1 - i, false);
+        if (!this.ambientOn || this.current !== i) return;
+        this.consecutiveAmbientErrors = 0;
+        this.startLoop(1 - i, false);
       };
+      // Load failure (404/corrupt/codec) or a stalled network must not
+      // leave silence behind a UI that claims sound is on.
+      el.onerror = () => this.handleLoopError(i);
+      el.onstalled = () => this.handleLoopError(i);
       this.loops[i] = el;
     }
     return el;
@@ -148,8 +159,37 @@ class SoundEngine implements Sound {
   private maybeCrossfade(el: HTMLAudioElement, i: number): void {
     if (this.fading || !this.ambientOn || this.current !== i) return;
     const { duration, currentTime } = el;
-    if (!Number.isFinite(duration) || duration - currentTime > CROSSFADE_S) return;
+    if (!Number.isFinite(duration)) return;
+    // Any timeupdate with metadata proves the file loads.
+    this.consecutiveAmbientErrors = 0;
+    if (duration - currentTime > CROSSFADE_S) return;
     this.crossfade(i, 1 - i);
+  }
+
+  /**
+   * Advance past a loop that failed to load or stalled. Bounded so two
+   * broken files stop playback instead of ping-ponging forever; warns
+   * once per failure sequence.
+   */
+  private handleLoopError(i: number): void {
+    if (!this.ambientOn || this.current !== i) return;
+    this.consecutiveAmbientErrors += 1;
+    if (this.consecutiveAmbientErrors === 1) {
+      console.warn(
+        `[sound] ambient loop ${i + 1} failed to load; advancing to the other loop`,
+      );
+    }
+    this.stopFade();
+    if (this.consecutiveAmbientErrors >= AMBIENT_SRC.length) {
+      for (const el of this.loops) {
+        if (el) el.pause();
+      }
+      return;
+    }
+    // Silence the failed element so a recovering stall can't overlap.
+    const failed = this.loops[i];
+    if (failed) failed.pause();
+    this.startLoop(1 - i, false);
   }
 
   private crossfade(from: number, to: number): void {
