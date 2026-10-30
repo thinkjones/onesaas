@@ -114,41 +114,47 @@ export function createApp(deps: AppDeps): Hono {
   // A refused op is still a 200: the OpResult body carries the readable error.
   const OP_ARGS: Record<string, z.ZodTypeAny> = {
     setTrigger: z.tuple([
-      z.object({
-        type: z.string(),
-        config: z.record(z.string(), z.unknown()),
-        title: z.string().optional(),
-        summary: z.string().optional(),
-      }),
+      z
+        .object({
+          type: z.string(),
+          config: z.record(z.string(), z.unknown()),
+          title: z.string().optional(),
+          summary: z.string().optional(),
+        })
+        .strict(),
     ]),
     addStep: z.tuple([
-      z.object({
-        type: z.string(),
-        title: z.string(),
-        summary: z.string(),
-        config: z.record(z.string(), z.unknown()),
-        inputs: z.record(z.string(), z.string()),
-        after: z.string().optional(),
-      }),
+      z
+        .object({
+          type: z.string(),
+          title: z.string(),
+          summary: z.string(),
+          config: z.record(z.string(), z.unknown()),
+          inputs: z.record(z.string(), z.string()),
+          after: z.string().optional(),
+        })
+        .strict(),
     ]),
     updateStep: z.tuple([
       z.string(),
-      z.object({
-        title: z.string().optional(),
-        summary: z.string().optional(),
-        config: z.record(z.string(), z.unknown()).optional(),
-        inputs: z.record(z.string(), z.string()).optional(),
-      }),
+      z
+        .object({
+          title: z.string().optional(),
+          summary: z.string().optional(),
+          config: z.record(z.string(), z.unknown()).optional(),
+          inputs: z.record(z.string(), z.string()).optional(),
+        })
+        .strict(),
     ]),
     removeStep: z.tuple([z.string()]),
     connect: z.tuple([
-      z.object({ from: z.string(), to: z.string(), when: z.string().optional() }),
+      z.object({ from: z.string(), to: z.string(), when: z.string().optional() }).strict(),
     ]),
-    disconnect: z.tuple([z.object({ from: z.string(), to: z.string() })]),
-    move: z.tuple([z.string(), z.object({ x: z.number(), y: z.number() })]),
+    disconnect: z.tuple([z.object({ from: z.string(), to: z.string() }).strict()]),
+    move: z.tuple([z.string(), z.object({ x: z.number(), y: z.number() }).strict()]),
     setStatus: z.tuple([z.enum(['on', 'off'])]),
     rename: z.tuple([
-      z.object({ name: z.string(), description: z.string().optional() }),
+      z.object({ name: z.string(), description: z.string().optional() }).strict(),
     ]),
   };
   const OP_NAMES = new Set(Object.keys(OP_ARGS));
@@ -170,11 +176,15 @@ export function createApp(deps: AppDeps): Hono {
       return c.json({ error: 'Use POST /api/workflows to create a workflow' }, 400);
     }
     if (!OP_NAMES.has(op)) return c.json({ error: `Unknown op: ${op}` }, 400);
-    if (!OP_ARGS[op]!.safeParse(args).success) {
+    const argsParsed = OP_ARGS[op]!.safeParse(args);
+    if (!argsParsed.success) {
       return c.json({ error: 'Invalid op body' }, 400);
     }
     const fn = (ops as unknown as Record<string, (...a: unknown[]) => OpResult>)[op]!;
-    return c.json(fn(id, ...args, { by: 'dad' }));
+    // Forward the validated args, not the raw body, so unknown keys can
+    // never ride through to the op even if a schema stops being strict.
+    const validatedArgs = argsParsed.data as unknown[];
+    return c.json(fn(id, ...validatedArgs, { by: 'dad' }));
   });
 
   app.get('/api/runs', (c) => {

@@ -83,14 +83,20 @@ export function createWorkflowOps(d: {
   }
 
   // A binding is valid exactly when its step is upstream of the reader.
-  // Anything else — a typo, a downstream step, a removed step — is refused
-  // with the same readable message, naming the binding as written.
+  // Anything else — a typo, a downstream step, a removed step — is refused.
+  // When `exists` is given, a step that is gone entirely gets checkWorkflow's
+  // "removed step" message; otherwise the single "isn't before it" message
+  // names the binding as written.
   function badBinding(
     refs: ReturnType<typeof extractRefs>,
     upstream: Set<string>,
+    exists?: (stepId: string) => boolean,
   ): OpResult | undefined {
     for (const { ref, stepId } of refs) {
       if (!upstream.has(stepId)) {
+        if (exists && !exists(stepId)) {
+          return { ok: false, error: 'Needs an input from a removed step.' };
+        }
         return {
           ok: false,
           error: `Needs an input from a step that isn't before it ("${ref}").`,
@@ -169,14 +175,23 @@ export function createWorkflowOps(d: {
       const wf = repo.getWorkflow(id);
       if (!wf) return { ok: false, error: `Unknown workflow: ${id}` };
       if (!hasStep(wf, stepId)) return { ok: false, error: `Unknown step: ${stepId}` };
-      const bad = badBinding(
-        extractRefs({
-          ...(wf.trigger.id === stepId ? wf.trigger.inputs : wf.steps.find((s) => s.id === stepId)!.inputs),
-          ...(patch.inputs ?? {}),
-        }),
-        upstreamIds(wf, stepId),
-      );
-      if (bad) return bad;
+      for (const key of Object.keys(patch)) {
+        if (key !== 'title' && key !== 'summary' && key !== 'config' && key !== 'inputs') {
+          return { ok: false, error: `Unknown field: ${key}` };
+        }
+      }
+      // Replace semantics: an `inputs` patch is the step's whole new inputs,
+      // so it — not a merge with the old bindings — is what gets validated.
+      // A patch that leaves `inputs` alone is never refused for pre-existing
+      // dangling bindings; checkWorkflow reports those for Dad to fix.
+      if (patch.inputs !== undefined) {
+        const bad = badBinding(
+          extractRefs(patch.inputs),
+          upstreamIds(wf, stepId),
+          (s) => hasStep(wf, s),
+        );
+        if (bad) return bad;
+      }
       const apply = (s: StepInstance): StepInstance => ({ ...s, ...patch });
       const next =
         wf.trigger.id === stepId

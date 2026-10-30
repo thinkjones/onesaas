@@ -179,13 +179,80 @@ test('updateStep with a bad binding is refused', () => {
   });
 });
 
-test('updateStep refuses while the step has a dangling binding', () => {
+test('updateStep allows non-input patches while the step has a dangling binding', () => {
+  const { repo, tables, ops } = setup();
+  expect(ops.removeStep('flow-1', 'extract').ok).toBe(true);
+  const res = ops.updateStep('flow-1', 'save', { title: 'Save v2' });
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  expect(res.workflow.steps.find((s) => s.id === 'save')?.title).toBe('Save v2');
+  // The dangling binding is untouched: checkWorkflow still reports it.
+  expect(res.workflow.steps.find((s) => s.id === 'save')?.inputs).toEqual({ row: '{{extract}}' });
+  expect(
+    checkWorkflow(repo.getWorkflow('flow-1')!, tables)
+      .filter((p) => p.stepId === 'save')
+      .map((p) => p.problem),
+  ).toContain('Needs an input from a removed step.');
+});
+
+test('updateStep can clear dangling bindings after a removeStep', () => {
+  const { repo, tables, ops } = setup();
+  expect(ops.removeStep('flow-1', 'extract').ok).toBe(true);
+  const res = ops.updateStep('flow-1', 'save', { inputs: {} });
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  expect(res.workflow.steps.find((s) => s.id === 'save')?.inputs).toEqual({});
+  expect(
+    checkWorkflow(repo.getWorkflow('flow-1')!, tables)
+      .filter((p) => p.stepId === 'save')
+      .map((p) => p.problem),
+  ).not.toContain('Needs an input from a removed step.');
+});
+
+test('updateStep can re-point a binding to a newly connected upstream step', () => {
   const { ops } = setup();
   expect(ops.removeStep('flow-1', 'extract').ok).toBe(true);
-  expect(ops.updateStep('flow-1', 'save', { title: 'Save v2' })).toEqual({
-    ok: false,
-    error: 'Needs an input from a step that isn\'t before it ("extract").',
+  const added = ops.addStep('flow-1', {
+    type: 'ai.extract',
+    title: 'Extract details',
+    summary: 'Read details from the email.',
+    config: { instructions: 'Extract the details.' },
+    inputs: {},
+    after: 'trigger',
   });
+  expect(added.ok).toBe(true);
+  if (!added.ok) return;
+  const newId = added.workflow.steps.find((s) => s.title === 'Extract details')!.id;
+  expect(ops.connect('flow-1', { from: newId, to: 'save' }).ok).toBe(true);
+  const res = ops.updateStep('flow-1', 'save', { inputs: { row: `{{${newId}}}` } });
+  expect(res.ok).toBe(true);
+  if (!res.ok) return;
+  expect(res.workflow.steps.find((s) => s.id === 'save')?.inputs).toEqual({
+    row: `{{${newId}}}`,
+  });
+});
+
+test('updateStep refuses a binding to a step that does not exist', () => {
+  const { ops } = setup();
+  expect(ops.updateStep('flow-1', 'save', { inputs: { row: '{{nonexistent.x}}' } })).toEqual({
+    ok: false,
+    error: 'Needs an input from a removed step.',
+  });
+});
+
+test('updateStep refuses unknown patch keys without versioning', () => {
+  const { repo, ops } = setup();
+  const before = repo.getWorkflow('flow-1')!;
+  const res = ops.updateStep(
+    'flow-1',
+    'save',
+    { type: 'ai.dance' } as unknown as { title: string },
+  );
+  expect(res).toEqual({ ok: false, error: 'Unknown field: type' });
+  expect(repo.getWorkflow('flow-1')!.version).toBe(before.version);
+  expect(repo.getWorkflow('flow-1')!.steps.find((s) => s.id === 'save')?.type).toBe(
+    'table.upsert',
+  );
 });
 
 test('updateStep on an unknown step is refused', () => {
@@ -475,6 +542,23 @@ test('POST /api/workflows/:id/ops dispatches ops and passes by dad', async () =>
   });
   expect(unknownWf.status).toBe(200);
   expect(await unknownWf.json()).toEqual({ ok: false, error: 'Unknown workflow: nope' });
+});
+
+test('POST /api/workflows/:id/ops refuses updateStep with an unknown patch key', async () => {
+  const db = openDb(':memory:');
+  const tables = createTableStore(db);
+  const repo = createRepo(db);
+  repo.saveWorkflow(Workflow.parse(flow1Seed));
+  const app = createApp({ repo, tables });
+  const before = repo.getWorkflow('flow-1')!;
+  const res = await app.request('/api/workflows/flow-1/ops', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ op: 'updateStep', args: ['save', { title: 'x', type: 'ai.dance' }] }),
+  });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({ error: 'Invalid op body' });
+  expect(repo.getWorkflow('flow-1')).toEqual(before);
 });
 
 test('GET /api/workflows/:id returns the workflow plus problems', async () => {
