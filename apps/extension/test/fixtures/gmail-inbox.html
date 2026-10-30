@@ -1,0 +1,53 @@
+<!--
+  SYNTHETIC FIXTURE — hand-authored, NOT saved from Gmail.
+  Approximates the Gmail inbox list DOM as of Oct 2026: unread rows are
+  tr.zA.zE inside the list table; sender/subject/snippet cells use the
+  selectors in lib/gmail/selectors.ts. MUST be replaced with a real saved
+  inbox (DevTools "Copy outerHTML", private bits removed) before trusting
+  adapter behavior. All data below is clearly fake.
+-->
+<div role="main">
+  <table>
+    <tbody>
+      <!-- Unread row 1: thread id from the row attribute -->
+      <tr class="zA zE" data-legacy-thread-id="inboxthread0001">
+        <td class="yX">
+          <span class="yP" email="jordan@example.com">Jordan Lee</span>
+        </td>
+        <td class="y6">
+          <span class="bog">Booking for Saturday evening</span>
+          <span class="y2">Hi! Can I book a table for 4 this Saturday at 7pm? Thanks!</span>
+        </td>
+        <td class="xY">
+          <a href="https://mail.google.com/mail/u/0/#inbox/inboxthread0001">open</a>
+        </td>
+      </tr>
+      <!-- Unread row 2: NO row attribute; thread id falls back to the hex token in a descendant link -->
+      <tr class="zA zE">
+        <td class="yX">
+          <span class="yP" email="priya@example.com">Priya Nair</span>
+        </td>
+        <td class="y6">
+          <span class="bog">Do you cater weekend events?</span>
+          <span class="y2">We loved your stall at the market. Do you cater small events?</span>
+        </td>
+        <td class="xY">
+          <a href="https://mail.google.com/mail/u/0/#inbox/19c4d8e2f6a0b135">open</a>
+        </td>
+      </tr>
+      <!-- Read row: no zE, must be ignored -->
+      <tr class="zA">
+        <td class="yX">
+          <span class="yP" email="newsletter@example.com">Weekly Newsletter</span>
+        </td>
+        <td class="y6">
+          <span class="bog">This week's updates</span>
+          <span class="y2">Here is what happened this week in the neighborhood.</span>
+        </td>
+        <td class="xY">
+          <a href="https://mail.google.com/mail/u/0/#inbox/19c4d8e2f6a0b999">open</a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

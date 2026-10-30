@@ -187,6 +187,126 @@ describe('WorkflowPage fix-this-step seam', () => {
   });
 });
 
+describe('WorkflowPage photo drop zone', () => {
+  const UPLOAD_TRIGGER: StepInstance = {
+    id: 'trigger',
+    type: 'trigger.upload',
+    title: 'Photo upload',
+    summary: 'Runs when you drop a photo.',
+    config: { prompt: 'Drop the mug shot here' },
+    inputs: {},
+    position: { x: 100, y: 100 },
+  };
+
+  function uploadWorkflow(): Workflow {
+    return {
+      id: 'flow-upload',
+      name: 'Photo flow',
+      description: 'Photo flow.',
+      version: 1,
+      status: 'on',
+      trigger: UPLOAD_TRIGGER,
+      steps: [],
+      edges: [],
+    };
+  }
+
+  const NEW_RUN: Run = {
+    id: 'run-new',
+    workflowId: 'flow-upload',
+    workflowVersion: 1,
+    triggerPayload: { file: { fileId: 'f1', mime: 'image/jpeg' } },
+    status: 'done',
+    kind: 'live',
+    usedSample: false,
+    startedAt: '2026-10-30T10:42:00.000Z',
+    endedAt: '2026-10-30T10:42:01.000Z',
+  };
+
+  function renderUploadPage(opts?: { search?: string; uploadError?: string }) {
+    const uploads: unknown[] = [];
+    let runs: Run[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const respond = (body: unknown, status = 200) =>
+        ({
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        }) as Response;
+      if (url === '/api/workflows') return respond([uploadWorkflow()]);
+      if (url === '/api/workflows/flow-upload')
+        return respond({ ...uploadWorkflow(), problems: [] });
+      if (url === '/api/runs?workflowId=flow-upload') return respond(runs);
+      if (url === '/api/runs/run-new')
+        return respond({
+          run: NEW_RUN,
+          steps: [],
+          story: ['Runs when you drop a photo.'],
+          workflow: uploadWorkflow(),
+        });
+      if (url === '/api/workflows/flow-upload/agent' && init?.method !== 'POST') return respond([]);
+      if (url === '/api/workflows/flow-upload/upload' && init?.method === 'POST') {
+        uploads.push(init.body);
+        if (opts?.uploadError !== undefined)
+          return respond({ error: opts.uploadError }, 400);
+        runs = [NEW_RUN];
+        return respond({ run: NEW_RUN, file: { fileId: 'f1', mime: 'image/jpeg' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    let search = '';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={[`/reducers/flow-upload${opts?.search ?? ''}`]}>
+            <LocationProbe onSearch={(s) => { search = s; }} />
+            <Routes>
+              <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={() => {}} />} />
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    return { uploads, search: () => search };
+  }
+
+  test('runtime mode shows the trigger prompt drop zone', async () => {
+    renderUploadPage();
+    expect(await screen.findByText('Drop the mug shot here')).toBeDefined();
+  });
+
+  test('design mode hides the drop zone', async () => {
+    renderUploadPage({ search: '?mode=design' });
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
+    expect(screen.queryByText('Drop the mug shot here')).toBeNull();
+  });
+
+  test('dropping a photo posts it and jumps to the new run', async () => {
+    const page = renderUploadPage();
+    const zone = await screen.findByText('Drop the mug shot here');
+    const file = new File(['fake-image-bytes'], 'mug.jpg', { type: 'image/jpeg' });
+    fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+    await waitFor(() => {
+      expect(page.search()).toContain('run=run-new');
+    });
+    expect(page.uploads).toHaveLength(1);
+    expect(page.uploads[0]).toBeInstanceOf(FormData);
+  });
+
+  test('a rejected photo shows the server message', async () => {
+    renderUploadPage({ uploadError: "That doesn't look like a photo." });
+    const zone = await screen.findByText('Drop the mug shot here');
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' })] },
+    });
+    expect((await screen.findByRole('alert')).textContent).toBe("That doesn't look like a photo.");
+  });
+});
+
 describe('WorkflowPage helper panel', () => {
   const HANDOFF =
     '"Pick out the details" stopped with: I could not read the email. Can you help me fix it?';
@@ -263,5 +383,96 @@ describe('WorkflowPage helper panel', () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(agentPosts).toHaveLength(1);
+  });
+});
+
+describe('WorkflowPage agent switch seam', () => {
+  class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    onmessage: ((msg: { data: string }) => void) | null = null;
+    close() {}
+    constructor() {
+      FakeEventSource.instances.push(this);
+    }
+  }
+
+  function photoWorkflow(): Workflow {
+    return {
+      id: 'wf-photo',
+      name: 'Photo posts',
+      description: 'Turns product photos into posts.',
+      version: 1,
+      status: 'off',
+      trigger: {
+        id: 'trigger',
+        type: 'trigger.upload',
+        title: 'Photo upload',
+        summary: 'Runs when you drop a photo.',
+        config: { prompt: 'Drop a product photo here' },
+        inputs: {},
+        position: { x: 100, y: 100 },
+      },
+      steps: [],
+      edges: [],
+    };
+  }
+
+  function PathProbe({ onPath }: { onPath: (path: string) => void }) {
+    const location = useLocation();
+    onPath(`${location.pathname}${location.search}`);
+    return null;
+  }
+
+  function emitAgentEvent(workflowId: string, event: unknown) {
+    const data = JSON.stringify({ type: 'agent', workflowId, event });
+    for (const inst of FakeEventSource.instances) inst.onmessage?.({ data });
+  }
+
+  test('a switched event navigates to the new reducer in design mode', async () => {
+    FakeEventSource.instances = [];
+    vi.stubGlobal('EventSource', FakeEventSource);
+    // The server only lists the new reducer AFTER the switch: resolving the
+    // new page proves the handler invalidated the workflows list first.
+    let listed: Workflow[] = [workflow()];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        const json = async () => {
+          if (url === '/api/workflows') return listed;
+          if (url === '/api/runs?workflowId=flow-1') return [RUN];
+          if (url === '/api/runs/run-1') return RUN_DETAIL;
+          if (url === '/api/workflows/flow-1') return DESIGN_DETAIL;
+          if (url === '/api/workflows/flow-1/agent') return [];
+          if (url === '/api/workflows/wf-photo') return { ...photoWorkflow(), problems: [] };
+          if (url === '/api/workflows/wf-photo/agent') return [];
+          throw new Error(`unexpected fetch: ${url}`);
+        };
+        return { ok: true, status: 200, json } as Response;
+      }),
+    );
+    let path = '';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={['/reducers/flow-1']}>
+            <PathProbe onPath={(p) => { path = p; }} />
+            <Routes>
+              <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Test flow');
+    expect(path).toBe('/reducers/flow-1');
+
+    listed = [workflow(), photoWorkflow()];
+    await act(async () => {
+      emitAgentEvent('flow-1', { type: 'switched', workflowId: 'wf-photo' });
+    });
+    await screen.findByText('Photo posts');
+    expect(path).toBe('/reducers/wf-photo?mode=design');
   });
 });

@@ -19,7 +19,7 @@ import {
 import { MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import GhostNode, { GhostEdge, type GhostNodeData } from '../design/GhostNode.tsx';
-import FlowEdge from './FlowEdge.tsx';
+import FlowEdge, { type FlowEdgeData } from './FlowEdge.tsx';
 import { layoutWorkflow } from './layout.ts';
 import StepNode, { type StepNodeData } from './StepNode.tsx';
 
@@ -27,7 +27,7 @@ export type CanvasMode = 'design' | 'runtime';
 
 export type CanvasOp =
   | { op: 'move'; stepId: string; position: { x: number; y: number } }
-  | { op: 'connect'; from: string; to: string }
+  | { op: 'connect'; from: string; to: string; when?: string }
   | { op: 'remove'; stepId: string }
   | { op: 'disconnect'; from: string; to: string };
 
@@ -59,7 +59,7 @@ export interface WorkflowCanvasProps {
 
 type CanvasNode = Node<StepNodeData, 'step'>;
 type CanvasGhostNode = Node<GhostNodeData, 'ghost'>;
-type CanvasEdge = Edge<{ when?: string }, 'flow'>;
+type CanvasEdge = Edge<FlowEdgeData, 'flow'>;
 type CanvasGhostEdge = Edge<{ when?: string }, 'ghost'>;
 
 const nodeTypes = { step: StepNode, ghost: GhostNode };
@@ -67,6 +67,21 @@ const edgeTypes = { flow: FlowEdge, ghost: GhostEdge };
 
 function kindOf(type: string): StepKind {
   return catalog[type]?.kind ?? 'enrich';
+}
+
+/**
+ * A sort step's options for the edge condition picker. Mirrors the server's
+ * classify default (apps/server/src/steps/classify.ts): the catalog options
+ * default never applies at runtime, so a missing/empty options falls back to
+ * yes/no. The web cannot import server code, so the literal is restated.
+ */
+function classifyOptions(config: Record<string, unknown>): string[] {
+  const raw = config['options'];
+  if (Array.isArray(raw)) {
+    const options = raw.filter((o): o is string => typeof o === 'string' && o.length > 0);
+    if (options.length > 0) return options;
+  }
+  return ['yes', 'no'];
 }
 
 /**
@@ -144,27 +159,43 @@ export default function WorkflowCanvas({
 
   const initialEdges: (CanvasEdge | CanvasGhostEdge)[] = useMemo(() => {
     const ghostIds = new Set((ghosts ?? []).map((g) => g.id));
-    return laid.edges.map((e) =>
-      ghostIds.has(e.from) || ghostIds.has(e.to)
-        ? {
-            id: `${e.from}->${e.to}`,
-            source: e.from,
-            target: e.to,
-            type: 'ghost',
-            data: { when: e.when },
-            selectable: false,
-          }
-        : {
-            id: `${e.from}->${e.to}`,
-            source: e.from,
-            target: e.to,
-            type: 'flow',
-            animated: stepRuns?.[e.to]?.status === 'running',
-            data: { when: e.when },
-            style: { stroke: 'hsl(var(--muted-foreground) / 0.5)', strokeWidth: 2 },
-          },
-    );
-  }, [laid, stepRuns, ghosts]);
+    const byId = new Map([workflow.trigger, ...workflow.steps].map((s) => [s.id, s]));
+    const editable = mode === 'design' && onChange !== undefined;
+    return laid.edges.map((e) => {
+      if (ghostIds.has(e.from) || ghostIds.has(e.to)) {
+        return {
+          id: `${e.from}->${e.to}`,
+          source: e.from,
+          target: e.to,
+          type: 'ghost',
+          data: { when: e.when },
+          selectable: false,
+        };
+      }
+      // Wires out of a sort step carry the condition picker in design mode;
+      // picking an option re-connects the wire with that condition.
+      const source = byId.get(e.from);
+      const condition =
+        editable && source?.type === 'ai.classify'
+          ? {
+              stepId: source.id,
+              options: classifyOptions(source.config),
+              onConnect: (when: string): void => {
+                onChange?.({ op: 'connect', from: e.from, to: e.to, when });
+              },
+            }
+          : undefined;
+      return {
+        id: `${e.from}->${e.to}`,
+        source: e.from,
+        target: e.to,
+        type: 'flow',
+        animated: stepRuns?.[e.to]?.status === 'running',
+        data: { when: e.when, ...(condition ? { condition } : {}) },
+        style: { stroke: 'hsl(var(--muted-foreground) / 0.5)', strokeWidth: 2 },
+      };
+    });
+  }, [laid, stepRuns, ghosts, workflow, mode, onChange]);
 
   const [nodes, setNodes, onNodesChangeInner] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInner] = useEdgesState(initialEdges);

@@ -1,11 +1,13 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import AgentPanel from '../agent/AgentPanel.tsx';
-import { useWorkflow } from '../api.ts';
+import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
 import EmptyState from '../design/EmptyState.tsx';
+import UploadDrop from '../design/UploadDrop.tsx';
 import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
 import RuntimeView, { type FixStepInfo } from '../runtime/RuntimeView.tsx';
 import ModeSwitch from '../shell/ModeSwitch.tsx';
@@ -27,8 +29,14 @@ export interface WorkflowPageProps {
  * - ?run=/?step=: validated in RuntimeView (newest run / closed inspector);
  *   DesignView reuses ?step= for its selection.
  *
- * The helper panel sits on the right (380px, collapsible) in BOTH modes, at
- * the same tree position so switching modes never remounts it mid-turn. "Fix
+ * Photo-triggered flows (trigger.upload) get an UploadDrop above the runtime
+ * view: dropping a photo posts it to the upload route and jumps to the new
+ * run. The helper panel sits on the right (380px, collapsible) in BOTH modes, at
+ * the same tree position so switching modes never remounts it mid-turn. When
+ * the agent starts a second reducer mid-turn (create_workflow), its `switched`
+ * event navigates this page to the new reducer's design view (the workflows
+ * list is invalidated first, so the new reducer resolves instead of showing
+ * not-found). "Fix
  * this step" sets `agentPrefill` to `"<title>" stopped with: <error>. Can you
  * help me fix it?` and opens design mode on the failed step; the panel
  * consumes the state as its initial input (clearing it on consume and on
@@ -46,6 +54,23 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
   const mode = parseModeParam(params.get('mode'));
+  const queryClient = useQueryClient();
+  // Photo-triggered flows start runs by dropping a photo (runtime mode only).
+  // On success the runs list refetches and the view jumps to the new run
+  // (clearing ?step=, which belongs to the previous run — same idiom as
+  // RuntimeView's run switching). Failures surface the server's message.
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadPhoto(workflowId ?? '', file),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['runs', workflowId] });
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('run', result.run.id);
+        next.delete('step');
+        return next;
+      });
+    },
+  });
   const [agentPrefill, setAgentPrefill] = useState<string | undefined>();
   // Collapsed state lives here per page-mount (no persistence yet).
   const [panelCollapsed, setPanelCollapsed] = useState(false);
@@ -53,6 +78,20 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     const state = location.state as { agentPrompt?: unknown } | null;
     return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
   });
+
+  // Follow the agent when it starts a second reducer: the `switched`
+  // event names the new reducer, and the web navigates there (design mode,
+  // where the build lands). Runs before the early returns below with every
+  // other hook; the handler no-ops until a switch arrives.
+  const handleAgentSwitch = useCallback(
+    (e: AgentEvent) => {
+      if (e.type !== 'switched') return;
+      void queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      navigate(`/reducers/${e.workflowId}?mode=design`);
+    },
+    [navigate, queryClient],
+  );
+  useAgentEvents(workflowId ?? '', handleAgentSwitch);
 
   const handleModeChange = useCallback(
     (next: WorkflowMode) => {
@@ -120,6 +159,10 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     );
   }
 
+  const rawPrompt = workflowQuery.data.trigger.config['prompt'];
+  const uploadPrompt = typeof rawPrompt === 'string' ? rawPrompt : 'Drop a photo here';
+  const showUploadDrop = mode === 'runtime' && workflowQuery.data.trigger.type === 'trigger.upload';
+
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">{workflowQuery.data.name}</h1>
@@ -129,7 +172,23 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
           {mode === 'design' ? (
             <DesignView workflowId={workflowQuery.data.id} onRequestRuntime={handleRequestRuntime} />
           ) : (
-            <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+            <div className="flex flex-col gap-4">
+              {showUploadDrop && (
+                <div className="flex flex-col gap-2">
+                  <UploadDrop
+                    prompt={uploadPrompt}
+                    onUpload={(file) => upload.mutate(file)}
+                    disabled={upload.isPending}
+                  />
+                  {upload.isError && (
+                    <p role="alert" className="text-base text-destructive">
+                      {upload.error instanceof Error ? upload.error.message : 'The upload failed.'}
+                    </p>
+                  )}
+                </div>
+              )}
+              <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+            </div>
           )}
         </div>
         {panelCollapsed ? (

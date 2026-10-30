@@ -349,6 +349,19 @@ export default function ConfigForm({ step, workflow, onSave, saving, def }: Conf
         if (desc.kind === 'unsupported' || desc.kind === 'array') return null;
         const id = `${step.id}-config-${name}`;
         const value = config[name];
+        // code.transform's code is agent-written and Dad never edits it: show
+        // it read-only in a monospace block under its explanation. The value
+        // still round-trips through `config` untouched on save.
+        if (step.type === 'code.transform' && name === 'code') {
+          return (
+            <div key={name} className="flex flex-col gap-1.5">
+              <p className="text-base font-medium">{labelize(name)}</p>
+              <pre className="overflow-x-auto rounded-[var(--radius)] border border-border bg-muted p-3 font-mono text-sm break-words whitespace-pre-wrap">
+                {typeof value === 'string' ? value : ''}
+              </pre>
+            </div>
+          );
+        }
         return (
           <div key={name} className="flex flex-col gap-1.5">
             <label htmlFor={id} className="text-base font-medium">

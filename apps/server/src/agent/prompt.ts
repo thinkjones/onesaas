@@ -2,7 +2,7 @@ import { catalog, type Workflow } from '@dad/shared';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { TableDef } from '../tables/store.js';
 import type { checkWorkflow, WorkflowProblem } from '../workflows/validate.js';
-import { flow1Example } from './examples.js';
+import { flow1Example, flow2Example, flow4Example } from './examples.js';
 
 /** Section 1: role and voice. Fixed text — keep verbatim. */
 export const VOICE =
@@ -15,8 +15,14 @@ export const VOICE =
 export const TANGLED_MESSAGE =
   "I've got a bit tangled. Can you tell me which part to focus on?";
 
-/** Maximum tool calls per request (enforced by the Task 5 loop). */
-export const TOOL_CALL_CAP = 20;
+/**
+ * Maximum tool calls per request (enforced by the Task 5 loop). 30, not 20:
+ * the flow 4 two-reducer build (M4 Task 7) needs 19 calls minimum with zero
+ * headroom for a lookup or a fix at 20 — the eval proved 20 unbuildable
+ * twice (a skipped step, then a capped turn). Single reducers still finish
+ * far below this.
+ */
+export const TOOL_CALL_CAP = 30;
 
 function catalogSection(): string {
   const blocks = Object.values(catalog).map((def) => {
@@ -89,12 +95,15 @@ export function buildSystemPrompt(o: {
       '- Anything that sends or puts words in front of someone must stay a draft and pass through an approval step (approval.ask) first — never send for real on your own.',
       '- When you need Dad, ask one question per ask_user call, with 2 to 4 short clickable answers. You may ask follow-up questions across turns, but ask at most 3 questions per request.',
       `- You have at most ${TOOL_CALL_CAP} tool calls to finish the job. If you run out, say exactly: "${TANGLED_MESSAGE}"`,
+      '- When one sentence asks for two different jobs, build the first reducer first, then create_workflow and build the second in the new reducer.',
+      '- Every tool call already narrates itself to Dad, and every add_step result already confirms the step: never call explain while building — use it only when Dad asks what something is.',
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
+      '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells Dad what it does in one plain sentence.',
     ].join('\n'),
     catalogSection(),
     workflowSection(o.workflow, o.problems),
     tablesSection(o.tables),
-    ['# Worked example', flow1Example].join('\n\n'),
+    ['# Worked examples', flow1Example, flow2Example, flow4Example].join('\n\n'),
     [
       '# About the business',
       o.business.name ? `Name: ${o.business.name}` : 'Name: (not given yet)',

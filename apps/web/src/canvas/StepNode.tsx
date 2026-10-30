@@ -59,6 +59,11 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
             </p>
           </div>
           <p className="mt-2 text-base break-words text-muted-foreground">{step.summary}</p>
+          {step.type === 'trigger.email' && (
+            <p className="mt-1 text-sm break-words text-muted-foreground">
+              Works while Gmail is open in Chrome.
+            </p>
+          )}
           {status && (
             <div className="mt-3">
               <StatusBadge status={status} />

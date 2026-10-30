@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useLiveEvents } from './api.ts';
+
+vi.mock('sonner', () => ({ toast: vi.fn(), Toaster: () => null }));
 
 // NOTE: this file is .ts (plan path), so no JSX — createElement instead.
 
@@ -40,6 +43,7 @@ beforeEach(() => {
   MockEventSource.instances = [];
   vi.stubGlobal('EventSource', MockEventSource);
   vi.useFakeTimers();
+  vi.mocked(toast).mockClear();
   client = new QueryClient();
 });
 
@@ -120,5 +124,33 @@ describe('useLiveEvents reconnect', () => {
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['run', 'r1'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['runs'] });
+  });
+
+  test('notify events toast the message and invalidate nothing', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    renderLiveEvents();
+    await act(async () => {
+      MockEventSource.instances[0]!.onmessage!({
+        data: JSON.stringify({ type: 'notify', text: 'New customer: Priya Nair' }),
+      });
+    });
+    expect(toast).toHaveBeenCalledWith('New customer: Priya Nair');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test('agent envelopes on the shared stream are ignored, not crashed on', async () => {
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    renderLiveEvents();
+    await act(async () => {
+      MockEventSource.instances[0]!.onmessage!({
+        data: JSON.stringify({
+          type: 'agent',
+          workflowId: 'flow-1',
+          event: { type: 'activity', text: 'Did a thing.' },
+        }),
+      });
+    });
+    expect(toast).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

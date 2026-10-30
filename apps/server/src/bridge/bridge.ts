@@ -4,6 +4,25 @@ import type { Pairing } from './pairing.js';
 
 export type BridgeSite = 'gmail' | 'calendar' | 'meta';
 
+/** Which tab a cmd runs in: a pinned background worker tab, or a visible one. */
+export type BridgeTab = 'worker' | 'active';
+
+/**
+ * Rejection from bridge.call. `message` is the human-readable string (every
+ * pre-existing message is unchanged); `code` is the machine-readable reason
+ * when the extension supplied one, or the bridge's own NOT_OPEN/TIMEOUT for
+ * local failures (not connected, send failed, socket dropped, timed out).
+ */
+export class BridgeError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'BridgeError';
+    if (code !== undefined) this.code = code;
+  }
+}
+
 /** User-facing message per site when the extension cannot run the call. */
 const SITE_MESSAGES: Record<BridgeSite, string> = {
   gmail: 'I need Gmail open in Chrome to do this.',
@@ -23,7 +42,13 @@ export interface WSContext {
 }
 
 export interface Bridge {
-  call(site: BridgeSite, action: string, input: unknown, timeoutMs?: number): Promise<unknown>;
+  call(
+    site: BridgeSite,
+    action: string,
+    input: unknown,
+    timeoutMs?: number,
+    opts?: { tab?: BridgeTab },
+  ): Promise<unknown>;
   connected(): boolean;
   /** Push a message (runStatus, buttons, ...) to the active socket; no-op when none. */
   send(msg: ServerToExtension): void;
@@ -71,7 +96,7 @@ export function createBridge(o: {
   function failAllPending(): void {
     for (const [, p] of pending) {
       clearTimeout(p.timer);
-      p.reject(new Error(SITE_MESSAGES[p.site]));
+      p.reject(new BridgeError(SITE_MESSAGES[p.site], 'NOT_OPEN'));
     }
     pending.clear();
   }
@@ -151,7 +176,7 @@ export function createBridge(o: {
         pending.delete(msg.id);
         clearTimeout(p.timer);
         if (msg.ok) p.resolve(msg.output);
-        else p.reject(new Error(msg.error));
+        else p.reject(new BridgeError(msg.error, msg.code));
         break;
       }
     }
@@ -174,25 +199,28 @@ export function createBridge(o: {
     action: string,
     input: unknown,
     timeoutMs: number = defaultTimeoutMs,
+    opts?: { tab?: BridgeTab },
   ): Promise<unknown> {
     const socket = active;
     // Not connected: reject immediately (no timer) with the site message.
-    if (socket === null) return Promise.reject(new Error(SITE_MESSAGES[site]));
+    if (socket === null) return Promise.reject(new BridgeError(SITE_MESSAGES[site], 'NOT_OPEN'));
     const id = randomUUID();
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error(SITE_MESSAGES[site]));
+        reject(new BridgeError(SITE_MESSAGES[site], 'TIMEOUT'));
       }, timeoutMs);
       timer.unref?.();
       pending.set(id, { resolve, reject, timer, site });
       try {
-        socket.send(JSON.stringify({ type: 'cmd', id, site, action, input }));
+        socket.send(
+          JSON.stringify({ type: 'cmd', id, site, action, input, tab: opts?.tab ?? 'active' }),
+        );
       } catch {
         pending.delete(id);
         clearTimeout(timer);
         if (active === socket) active = null;
-        reject(new Error(SITE_MESSAGES[site]));
+        reject(new BridgeError(SITE_MESSAGES[site], 'NOT_OPEN'));
       }
     });
   }

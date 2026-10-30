@@ -1,12 +1,13 @@
 import { Workflow, catalog } from '@dad/shared';
 import { vi } from 'vitest';
-import { flow1Example } from '../src/agent/examples.js';
+import { flow1Example, flow2Example } from '../src/agent/examples.js';
 import { TANGLED_MESSAGE, buildSystemPrompt } from '../src/agent/prompt.js';
 import { builderTools, type AgentEvent, type ToolContext } from '../src/agent/tools.js';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';
 import flow1Seed from '../src/seed/flow1.json' with { type: 'json' };
 import { createTableStore, type TableStore } from '../src/tables/store.js';
+import { createViewStore } from '../src/views/store.js';
 import { createWorkflowOps, type OpBy, type WorkflowOps } from '../src/workflows/ops.js';
 import { checkWorkflow } from '../src/workflows/validate.js';
 
@@ -15,6 +16,7 @@ const WRITE_CONFIG = { instructions: 'Write a short reply.', tone: 'friendly' };
 function setup() {
   const db = openDb(':memory:');
   const tables = createTableStore(db);
+  const views = createViewStore({ db, tables });
   tables.createTable({
     name: 'customers',
     label: 'Customers',
@@ -42,6 +44,7 @@ function setup() {
     workflowId: wf.id,
     ops,
     tables,
+    views,
     repo,
     engine: {} as never,
     gateway,
@@ -70,12 +73,13 @@ function planEdges(n: number) {
   return Array.from({ length: n - 1 }, (_, i) => ({ from: `s${i + 1}`, to: `s${i + 2}` }));
 }
 
-test('builderTools exposes exactly the fourteen builder tools', () => {
+test('builderTools exposes exactly the sixteen builder tools', () => {
   expect(builderTools.map((t) => t.name).sort()).toEqual(
     [
       'ask_user',
       'propose_plan',
       'create_table',
+      'create_workflow',
       'set_trigger',
       'add_step',
       'update_step',
@@ -87,6 +91,7 @@ test('builderTools exposes exactly the fourteen builder tools', () => {
       'explain',
       'query_table',
       'query_runs',
+      'pin_view',
     ].sort(),
   );
 });
@@ -442,6 +447,66 @@ test('query_table returns rows as compact lines', async () => {
   expect(unknown.result.startsWith('Problem:')).toBe(true);
 });
 
+test('query_table with an unknown where key returns a Problem instead of every row', async () => {
+  const { ctx, tables } = setup();
+  tables.insert('customers', { name: 'Priya', email: 'priya@acme.co' });
+  const out = await tool('query_table').run(
+    { table: 'customers', where: { emial: 'priya@acme.co' } },
+    ctx,
+  );
+  expect(out.result).toBe('Problem: Unknown column: emial for table customers');
+});
+
+test('query_table with an operator-shaped where value returns a Problem', async () => {
+  const { ctx, tables } = setup();
+  tables.insert('customers', { name: 'Priya', email: 'priya@acme.co' });
+  const out = await tool('query_table').run(
+    { table: 'customers', where: { email: { $ne: 'sam@x.com' } } },
+    ctx,
+  );
+  expect(out.result.startsWith('Problem: Invalid where value for column email')).toBe(true);
+});
+
+test('pin_view saves a pinned stat view and confirms in Dad words', async () => {
+  const { ctx } = setup();
+  const out = await tool('pin_view').run(
+    {
+      table: 'customers',
+      kind: 'stat',
+      title: 'New customers this week',
+      config: { stat: { op: 'count', sinceDays: 7 } },
+    },
+    ctx,
+  );
+  expect(out.result).toBe('Pinned "New customers this week" to your home screen.');
+  expect(ctx.views.list()).toEqual([
+    expect.objectContaining({ table: 'customers', kind: 'stat', pinned: true }),
+  ]);
+});
+
+test('pin_view on an unknown list returns a Problem and saves nothing', async () => {
+  const { ctx } = setup();
+  const out = await tool('pin_view').run(
+    { table: 'nope', kind: 'stat', title: 'X', config: { stat: { op: 'count' } } },
+    ctx,
+  );
+  expect(out.result).toBe('Problem: Unknown table: nope');
+  expect(ctx.views.list()).toEqual([]);
+});
+
+test('pin_view rejects grid and cards kinds: the home screen shows only pinned numbers', async () => {
+  const { ctx } = setup();
+  for (const kind of ['grid', 'cards']) {
+    const out = await tool('pin_view').run(
+      { table: 'customers', kind, title: 'X', config: { columns: ['name'] } },
+      ctx,
+    );
+    expect(out.result.startsWith('Problem:')).toBe(true);
+    expect(out.result).toContain('stat');
+  }
+  expect(ctx.views.list()).toEqual([]);
+});
+
 test('query_runs finds runs whose story contains the text', async () => {
   const { ctx, repo } = setup();
   const wfId = ctx.workflowId;
@@ -500,6 +565,7 @@ test('system prompt contains every catalog description, the fixed voice and the 
     expect(prompt).toContain(def.type);
   }
   expect(prompt).toContain(flow1Example);
+  expect(prompt).toContain(flow2Example);
   expect(prompt).toContain('America/Chicago');
   expect(prompt).toContain('Corner Bakery');
 });
@@ -652,6 +718,33 @@ test('query_runs returns only runs for its own workflow', async () => {
   const out = await tool('query_runs').run({}, ctx);
   expect(out.result).toContain(ownRun.id);
   expect(out.result).not.toContain(otherRun.id);
+});
+
+test('create_workflow creates a workflow, switches the target, and emits switched', async () => {
+  const { ctx, events, repo } = setup();
+  const before = ctx.workflowId;
+  const out = await tool('create_workflow').run(
+    { name: 'Photo posts', description: 'Turns product photos into Facebook posts.' },
+    ctx,
+  );
+  expect(out.result.startsWith('Problem:')).toBe(false);
+  const created = repo.getWorkflow(ctx.workflowId)!;
+  expect(created.id).not.toBe(before);
+  expect(created.name).toBe('Photo posts');
+  const switched = events.filter((e) => e.type === 'switched');
+  expect(switched).toEqual([{ type: 'switched', workflowId: created.id }]);
+  expect(events.filter((e) => e.type === 'activity')).toHaveLength(1);
+});
+
+test('create_workflow without a name or description returns a Problem and switches nothing', async () => {
+  const { ctx, events } = setup();
+  const before = ctx.workflowId;
+  for (const args of [{ description: 'No name.' }, { name: 'No description.' }, {}]) {
+    const out = await tool('create_workflow').run(args, ctx);
+    expect(out.result.startsWith('Problem:')).toBe(true);
+  }
+  expect(ctx.workflowId).toBe(before);
+  expect(events.filter((e) => e.type === 'switched')).toEqual([]);
 });
 
 test('system prompt asks one question per call, max 3 per request', () => {

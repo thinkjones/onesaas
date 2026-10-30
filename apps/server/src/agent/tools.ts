@@ -5,7 +5,8 @@ import type { createEngine } from '../engine/engine.js';
 import { buildRunStory } from '../engine/story.js';
 import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, ToolSpec } from '../models/gateway.js';
-import type { TableStore } from '../tables/store.js';
+import { sanitiseName, type TableStore } from '../tables/store.js';
+import type { ViewDef, ViewStore } from '../views/store.js';
 import type { OpResult, WorkflowOps } from '../workflows/ops.js';
 import { checkWorkflow } from '../workflows/validate.js';
 
@@ -19,12 +20,14 @@ export type AgentEvent =
   | { type: 'activity'; text: string }
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
+  | { type: 'switched'; workflowId: string }
   | { type: 'done' };
 
 export interface ToolContext {
   workflowId: string;
   ops: WorkflowOps;
   tables: TableStore;
+  views: ViewStore;
   repo: Repo;
   engine: Engine;
   gateway: Gateway;
@@ -326,7 +329,10 @@ const createTable: ToolImpl = {
           properties: {
             name: { type: 'string' },
             label: { type: 'string' },
-            type: { type: 'string', enum: ['text', 'number', 'boolean', 'date', 'email'] },
+            type: {
+              type: 'string',
+              enum: ['text', 'number', 'boolean', 'date', 'email', 'datetime'],
+            },
           },
           required: ['name', 'label', 'type'],
           additionalProperties: false,
@@ -478,7 +484,8 @@ const removeStep: ToolImpl = {
 
 const connect: ToolImpl = {
   name: 'connect',
-  description: 'Connect two steps so one runs after the other. Refuses links that would loop.',
+  description:
+    'Connect two steps so one runs after the other. Connecting the same two steps again with "when" replaces the link with a conditional one. Refuses links that would loop.',
   parameters: {
     type: 'object',
     properties: {
@@ -501,6 +508,40 @@ const connect: ToolImpl = {
         { by: 'agent' },
       ),
     );
+  },
+};
+
+const createWorkflow: ToolImpl = {
+  name: 'create_workflow',
+  description:
+    'Start a second chore reducer and keep building there. Use it when one sentence asks for two different jobs: finish the first reducer, then call this and build the second. Later calls in this turn target the new reducer.',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Short name, e.g. "Photo posts".' },
+      description: { type: 'string', description: 'One plain sentence saying what it does.' },
+    },
+    required: ['name', 'description'],
+    additionalProperties: false,
+  },
+  run: async (args: any, ctx: ToolContext) => {
+    const name = args?.name as unknown;
+    const description = args?.description as unknown;
+    if (typeof name !== 'string' || name.trim() === '') {
+      return problem('Give the new chore reducer a name.');
+    }
+    if (typeof description !== 'string' || description.trim() === '') {
+      return problem('Give the new chore reducer a description.');
+    }
+    const wf = ctx.ops.create({ name, description });
+    // Switch the conversation's target: everything after this call in the
+    // turn (including the loop's prompt rebuild) builds the new reducer.
+    ctx.workflowId = wf.id;
+    ctx.emit({ type: 'switched', workflowId: wf.id });
+    return {
+      result: `Created "${wf.name}" and switched to it. Set its trigger next.`,
+      activity: `Started a new chore reducer "${wf.name}".`,
+    };
   },
 };
 
@@ -574,7 +615,8 @@ const activate: ToolImpl = {
 const explain: ToolImpl = {
   name: 'explain',
   description:
-    'Look up a step, run, list or workflow so you can explain it to Dad in plain words. Read-only.',
+    'Look up a step, run, list or workflow so you can explain it to Dad in plain words. Read-only. Dad never sees the details, only a "looked it up" note — it cannot narrate progress. While building, prefer the Links line and the lists section above: they already show step ids and columns.',
+
   parameters: {
     type: 'object',
     properties: {
@@ -649,6 +691,32 @@ const queryTable: ToolImpl = {
     const table = args?.table as unknown;
     if (typeof table !== 'string' || table === '') return problem('Say which list to read.');
     try {
+      // FAIL CLOSED on unknown where keys, mirroring the table.query executor:
+      // the store ignores them, so a typo would silently return unfiltered rows.
+      const def = ctx.tables.getTable(table);
+      const where = args?.where as Record<string, unknown> | undefined;
+      if (def && where !== undefined && where !== null && typeof where === 'object') {
+        const names = new Set([
+          ...def.columns.map((c) => c.name),
+          'id',
+          'created_at',
+          'updated_at',
+        ]);
+        for (const [rawKey, value] of Object.entries(where)) {
+          let col: string;
+          try {
+            col = sanitiseName(rawKey);
+          } catch {
+            return problem(`Unknown column: ${rawKey} for table ${table}`);
+          }
+          if (!names.has(col)) {
+            return problem(`Unknown column: ${rawKey} for table ${table}`);
+          }
+          if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+            return problem(`Invalid where value for column ${rawKey}: operators are not supported`);
+          }
+        }
+      }
       const rows = ctx.tables.query(table, {
         ...(args?.where !== undefined ? { where: args.where } : {}),
         ...(args?.limit !== undefined ? { limit: args.limit } : {}),
@@ -703,6 +771,63 @@ const queryRuns: ToolImpl = {
   },
 };
 
+const pinView: ToolImpl = {
+  name: 'pin_view',
+  description:
+    'Pin a number from one of Dad\'s lists to his home screen: a count of rows, or the sum of a number column, optionally only rows from the last N days. Use it when Dad asks to pin, watch or keep track of a number.',
+  parameters: {
+    type: 'object',
+    properties: {
+      table: { type: 'string', description: 'The list to count or sum, e.g. "customers".' },
+      kind: { type: 'string', enum: ['stat'] },
+      title: { type: 'string', description: 'Short label shown with the pinned number.' },
+      config: {
+        type: 'object',
+        description: 'For a stat: { stat: { op, column?, where?, sinceDays? } }.',
+        properties: {
+          columns: { type: 'array', items: { type: 'string' } },
+          stat: {
+            type: 'object',
+            properties: {
+              op: { type: 'string', enum: ['count', 'sum'] },
+              column: { type: 'string' },
+              where: { type: 'object' },
+              sinceDays: { type: 'number' },
+            },
+            required: ['op'],
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    required: ['table', 'kind', 'title', 'config'],
+    additionalProperties: false,
+  },
+  run: async (args: any, ctx: ToolContext) => {
+    // The home screen renders pinned numbers (stat) only: a grid/cards pin
+    // would confirm success yet show Dad nothing, so reject it with a steer.
+    if (args?.kind !== 'stat') {
+      return problem(
+        `pin_view can only pin numbers (kind "stat", e.g. a count or a sum); "${String(args?.kind)}" views are not shown on the home screen.`,
+      );
+    }
+    try {
+      const saved = ctx.views.save({
+        table: args?.table,
+        kind: args?.kind,
+        title: args?.title,
+        config: args?.config ?? {},
+        pinned: true,
+      } as Omit<ViewDef, 'id'>);
+      const note = `Pinned "${saved.title}" to your home screen.`;
+      return { result: note, activity: note };
+    } catch (err) {
+      return problem(errMsg(err));
+    }
+  },
+};
+
 /** The builder agent's tools (consumed by the Task 5 loop). */
 export const builderTools: AgentTool[] = [
   askUser,
@@ -713,10 +838,12 @@ export const builderTools: AgentTool[] = [
   updateStep,
   removeStep,
   connect,
+  createWorkflow,
   renameWorkflow,
   testRunTool,
   activate,
   explain,
   queryTable,
   queryRuns,
+  pinView,
 ].map(toAgentTool);

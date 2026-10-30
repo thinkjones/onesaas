@@ -13,6 +13,7 @@ import { createServer } from '../src/main.js';
 import type { ChatToolsOptions, ChatToolsResult, Gateway } from '../src/models/gateway.js';
 import { executors } from '../src/steps/registry.js';
 import { createTableStore } from '../src/tables/store.js';
+import { createViewStore } from '../src/views/store.js';
 import { createWorkflowOps } from '../src/workflows/ops.js';
 
 // A scripted model response: assistant text and/or tool calls. A thunk form
@@ -28,6 +29,9 @@ function scriptedGateway(script: ScriptStep[]): { gateway: Gateway; calls: ChatT
   const gateway: Gateway = {
     chatJson: async () => {
       throw new Error('chatJson not scripted');
+    },
+    visionJson: async () => {
+      throw new Error('visionJson not scripted');
     },
     chatTools: async (o: ChatToolsOptions): Promise<ChatToolsResult> => {
       calls.push(o);
@@ -69,6 +73,7 @@ function scriptedGateway(script: ScriptStep[]): { gateway: Gateway; calls: ChatT
 function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
   const db = openDb(':memory:');
   const tables = createTableStore(db);
+  const views = createViewStore({ db, tables });
   const repo = createRepo(db);
   const conversations = createConversationStore(db);
   const agentEvents = new EventEmitter();
@@ -91,6 +96,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
     gateway,
     ops,
     tables,
+    views,
     repo,
     engine: {} as never,
     events: agentEvents,
@@ -98,7 +104,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
     testRun,
   });
   const wf = ops.create({ name: 'Test chore', description: 'A test.' });
-  return { db, tables, repo, conversations, ops, agent, agentEvents, seen, calls, testRun, wf, gateway };
+  return { db, tables, views, repo, conversations, ops, agent, agentEvents, seen, calls, testRun, wf, gateway };
 }
 
 function setupApp(script: ScriptStep[] = [{ text: 'ok' }]) {
@@ -254,26 +260,26 @@ test('an argsError becomes a Problem result and the loop continues', async () =>
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
 });
 
-test('the 21st call is not executed and the tangled message is said', async () => {
-  expect(TOOL_CALL_CAP).toBe(20);
+test('the 31st call is not executed and the tangled message is said', async () => {
+  expect(TOOL_CALL_CAP).toBe(30);
   const { agent, calls, seen, conversations, wf } = setup([
-    { calls: Array.from({ length: 21 }, () => ({ name: 'add_step', args: { ...WRITE_ARGS } })) },
+    { calls: Array.from({ length: 31 }, () => ({ name: 'add_step', args: { ...WRITE_ARGS } })) },
   ]);
   await agent.send(wf.id, 'build lots');
   expect(calls).toHaveLength(1);
-  expect(seen.filter((s) => s.event.type === 'built')).toHaveLength(20);
+  expect(seen.filter((s) => s.event.type === 'built')).toHaveLength(30);
   const says = seen.filter((s) => s.event.type === 'say');
   expect(says).toHaveLength(1);
   expect(says[0]!.event).toEqual({ type: 'say', text: TANGLED_MESSAGE });
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
-  // Every assistant tool_call still gets a tool result (the 21st a not-run
+  // Every assistant tool_call still gets a tool result (the 31st a not-run
   // note) so the persisted history stays valid for the next model call.
   const conv = conversations.load(wf.id)!;
   const tools = conv.messages.filter((m) => m.role === 'tool') as unknown as {
     content: string;
   }[];
-  expect(tools).toHaveLength(21);
-  expect(tools[20]!.content.startsWith('Problem:')).toBe(true);
+  expect(tools).toHaveLength(31);
+  expect(tools[30]!.content.startsWith('Problem:')).toBe(true);
   expect(conv.messages[conv.messages.length - 1]).toMatchObject({
     role: 'assistant',
     content: TANGLED_MESSAGE,
@@ -317,6 +323,7 @@ test('a mid-turn noteManualChange lands in the live conversation and the next mo
     );
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       n += 1;
@@ -329,6 +336,7 @@ test('a mid-turn noteManualChange lands in the live conversation and the next mo
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -389,6 +397,7 @@ test('a direct second send while busy rejects with the busy error', async () => 
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -398,6 +407,7 @@ test('a direct second send while busy rejects with the busy error', async () => 
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -426,6 +436,7 @@ test('busy is per workflow: two workflows can think at once', async () => {
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -435,6 +446,7 @@ test('busy is per workflow: two workflows can think at once', async () => {
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -462,6 +474,7 @@ test('a second POST while busy returns 409', async () => {
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -471,6 +484,7 @@ test('a second POST while busy returns 409', async () => {
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -594,6 +608,7 @@ test("a gateway failure on the first call still persists Dad's message and ends 
   const s = setup([]);
   const boom: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: async (o: ChatToolsOptions) => {
       s.calls.push(o);
       throw new Error('model exploded');
@@ -603,6 +618,7 @@ test("a gateway failure on the first call still persists Dad's message and ends 
     gateway: boom,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -632,6 +648,7 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
   let n = 0;
   const flaky: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: async (o: ChatToolsOptions) => {
       n += 1;
       s.calls.push(o);
@@ -643,6 +660,7 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
     gateway: flaky,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -660,6 +678,118 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
   const conv = reopened.load(s.wf.id)!;
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
   expect(conv.transcript[0]).toMatchObject({ role: 'dad', text: 'build it' });
+});
+
+test('after create_workflow the prompt rebuilds from the new reducer', async () => {
+  const { agent, calls, seen, wf } = setup([
+    {
+      calls: [
+        {
+          name: 'create_workflow',
+          args: { name: 'Photo posts', description: 'Turns product photos into posts.' },
+        },
+      ],
+    },
+    { text: 'both built' },
+  ]);
+  await agent.send(wf.id, 'build both');
+  expect(calls).toHaveLength(2);
+  // The second model call sees the NEW reducer (the switched target), not
+  // the send target.
+  const system = calls[1]!.messages.find((m) => m.role === 'system') as unknown as {
+    content: string;
+  };
+  expect(system.content).toContain('Name: Photo posts');
+  // The switched event keeps the ORIGINAL envelope (the open page), while
+  // naming the new reducer inside.
+  const switched = seen.filter((s) => s.event.type === 'switched');
+  expect(switched).toHaveLength(1);
+  expect(switched[0]!.workflowId).toBe(wf.id);
+  const event = switched[0]!.event as { type: string; workflowId: string };
+  expect(event.type).toBe('switched');
+  expect(event.workflowId).not.toBe(wf.id);
+  expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
+});
+
+test('after create_workflow the new reducer is busy-guarded until the turn ends', async () => {
+  const s = setup([]);
+  const resolvers: ((v: ChatToolsResult) => void)[] = [];
+  const switchResult = {
+    message: {
+      role: 'assistant',
+      content: null,
+      refusal: null,
+      tool_calls: [
+        {
+          id: 'call_1_0',
+          type: 'function',
+          function: {
+            name: 'create_workflow',
+            arguments: JSON.stringify({ name: 'Photo posts', description: 'Turns photos into posts.' }),
+          },
+        },
+      ],
+    },
+    toolCalls: [
+      {
+        id: 'call_1_0',
+        name: 'create_workflow',
+        args: { name: 'Photo posts', description: 'Turns photos into posts.' },
+      },
+    ],
+    model: 'test-model',
+    tokens: { input: 0, output: 0 },
+    costUsd: 0,
+  } as never as ChatToolsResult;
+  const textResult = (text: string): ChatToolsResult =>
+    ({
+      message: { role: 'assistant', content: text, refusal: null },
+      toolCalls: [],
+      model: 'test-model',
+      tokens: { input: 0, output: 0 },
+      costUsd: 0,
+    }) as never;
+  const gated: Gateway = {
+    chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
+    chatTools: (o: ChatToolsOptions) => {
+      s.calls.push(o);
+      // First model call switches reducers; the second waits at the gate so
+      // the turn is still in flight while Dad's page shows the new reducer.
+      if (s.calls.length === 1) return Promise.resolve(switchResult);
+      return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
+    },
+  };
+  const agent = createBuilderAgent({
+    gateway: gated,
+    ops: s.ops,
+    tables: s.tables,
+    views: s.views,
+    repo: s.repo,
+    engine: {} as never,
+    events: s.agentEvents,
+    conversations: s.conversations,
+    testRun: s.testRun,
+  });
+  const turn = agent.send(s.wf.id, 'build both');
+  const deadline = Date.now() + 2000;
+  while (s.calls.length < 2) {
+    if (Date.now() > deadline) throw new Error('second model call never started');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  const switched = s.seen.filter((e) => e.event.type === 'switched');
+  expect(switched).toHaveLength(1);
+  const newId = (switched[0]!.event as { type: string; workflowId: string }).workflowId;
+  expect(newId).not.toBe(s.wf.id);
+  // Dad was auto-navigated to the new reducer mid-turn: a send there must
+  // wait for this turn instead of interleaving a second one.
+  expect(agent.isBusy(s.wf.id)).toBe(true);
+  expect(agent.isBusy(newId)).toBe(true);
+  await expect(agent.send(newId, 'meanwhile')).rejects.toThrow(AgentBusyError);
+  resolvers.splice(0).forEach((r) => r(textResult('both built')));
+  await turn;
+  expect(agent.isBusy(s.wf.id)).toBe(false);
+  expect(agent.isBusy(newId)).toBe(false);
 });
 
 test('endTurn with sibling calls runs the whole response then stops', async () => {

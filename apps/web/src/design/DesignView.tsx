@@ -339,7 +339,16 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
       } else if (canvasOp.op === 'move') {
         void send({ op: 'move', args: [canvasOp.stepId, canvasOp.position] });
       } else if (canvasOp.op === 'connect') {
-        void send({ op: 'connect', args: [{ from: canvasOp.from, to: canvasOp.to }] });
+        void send({
+          op: 'connect',
+          args: [
+            {
+              from: canvasOp.from,
+              to: canvasOp.to,
+              ...(canvasOp.when ? { when: canvasOp.when } : {}),
+            },
+          ],
+        });
       } else if (canvasOp.op === 'disconnect') {
         void send({ op: 'disconnect', args: [{ from: canvasOp.from, to: canvasOp.to }] });
       }

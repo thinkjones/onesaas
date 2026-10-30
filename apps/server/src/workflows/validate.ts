@@ -90,8 +90,12 @@ function cycleMembers(wf: Workflow): Set<string> {
  * Plain-English problems blocking a workflow from being turned on, in a
  * deterministic order: cycle members first (in workflow order), then each
  * node in workflow order (trigger, then steps) with its config, binding,
- * list and reachability problems.
+ * list and reachability problems, then edge-condition problems in edge order.
  */
+
+// Sort-condition shape, shared with the canvas picker (edgeConditions.ts):
+// `<stepId>.choice == '<option>'`. Step ids are slugs, so `[\w-]` covers them.
+const CHOICE_PATTERN = /^([\w-]+)\.choice == '([^']*)'$/;
 export function checkWorkflow(wf: Workflow, tables: TableStore): WorkflowProblem[] {
   const problems: WorkflowProblem[] = [];
   const nodes = [wf.trigger, ...wf.steps];
@@ -140,6 +144,43 @@ export function checkWorkflow(wf: Workflow, tables: TableStore): WorkflowProblem
     }
     if (node.id !== wf.trigger.id && !reachable.has(node.id) && !members.has(node.id)) {
       problems.push({ stepId: node.id, problem: 'Nothing leads to this step yet.' });
+    }
+  }
+  // Sort-shaped edge conditions must name a live ai.classify step and one of
+  // its current options. Anything else would silently skip the branch at
+  // runtime (evalCondition is false-on-error), so it blocks activation on the
+  // edge target. General jexl passes through unchecked.
+  const DEFAULT_OPTIONS = ['yes', 'no'];
+  for (const edge of wf.edges) {
+    if (edge.when === undefined) continue;
+    const match = CHOICE_PATTERN.exec(edge.when.trim());
+    if (!match) continue;
+    const stepId = match[1]!;
+    const option = match[2]!;
+    const source = byId.get(stepId);
+    if (!source) {
+      problems.push({
+        stepId: edge.to,
+        problem: `The condition refers to a removed step ("${stepId}").`,
+      });
+      continue;
+    }
+    if (source.type !== 'ai.classify') {
+      problems.push({
+        stepId: edge.to,
+        problem: `The condition refers to "${source.title}", which doesn't sort into options.`,
+      });
+      continue;
+    }
+    const rawOptions = source.config['options'] as unknown;
+    const effective = rawOptions === undefined ? DEFAULT_OPTIONS : rawOptions;
+    // A non-array options is a config problem on the sort step itself (already
+    // reported above); only membership is the edge's problem.
+    if (Array.isArray(effective) && !effective.includes(option)) {
+      problems.push({
+        stepId: edge.to,
+        problem: `The condition uses "${option}", which "${source.title}" no longer offers.`,
+      });
     }
   }
   return problems;

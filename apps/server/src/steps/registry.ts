@@ -1,23 +1,35 @@
+import type { EventEmitter } from 'node:events';
+import type { FileStore } from '../files/store.js';
 import type { Gateway } from '../models/gateway.js';
+import type { ImageModels } from '../models/image.js';
 import type { TableStore } from '../tables/store.js';
 import { extractExecutor, writeExecutor } from './ai.js';
 import { askExecutor } from './approval.js';
-import { upsertExecutor } from './table.js';
+import { createEventExecutor, freeBusyExecutor } from './calendar.js';
+import { classifyExecutor } from './classify.js';
+import { cutoutExecutor, editExecutor, generateExecutor } from './image.js';
+import { codeTransformExecutor } from './code.js';
+import { draftPostExecutor, notifyExecutor } from './meta.js';
+import { insertExecutor, queryExecutor, upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
+  emailExecutor,
   gmailButtonExecutor,
   manualExecutor,
   readExecutor,
+  uploadExecutor,
 } from './trigger.js';
 
-// Structural stand-in for the Task 8 bridge: only the call shape Task 6
-// needs. The real bridge satisfies this interface structurally.
+// Structural stand-in for the Task 8 bridge: the call shape executors need
+// (M4 adds the tab option: reads run in worker tabs, visible acts in the
+// active tab). The real bridge satisfies this interface structurally.
 export interface Bridge {
   call(
     site: 'gmail' | 'calendar' | 'meta',
     action: string,
     input: unknown,
     timeoutMs?: number,
+    opts?: { tab?: 'worker' | 'active' },
   ): Promise<unknown>;
 }
 
@@ -26,9 +38,34 @@ export interface StepContext {
   tables: TableStore;
   bridge: Bridge;
   signal: AbortSignal;
+  // The engine's own event emitter (injected per step like `signal`): the
+  // notify step emits its toast through it. Optional so older callers keep
+  // working; the engine always supplies it.
+  events?: EventEmitter;
+  // Image models + file store for the image.* steps. Optional so older
+  // callers keep working; the image executors fail readably when absent.
+  image?: ImageModels;
+  files?: FileStore;
   // True inside test runs ("Try it"): outside-world actions become previews.
   // Optional so existing live callers keep working; undefined means live.
   testMode?: boolean;
+  // Injectable clock + business timezone for date-aware AI steps. The
+  // composition root supplies both (timezone from settings, falling back to
+  // the server's Intl zone); tests fix them for deterministic prompts.
+  // Optional so older callers keep working: missing means "right now" in
+  // the server's own timezone.
+  now?: () => Date;
+  timezone?: string;
+}
+
+/** Wall-clock time for this run: the injected clock, else right now. */
+export function ctxNow(ctx: StepContext): Date {
+  return ctx.now?.() ?? new Date();
+}
+
+/** IANA business timezone for this run: settings, else the server zone. */
+export function ctxTimezone(ctx: StepContext): string {
+  return ctx.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 export interface ApprovalWait {
@@ -63,10 +100,23 @@ export type Executor = {
 export const executors: Record<string, Executor> = {
   'trigger.gmailButton': gmailButtonExecutor,
   'trigger.manual': manualExecutor,
+  'trigger.email': emailExecutor,
+  'trigger.upload': uploadExecutor,
   'ai.extract': extractExecutor,
   'ai.write': writeExecutor,
+  'ai.classify': classifyExecutor,
+  'code.transform': codeTransformExecutor,
   'table.upsert': upsertExecutor,
+  'table.insert': insertExecutor,
+  'table.query': queryExecutor,
   'gmail.read': readExecutor,
   'gmail.draftReply': draftReplyExecutor,
+  'calendar.freeBusy': freeBusyExecutor,
+  'calendar.createEvent': createEventExecutor,
   'approval.ask': askExecutor,
+  'image.cutout': cutoutExecutor,
+  'image.generate': generateExecutor,
+  'image.edit': editExecutor,
+  'meta.draftPost': draftPostExecutor,
+  notify: notifyExecutor,
 };

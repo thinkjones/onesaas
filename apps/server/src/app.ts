@@ -8,13 +8,15 @@ import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
 import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
-import type { Pairing } from './bridge/pairing.js';
+import { TIMEZONE_KEY, type Pairing, type PairingStore } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { TableStore } from './tables/store.js';
+import type { ViewStore } from './views/store.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
 
@@ -54,6 +56,10 @@ export function createApp(deps: AppDeps): Hono {
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
   const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
+  const settings = deps.settings as PairingStore | undefined;
+  const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
+  const files = deps.files as FileStore | undefined;
+  const views = deps.views as ViewStore | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -87,11 +93,169 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ revoked: true });
   });
 
+  // Business timezone (IANA name). The web app GETs on first load and PUTs
+  // the browser zone when none is stored; AI steps read it via StepContext.
+  app.get('/api/settings', (c) => {
+    if (!settings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json({ timezone: settings.get(TIMEZONE_KEY) ?? null });
+  });
+
+  const settingsBody = z.object({ timezone: z.string().min(1) }).strict();
+
+  app.put('/api/settings', async (c) => {
+    if (!settings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid settings body' }, 400);
+    }
+    const parsed = settingsBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid settings body' }, 400);
+    // The zone feeds Intl.DateTimeFormat in every AI step: a bad value throws
+    // on each run until overwritten, so reject (whitespace-only, non-IANA)
+    // with 400 and never persist invalid.
+    const tz = parsed.data.timezone;
+    if (tz.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    } catch {
+      return c.json({ error: 'Invalid settings body' }, 400);
+    }
+    setTimezone(tz);
+    return c.json({ timezone: tz });
+  });
+
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the
   // bridge's 'Bridge not configured': these routes never touch the bridge.
   app.get('/api/workflows', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     return c.json(repo.listWorkflows());
+  });
+
+  // Photo uploads: multipart field `file` → FileRef. Rejections (not a
+  // photo, unreadable HEIC) are 400s with the store's readable message.
+  app.post('/api/files', async (c) => {
+    if (!files) return c.json({ error: 'Server not configured' }, 500);
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) return c.json({ error: 'Choose a photo to upload.' }, 400);
+    try {
+      const ref = await files.saveUpload(
+        Buffer.from(await file.arrayBuffer()),
+        file.type || 'application/octet-stream',
+      );
+      return c.json(ref);
+    } catch (err) {
+      if (err instanceof FileRejectedError) return c.json({ error: err.message }, 400);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  app.get('/api/files/:id', async (c) => {
+    if (!files) return c.json({ error: 'Server not configured' }, 500);
+    try {
+      const { buf, mime } = await files.read(c.req.param('id'));
+      return new Response(buf, { headers: { 'Content-Type': mime } });
+    } catch (err) {
+      if (err instanceof FileNotFoundError) return c.json({ error: err.message }, 404);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // Lists + saved views (M4 Task 8). Counts and paging slice the full
+  // query: Dad-scale lists fit in memory, so no SQL-level paging.
+  app.get('/api/lists', (c) => {
+    if (!tables) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(
+      tables.listTables().map((t) => ({ ...t, count: tables.query(t.name).length })),
+    );
+  });
+
+  app.get('/api/lists/:table/rows', (c) => {
+    if (!tables) return c.json({ error: 'Server not configured' }, 500);
+    const table = c.req.param('table');
+    if (!tables.getTable(table)) return c.json({ error: `Unknown table: ${table}` }, 404);
+    const limitRaw = c.req.query('limit') ?? '50';
+    const offsetRaw = c.req.query('offset') ?? '0';
+    const limit = Number(limitRaw);
+    const offset = Number(offsetRaw);
+    if (!Number.isInteger(limit) || limit < 0) {
+      return c.json({ error: `Invalid limit: ${limitRaw}` }, 400);
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      return c.json({ error: `Invalid offset: ${offsetRaw}` }, 400);
+    }
+    const all = tables.query(table);
+    return c.json({ rows: all.slice(offset, offset + limit), total: all.length });
+  });
+
+  app.get('/api/views', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(views.list());
+  });
+
+  const viewBody = z
+    .object({
+      table: z.string(),
+      kind: z.enum(['grid', 'cards', 'stat']),
+      title: z.string(),
+      pinned: z.boolean(),
+      config: z
+        .object({
+          columns: z.array(z.string()).optional(),
+          stat: z
+            .object({
+              op: z.enum(['count', 'sum']),
+              column: z.string().optional(),
+              where: z.record(z.string(), z.unknown()).optional(),
+              sinceDays: z.number().optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict();
+
+  app.post('/api/views', async (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid view body' }, 400);
+    }
+    const parsed = viewBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid view body' }, 400);
+    try {
+      return c.json(views.save({ ...parsed.data, config: parsed.data.config ?? {} }));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.delete('/api/views/:id', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    try {
+      views.remove(c.req.param('id'));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 404);
+    }
+    return c.json({ removed: true });
+  });
+
+  app.get('/api/views/:id/data', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const view = views.list().find((v) => v.id === id);
+    if (!view) return c.json({ error: `Unknown view: ${id}` }, 404);
+    try {
+      return c.json(views.compute(view));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
   });
 
   const createWorkflowBody = z.object({ name: z.string(), description: z.string() }).strict();
@@ -263,6 +427,35 @@ export function createApp(deps: AppDeps): Hono {
         story: buildRunStory(workflow, steps, { usedSample }),
       });
     } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // The photo drop zone: multipart `file` (+ optional `note`) → saves the
+  // photo and starts a run with { file, note? }. An explicit user start, so
+  // it runs whatever the workflow status is (like "Try it", no status gate).
+  app.post('/api/workflows/:id/upload', async (c) => {
+    if (!repo || !engine || !files) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const wf = repo.getWorkflow(id);
+    if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    if (wf.trigger.type !== 'trigger.upload') {
+      return c.json({ error: "This chore reducer doesn't start from a photo upload." }, 400);
+    }
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) return c.json({ error: 'Choose a photo to upload.' }, 400);
+    const rawNote = body['note'];
+    const note = typeof rawNote === 'string' && rawNote !== '' ? rawNote : undefined;
+    try {
+      const saved = await files.saveUpload(
+        Buffer.from(await file.arrayBuffer()),
+        file.type || 'application/octet-stream',
+      );
+      const run = await engine.start(id, note === undefined ? { file: saved } : { file: saved, note });
+      return c.json({ run, file: saved });
+    } catch (err) {
+      if (err instanceof FileRejectedError) return c.json({ error: err.message }, 400);
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });

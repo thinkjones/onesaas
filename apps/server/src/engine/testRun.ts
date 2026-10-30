@@ -51,7 +51,11 @@ export function createTestRunner(d: {
   ctx: Omit<StepContext, 'signal'>;
 }): { testRun: (workflowId: string) => Promise<TestRunResult> } {
   const { repo, executors, ctx } = d;
-  const engine = createEngine({ repo, executors, ctx: { ...ctx, testMode: true } });
+  // Built per run (not per runner): the spread must read the CURRENT shared
+  // ctx, so a PUT /api/settings between test runs lands in the next one.
+  // Engine construction is cheap and holds no cross-run state (the tails map
+  // is keyed by run id, and every test run mints a fresh one).
+  const testEngine = () => createEngine({ repo, executors, ctx: { ...ctx, testMode: true } });
 
   // The one bridge touch a test run makes. Disconnected, timed-out,
   // rejected, and malformed-email ALL mean "no open email": the caller
@@ -96,7 +100,7 @@ export function createTestRunner(d: {
       triggerPayload = sampleFor(wf.trigger.type);
       usedSample = false;
     }
-    const run = await engine.start(workflowId, triggerPayload, { kind: 'test' });
+    const run = await testEngine().start(workflowId, triggerPayload, { kind: 'test' });
     // Persisted (not just returned) so a later GET of the run detail keeps
     // the "sample email" story line. Read back after the write so the
     // returned run carries the stored value.

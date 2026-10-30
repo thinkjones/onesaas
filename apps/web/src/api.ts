@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import type { Run, StepRun, Workflow } from '@dad/shared';
+import { toast } from 'sonner';
+import type { FileRef, Run, StepRun, Workflow } from '@dad/shared';
+import type { ListSummary, ViewData, ViewDef } from './lists/types.ts';
 
 // Mirrors apps/server/src/engine/events.ts. The web package cannot import it
 // (server is not a dependency), so the shape is redeclared here.
-export type EngineEvent = { type: 'run'; run: Run } | { type: 'step'; stepRun: StepRun };
+export type EngineEvent =
+  | { type: 'run'; run: Run }
+  | { type: 'step'; stepRun: StepRun }
+  | { type: 'notify'; text: string };
 
 /** GET /api/runs/:id shape. `workflow` is the run's OWN pinned version. */
 export interface RunDetail {
@@ -68,6 +73,16 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function putJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as T;
+}
+
 export function getWorkflows(): Promise<Workflow[]> {
   return getJson('/api/workflows');
 }
@@ -95,6 +110,28 @@ export function retryStep(runId: string, stepId: string): Promise<RunUpdate> {
   );
 }
 
+/** POST /api/workflows/:id/upload: saves the photo and starts a run with it. */
+export interface UploadResult {
+  run: Run;
+  file: FileRef;
+}
+
+export async function uploadPhoto(
+  workflowId: string,
+  file: File,
+  note?: string,
+): Promise<UploadResult> {
+  const form = new FormData();
+  form.set('file', file);
+  if (note !== undefined) form.set('note', note);
+  const res = await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as UploadResult;
+}
+
 export async function startPairing(): Promise<{ code: string }> {
   const res = await fetch('/api/pairing/start', { method: 'POST' });
   if (!res.ok) await throwApiError(res);
@@ -109,6 +146,97 @@ export async function revokePairing(): Promise<{ revoked: boolean }> {
   const res = await fetch('/api/pairing/revoke', { method: 'POST' });
   if (!res.ok) await throwApiError(res);
   return (await res.json()) as { revoked: boolean };
+}
+
+/** GET /api/settings: the stored business timezone, or null when unset. */
+export function getSettings(): Promise<{ timezone: string | null }> {
+  return getJson('/api/settings');
+}
+
+/** PUT /api/settings: store the business timezone (IANA name). */
+export function putSettings(timezone: string): Promise<{ timezone: string }> {
+  return putJson('/api/settings', { timezone });
+}
+
+// --- Lists + views (M4 Task 8) ---
+
+/** GET /api/lists: every table plus its row count. */
+export function getLists(): Promise<ListSummary[]> {
+  return getJson('/api/lists');
+}
+
+export function useLists() {
+  return useQuery({ queryKey: ['lists'], queryFn: getLists });
+}
+
+/** GET /api/lists/:table/rows: one page of rows plus the total. */
+export function getListRows(
+  table: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+  if (opts?.offset !== undefined) params.set('offset', String(opts.offset));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
+  return getJson(`/api/lists/${encodeURIComponent(table)}/rows${qs}`);
+}
+
+export function useListRows(table: string | null, opts?: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ['list-rows', table, opts?.limit, opts?.offset],
+    queryFn: () => getListRows(table!, opts),
+    enabled: table !== null,
+  });
+}
+
+/** GET /api/views: every saved view. */
+export function getViews(): Promise<ViewDef[]> {
+  return getJson('/api/views');
+}
+
+export function useViews() {
+  return useQuery({ queryKey: ['views'], queryFn: getViews });
+}
+
+/** GET /api/views/:id/data: a view's computed rows or value. */
+export function getViewData(id: string): Promise<ViewData> {
+  return getJson(`/api/views/${encodeURIComponent(id)}/data`);
+}
+
+export function useViewData(id: string) {
+  return useQuery({ queryKey: ['view-data', id], queryFn: () => getViewData(id) });
+}
+
+/** POST /api/views: save a view (every pin is a save with pinned: true). */
+export function createView(body: Omit<ViewDef, 'id'>): Promise<ViewDef> {
+  return postJson('/api/views', body);
+}
+
+export function useCreateView() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Omit<ViewDef, 'id'>) => createView(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['views'] });
+    },
+  });
+}
+
+export function useDeleteView() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      const res = await fetch(`/api/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) await throwApiError(res);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['views'] });
+    },
+  });
+}
+
+export function useBusinessTimezone() {
+  return useQuery({ queryKey: ['settings'], queryFn: getSettings });
 }
 
 /** Subscribes to the SSE stream; closes the connection on unmount. */
@@ -275,6 +403,7 @@ export type AgentEvent =
   | { type: 'activity'; text: string }
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
+  | { type: 'switched'; workflowId: string }
   | { type: 'done' };
 
 /**
@@ -362,6 +491,31 @@ export function useAgentEvents(workflowId: string, onEvent: (e: AgentEvent) => v
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000];
 
 /**
+ * First-load timezone sync: GETs the stored business timezone and, when none
+ * is stored, PUTs the browser's zone. Runs once per mount; a double-mount
+ * races two idempotent PUTs of the same value, which is harmless. Failures
+ * are swallowed: the server falls back to its own zone, so a failed sync
+ * must never break the app.
+ */
+export function useTimezoneSync(): void {
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { timezone } = await getSettings();
+        if (cancelled || timezone) return;
+        await putSettings(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      } catch {
+        // Best-effort only (see above).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+}
+
+/**
  * Subscribes to /api/events once and invalidates run queries per event.
  * Reconnects on error with 1/2/5s backoff (native retry is suppressed via
  * close() so only one connection exists) and on reconnect invalidates every
@@ -381,11 +535,15 @@ export function useLiveEvents(): void {
       if (e.type === 'run') {
         void client.invalidateQueries({ queryKey: ['run', e.run.id] });
         void client.invalidateQueries({ queryKey: ['runs', e.run.workflowId] });
-      } else {
+      } else if (e.type === 'step') {
         // Step events carry no workflowId, so the runs lists are invalidated
         // by prefix instead of per workflow.
         void client.invalidateQueries({ queryKey: ['run', e.stepRun.runId] });
         void client.invalidateQueries({ queryKey: ['runs'] });
+      } else if (e.type === 'notify') {
+        // A notify step's in-app toast. Agent envelopes also arrive on this
+        // stream but carry no EngineEvent type, so they fall through silently.
+        toast(e.text);
       }
     };
     const connect = () => {

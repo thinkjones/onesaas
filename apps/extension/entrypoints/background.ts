@@ -16,6 +16,10 @@ export default defineBackground(() => {
       },
       tabs: {
         query: (query) => browser.tabs.query(query),
+        get: (tabId) => browser.tabs.get(tabId),
+        create: (props) => browser.tabs.create(props),
+        update: (tabId, props) => browser.tabs.update(tabId, props),
+        captureVisibleTab: (windowId) => browser.tabs.captureVisibleTab(windowId),
         sendMessage: (tabId, message) => browser.tabs.sendMessage(tabId, message),
       },
       runtime: {

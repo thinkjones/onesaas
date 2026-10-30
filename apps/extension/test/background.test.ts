@@ -51,13 +51,26 @@ interface FakeTab {
 }
 
 function makeBrowser(
-  opts: { token?: string; tabs?: FakeTab[]; tabReply?: unknown; tabThrows?: boolean } = {},
+  opts: {
+    token?: string;
+    tabs?: FakeTab[];
+    tabReply?: unknown;
+    tabThrows?: boolean;
+    captureThrows?: boolean;
+  } = {},
 ) {
   const store: Record<string, unknown> = {};
   if (opts.token !== undefined) store['dadExtToken'] = opts.token;
   const tabs = opts.tabs ?? [{ id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' }];
+  // Active tab id, like the real browser: Dad starts on tab 7, and
+  // update({active:true}) moves activation (so the pre-capture verification
+  // query sees the just-activated worker tab).
+  let activeId = 7;
   let listener: ((msg: never) => unknown) | null = null;
   const tabMessages: Array<{ tabId: number; msg: unknown }> = [];
+  const created: Array<{ url?: string; active?: boolean; pinned?: boolean }> = [];
+  const updated: Array<{ tabId: number; props: Record<string, unknown> }> = [];
+  let nextId = 100;
   const browser: BrowserLike = {
     storage: {
       local: {
@@ -71,7 +84,37 @@ function makeBrowser(
       },
     },
     tabs: {
-      query: vi.fn(async () => tabs),
+      query: vi.fn(
+        async (q: { url?: string; active?: boolean; currentWindow?: boolean; windowId?: number }) => {
+          if (q.active) return [{ id: activeId, active: true, windowId: 1 }];
+          if (q.url) {
+            const prefix = q.url.replace(/\*$/, '');
+            return tabs.filter((t) => t.url?.startsWith(prefix));
+          }
+          return tabs;
+        },
+      ),
+      get: vi.fn(async (tabId: number) => {
+        const found = tabs.find((t) => t.id === tabId);
+        if (!found) throw new Error('No tab with id');
+        return { ...found, status: 'complete' };
+      }),
+      create: vi.fn(async (props: { url?: string; active?: boolean; pinned?: boolean }) => {
+        created.push(props);
+        nextId += 1;
+        const tab = { id: nextId, url: props.url };
+        tabs.push(tab);
+        return { ...tab, status: 'complete' };
+      }),
+      update: vi.fn(async (tabId: number, props: Record<string, unknown>) => {
+        updated.push({ tabId, props });
+        if (props['active'] === true) activeId = tabId;
+        return { id: tabId, status: 'complete' };
+      }),
+      captureVisibleTab: vi.fn(async () => {
+        if (opts.captureThrows) throw new Error('capture failed');
+        return 'data:image/png;base64,AAAA';
+      }),
       sendMessage: vi.fn(async (tabId: number, msg: unknown) => {
         tabMessages.push({ tabId, msg });
         if (opts.tabThrows) throw new Error('tab gone');
@@ -91,6 +134,8 @@ function makeBrowser(
     store,
     tabs,
     tabMessages,
+    created,
+    updated,
     runtimeMessage: (msg: unknown) => listener?.(msg as never),
   };
 }
@@ -257,7 +302,10 @@ describe('server messages', () => {
   it('buttons fan out to every Gmail tab', async () => {
     const t = makeBrowser({
       token: 'tok',
-      tabs: [{ id: 11 }, { id: 22 }],
+      tabs: [
+        { id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' },
+        { id: 22, url: 'https://mail.google.com/mail/u/0/#sent' },
+      ],
     });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
@@ -274,7 +322,13 @@ describe('server messages', () => {
   });
 
   it('runStatus fans out to every Gmail tab', async () => {
-    const t = makeBrowser({ token: 'tok', tabs: [{ id: 11 }, { id: 22 }] });
+    const t = makeBrowser({
+      token: 'tok',
+      tabs: [
+        { id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' },
+        { id: 22, url: 'https://mail.google.com/mail/u/0/#sent' },
+      ],
+    });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
@@ -398,6 +452,246 @@ describe('cmd relay', () => {
     ]);
     bg.dispose();
   });
+
+  it('forwards a known tab code on the result', async () => {
+    const t = makeBrowser({
+      token: 'tok',
+      tabReply: { ok: false, error: 'selector gone', code: 'SELECTOR_MISSING' },
+    });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive(cmd);
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 'c1', ok: false, error: 'selector gone', code: 'SELECTOR_MISSING' },
+    ]);
+    bg.dispose();
+  });
+
+  it('drops unknown tab codes so the server still parses the result', async () => {
+    const t = makeBrowser({ token: 'tok', tabReply: { ok: false, error: 'weird', code: 'BOGUS' } });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive(cmd);
+    await flush();
+    const results = sentJson(lastSocket()) as Array<Record<string, unknown>>;
+    expect(results).toEqual([{ type: 'result', id: 'c1', ok: false, error: 'weird' }]);
+    expect('code' in results[0]!).toBe(false);
+    bg.dispose();
+  });
+});
+
+describe('worker tab routing', () => {
+  const workerCmd = {
+    type: 'cmd',
+    id: 'w1',
+    site: 'calendar',
+    action: 'readEvents',
+    input: {},
+    tab: 'worker',
+  };
+
+  it('routes worker cmds to a pinned, inactive worker tab', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive(workerCmd);
+    await flush();
+    expect(t.created).toHaveLength(1);
+    expect(t.created[0]).toMatchObject({ pinned: true, active: false });
+    expect(t.created[0]?.url).toContain('calendar.google.com');
+    const workerId = t.tabMessages[0]?.tabId;
+    expect(workerId).toBeGreaterThan(100);
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 'w1', ok: true, output: { drafted: true } },
+    ]);
+    bg.dispose();
+  });
+
+  it('reuses the worker tab across cmds', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive(workerCmd);
+    await flush();
+    lastSocket().receive({ ...workerCmd, id: 'w2' });
+    await flush();
+    expect(t.created).toHaveLength(1);
+    expect(t.tabMessages.map((m) => m.tabId)).toEqual([
+      t.tabMessages[0]?.tabId,
+      t.tabMessages[0]?.tabId,
+    ]);
+    bg.dispose();
+  });
+
+  it('navigates the Gmail worker tab to the thread, then reads it there', async () => {
+    const email = { from: 'bob@example.com', subject: 'booking', threadId: 'thread_abc123' };
+    const t = makeBrowser({ token: 'tok', tabs: [], tabReply: { ok: true, output: email } });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 'w3',
+      site: 'gmail',
+      action: 'readOpenEmail',
+      input: { threadId: 'thread_abc123' },
+      tab: 'worker',
+    });
+    await flush();
+    // The read lands in the navigated worker tab, and Dad's tabs are untouched.
+    expect(t.updated).toContainEqual({
+      tabId: t.tabMessages[0]?.tabId,
+      props: { url: 'https://mail.google.com/mail/u/0/#all/thread_abc123' },
+    });
+    expect(t.tabMessages).toEqual([
+      {
+        tabId: t.tabMessages[0]?.tabId,
+        msg: {
+          type: 'cmd',
+          id: 'w3',
+          action: 'readOpenEmail',
+          input: { threadId: 'thread_abc123' },
+        },
+      },
+    ]);
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 'w3', ok: true, output: email },
+    ]);
+    bg.dispose();
+  });
+
+  it('a worker gmail read without a threadId reads the worker tab as-is', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 'w4',
+      site: 'gmail',
+      action: 'readOpenEmail',
+      input: {},
+      tab: 'worker',
+    });
+    await flush();
+    expect(t.updated.find((u) => u.props['url'] !== undefined)).toBeUndefined();
+    expect(t.tabMessages).toHaveLength(1);
+    bg.dispose();
+  });
+});
+
+describe('active routing for new sites', () => {
+  it('focuses an existing visible tab', async () => {
+    const t = makeBrowser({
+      token: 'tok',
+      tabs: [{ id: 21, url: 'https://business.facebook.com/home' }],
+    });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({ type: 'cmd', id: 'a1', site: 'meta', action: 'read', input: {} });
+    await flush();
+    expect(t.created).toHaveLength(0);
+    expect(t.updated).toContainEqual({ tabId: 21, props: { active: true } });
+    expect(t.tabMessages[0]?.tabId).toBe(21);
+    bg.dispose();
+  });
+
+  it('opens a visible tab when none is open', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({ type: 'cmd', id: 'a2', site: 'calendar', action: 'read', input: {} });
+    await flush();
+    expect(t.created).toHaveLength(1);
+    expect(t.created[0]).toMatchObject({ active: true });
+    expect(t.created[0]?.pinned).not.toBe(true);
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 'a2', ok: true, output: { drafted: true } },
+    ]);
+    bg.dispose();
+  });
+
+  it('does not reuse a tab whose URL does not match the site', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [{ id: 31, url: 'https://example.com/' }] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({ type: 'cmd', id: 'a3', site: 'meta', action: 'read', input: {} });
+    await flush();
+    // Falls through to the open path instead of focusing tab 31.
+    expect(t.created).toHaveLength(1);
+    expect(t.created[0]?.url).toContain('business.facebook.com');
+    expect(t.updated.find((u) => u.tabId === 31)).toBeUndefined();
+    expect(t.tabMessages[0]?.tabId).not.toBe(31);
+    bg.dispose();
+  });
+});
+
+describe('screenshot action', () => {
+  it('captures the worker tab and returns the data URL', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 's1',
+      site: 'calendar',
+      action: 'screenshot',
+      input: { site: 'calendar', url: 'https://calendar.google.com/calendar/week' },
+    });
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'result', id: 's1', ok: true, output: { dataUrl: 'data:image/png;base64,AAAA' } },
+    ]);
+    // Navigated the worker tab (first created id: 101), then restored Dad's tab (id 7).
+    expect(t.updated).toContainEqual({
+      tabId: 101,
+      props: { url: 'https://calendar.google.com/calendar/week' },
+    });
+    expect(t.updated).toContainEqual({ tabId: 7, props: { active: true } });
+    // No content script involved.
+    expect(t.tabMessages).toHaveLength(0);
+    bg.dispose();
+  });
+
+  it('posts TIMEOUT when the capture fails', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [], captureThrows: true });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({
+      type: 'cmd',
+      id: 's2',
+      site: 'calendar',
+      action: 'screenshot',
+      input: { site: 'calendar' },
+    });
+    await flush();
+    const results = sentJson(lastSocket()) as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(1);
+    expect(results[0]?.['ok']).toBe(false);
+    expect(results[0]?.['code']).toBe('TIMEOUT');
+    expect(t.updated).toContainEqual({ tabId: 7, props: { active: true } });
+    bg.dispose();
+  });
 });
 
 describe('trigger relay', () => {
@@ -482,6 +776,46 @@ describe('trigger relay', () => {
     expect(t.runtimeMessage({ action: 'bogus' })).toBeUndefined();
     await flush();
     expect(lastSocket().sent).toHaveLength(0);
+    bg.dispose();
+  });
+
+  it('passes triggerType email through for inbox-watcher fan-out', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    lastSocket().sent.length = 0;
+    const email = {
+      threadId: 'thread_fixture_abc123',
+      from: 'sarah@example.com',
+      fromName: 'Sarah Lee',
+      subject: 'Catering',
+      snippet: 'Do you cater?',
+    };
+    t.runtimeMessage({ action: 'trigger', workflowId: '*', triggerType: 'email', email });
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'trigger', workflowId: '*', triggerType: 'email', payload: email },
+    ]);
+    bg.dispose();
+  });
+
+  it('falls back to gmailButton for a missing triggerType', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    lastSocket().sent.length = 0;
+    const email = { threadId: 't1' };
+    t.runtimeMessage({ action: 'trigger', workflowId: 'wf1', email });
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'trigger', workflowId: 'wf1', triggerType: 'gmailButton', payload: email },
+    ]);
     bg.dispose();
   });
 });

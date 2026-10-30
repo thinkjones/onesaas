@@ -35,6 +35,30 @@ export const conversations = sqliteTable('conversations', {
   updatedAt: text('updated_at').notNull(),
 });
 
+export const seenEmails = sqliteTable('seen_emails', {
+  threadId: text('thread_id').notNull().primaryKey(),
+  seenAt: text('seen_at').notNull(),
+});
+
+export const files = sqliteTable('files', {
+  id: text('id').notNull().primaryKey(),
+  path: text('path').notNull(),
+  mime: text('mime').notNull(),
+  width: integer('width'),
+  height: integer('height'),
+  source: text('source').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const views = sqliteTable('views', {
+  id: text('id').notNull().primaryKey(),
+  tableName: text('table_name').notNull(),
+  kind: text('kind').notNull(),
+  config: text('config').notNull(),
+  pinned: integer('pinned').notNull().default(0),
+  title: text('title').notNull(),
+});
+
 export const stepRuns = sqliteTable('step_runs', {
   id: text('id').notNull().primaryKey(),
   runId: text('run_id').notNull(),

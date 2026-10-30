@@ -25,10 +25,29 @@ export const manualExecutor: Executor = async (_config, input, _ctx) => {
   return { output: input, why: 'Started manually.' };
 };
 
+export const emailExecutor: Executor = async (_config, input, _ctx) => {
+  const { fromName, subject } = senderBits(
+    (input as Record<string, unknown> | null | undefined)?.['email'],
+  );
+  return { output: input, why: `A new email arrived from ${fromName} ("${subject}").` };
+};
+
+export const uploadExecutor: Executor = async (_config, input, _ctx) => {
+  return { output: input, why: 'Started with your photo.' };
+};
+
 export const readExecutor: Executor = async (_config, input, ctx) => {
-  const out = (await ctx.bridge.call('gmail', 'readOpenEmail', {
-    threadId: (input as { threadId: string }).threadId,
-  })) as Record<string, unknown>;
+  // Worker tab: the extension navigates its pinned background Gmail tab to
+  // this thread and reads it there, so Dad's view never moves.
+  const out = (await ctx.bridge.call(
+    'gmail',
+    'readOpenEmail',
+    {
+      threadId: (input as { threadId: string }).threadId,
+    },
+    undefined,
+    { tab: 'worker' },
+  )) as Record<string, unknown>;
   // The bridge already returns the email shape; pass it through (the engine
   // validates it against the shared email schema).
   const { fromName, subject } = senderBits(out);

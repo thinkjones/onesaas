@@ -66,4 +66,33 @@ describe('Inspector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  test('a nested { fileId } renders as a max-240px thumbnail, not fileId rows', () => {
+    const withPhoto: StepRun = {
+      ...EXTRACT_DONE,
+      output: { file: { fileId: 'abc123', mime: 'image/jpeg', width: 2048, height: 1536 } },
+    };
+    render(<Inspector stepRun={withPhoto} title="Photo upload" open={true} onClose={() => {}} />);
+    const thumb = screen.getByAltText('Photo thumbnail') as HTMLImageElement;
+    expect(thumb.getAttribute('src')).toBe('/api/files/abc123');
+    expect(thumb.style.maxWidth).toBe('240px');
+    expect(thumb.style.maxHeight).toBe('240px');
+    expect(screen.queryByText(/fileId/)).toBeNull();
+  });
+
+  test('a bare FileRef output renders as a thumbnail that opens full size on click', () => {
+    const bare: StepRun = {
+      ...EXTRACT_DONE,
+      output: { fileId: 'xyz', mime: 'image/jpeg' },
+    };
+    render(<Inspector stepRun={bare} title="Photo upload" open={true} onClose={() => {}} />);
+    expect(screen.getByAltText('Photo thumbnail')).toBeDefined();
+    expect(screen.queryByRole('dialog', { name: 'Full-size photo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo full size' }));
+    const dialog = screen.getByRole('dialog', { name: 'Full-size photo' });
+    const full = screen.getByAltText('Full-size photo') as HTMLImageElement;
+    expect(full.getAttribute('src')).toBe('/api/files/xyz');
+    fireEvent.click(dialog);
+    expect(screen.queryByRole('dialog', { name: 'Full-size photo' })).toBeNull();
+  });
 });

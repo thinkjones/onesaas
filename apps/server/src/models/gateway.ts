@@ -49,8 +49,17 @@ export interface ChatToolsResult {
   costUsd: number;
 }
 
+export interface VisionJsonOptions<T> {
+  role: 'vision';
+  prompt: string;
+  imageDataUrl: string;
+  schema: z.ZodType<T>;
+  schemaName: string;
+}
+
 export interface Gateway {
   chatJson<T>(o: ChatJsonOptions<T>): Promise<ChatJsonResult<T>>;
+  visionJson<T>(o: VisionJsonOptions<T>): Promise<ChatJsonResult<T>>;
   chatTools(o: ChatToolsOptions): Promise<ChatToolsResult>;
 }
 
@@ -66,48 +75,85 @@ export interface CreateGatewayOptions {
   roles?: Partial<Record<ModelRole, string>>;
 }
 
+/**
+ * Shared json_schema completion plumbing for chatJson/visionJson: same strict
+ * response_format, same parse/validate/cost behavior, same error strings.
+ * Only the message list differs (vision carries an image_url part).
+ */
+async function completeJson<T>(
+  client: Pick<OpenAI, 'chat'>,
+  model: string,
+  messages: AgentMessage[],
+  schema: z.ZodType<T>,
+  schemaName: string,
+): Promise<ChatJsonResult<T>> {
+  const jsonSchema = zodToJsonSchema(schema, { target: 'openAi' });
+  const completion = await client.chat.completions.create({
+    model,
+    messages,
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: schemaName, strict: true, schema: jsonSchema },
+    },
+  });
+  const content = completion.choices[0]?.message.content;
+  if (content === null || content === undefined || content === '') {
+    throw new Error(`Model output did not match schema: empty response content (model ${model})`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    throw new Error(
+      `Model output did not match schema: invalid JSON (model ${model}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const validated = schema.safeParse(parsed);
+  if (!validated.success) {
+    throw new Error(`Model output did not match schema: ${validated.error.message}`);
+  }
+  const input = completion.usage?.prompt_tokens ?? 0;
+  const output = completion.usage?.completion_tokens ?? 0;
+  return {
+    data: validated.data,
+    model,
+    tokens: { input, output },
+    costUsd: costUsd(model, input, output),
+  };
+}
+
 export function createGateway(o: CreateGatewayOptions): Gateway {
   const roles: Record<ModelRole, string> = { ...DEFAULT_ROLES, ...o.roles };
   const client = o.client;
   return {
     async chatJson<T>(opts: ChatJsonOptions<T>): Promise<ChatJsonResult<T>> {
-      const model = roles[opts.role];
-      const jsonSchema = zodToJsonSchema(opts.schema, { target: 'openAi' });
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
+      return completeJson(
+        client,
+        roles[opts.role],
+        [
           { role: 'system', content: opts.system },
           { role: 'user', content: opts.user },
         ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: opts.schemaName, strict: true, schema: jsonSchema },
-        },
-      });
-      const content = completion.choices[0]?.message.content;
-      if (content === null || content === undefined || content === '') {
-        throw new Error(`Model output did not match schema: empty response content (model ${model})`);
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch (err) {
-        throw new Error(
-          `Model output did not match schema: invalid JSON (model ${model}): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      const validated = opts.schema.safeParse(parsed);
-      if (!validated.success) {
-        throw new Error(`Model output did not match schema: ${validated.error.message}`);
-      }
-      const input = completion.usage?.prompt_tokens ?? 0;
-      const output = completion.usage?.completion_tokens ?? 0;
-      return {
-        data: validated.data,
-        model,
-        tokens: { input, output },
-        costUsd: costUsd(model, input, output),
-      };
+        opts.schema,
+        opts.schemaName,
+      );
+    },
+    async visionJson<T>(opts: VisionJsonOptions<T>): Promise<ChatJsonResult<T>> {
+      return completeJson(
+        client,
+        roles[opts.role],
+        [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: opts.prompt },
+              { type: 'image_url', image_url: { url: opts.imageDataUrl } },
+            ],
+          },
+        ],
+        opts.schema,
+        opts.schemaName,
+      );
     },
     async chatTools(opts: ChatToolsOptions): Promise<ChatToolsResult> {
       const model = roles[opts.role];

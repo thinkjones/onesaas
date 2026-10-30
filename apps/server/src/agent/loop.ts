@@ -3,6 +3,7 @@ import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, AgentMessage } from '../models/gateway.js';
 import type { Repo } from '../db/repo.js';
 import type { TableStore } from '../tables/store.js';
+import type { ViewStore } from '../views/store.js';
 import type { WorkflowOps } from '../workflows/ops.js';
 import { checkWorkflow } from '../workflows/validate.js';
 import type { Conversation, ConversationStore, TranscriptEntry } from './conversations.js';
@@ -23,6 +24,7 @@ export interface BuilderAgentDeps {
   gateway: Gateway;
   ops: WorkflowOps;
   tables: TableStore;
+  views: ViewStore;
   repo: Repo;
   engine: Engine;
   events: EventEmitter;
@@ -46,7 +48,7 @@ function serverTimezone(): string {
 }
 
 export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
-  const { gateway, ops, tables, repo, engine, events, conversations, testRun } = d;
+  const { gateway, ops, tables, views, repo, engine, events, conversations, testRun } = d;
   const toolsByName = new Map(builderTools.map((t) => [t.name, t]));
   const busy = new Set<string>();
   // Live turns by workflow: noteManualChange appends to the in-flight
@@ -59,10 +61,14 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     // so a concurrent second send always sees it.
     if (busy.has(workflowId)) throw new AgentBusyError();
     busy.add(workflowId);
+    // create_workflow may switch the turn's live target mid-turn; runTurn
+    // reports every extra target it claims so both clear together below.
+    const extraTargets = new Set<string>();
     try {
-      await runTurn(workflowId, text);
+      await runTurn(workflowId, text, extraTargets);
     } finally {
       busy.delete(workflowId);
+      for (const id of extraTargets) busy.delete(id);
       active.delete(workflowId);
     }
   }
@@ -88,7 +94,11 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     return busy.has(workflowId);
   }
 
-  async function runTurn(workflowId: string, text: string): Promise<void> {
+  async function runTurn(
+    workflowId: string,
+    text: string,
+    extraTargets: Set<string>,
+  ): Promise<void> {
     const start = repo.getWorkflow(workflowId);
     if (!start) throw new Error(`Unknown workflow: ${workflowId}`);
     const conv = conversations.load(workflowId) ?? { messages: [], transcript: [] };
@@ -119,6 +129,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
       workflowId,
       ops,
       tables,
+      views,
       repo,
       engine,
       gateway,
@@ -134,9 +145,11 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     let calls = 0;
     try {
       for (;;) {
-        // Rebuilt from the LATEST workflow every iteration: Dad may edit mid-turn.
-        const wf = repo.getWorkflow(workflowId);
-        if (!wf) throw new Error(`Unknown workflow: ${workflowId}`);
+        // Rebuilt from the LATEST workflow every iteration: Dad may edit
+        // mid-turn, and create_workflow may switch the target mid-turn — so
+        // this follows ctx.workflowId (the live target), not the send target.
+        const wf = repo.getWorkflow(ctx.workflowId);
+        if (!wf) throw new Error(`Unknown workflow: ${ctx.workflowId}`);
         const system = buildSystemPrompt({
           business: { timezone: serverTimezone() },
           workflow: wf,
@@ -168,7 +181,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
           const call = res.toolCalls[n]!;
           calls += 1;
           if (calls > TOOL_CALL_CAP) {
-            // The 21st call is NOT executed. This call and the rest of the
+            // The over-cap call is NOT executed. This call and the rest of the
             // response still get tool results — the API rejects an assistant
             // message whose tool_calls lack matching results on the next call.
             for (const skipped of res.toolCalls.slice(n)) {
@@ -201,6 +214,14 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
             continue;
           }
           const out = await tool.run(call.args, ctx);
+          // A mid-turn switch (create_workflow) moves the live target — and
+          // the web app navigates Dad to the new reducer — so the new target
+          // joins the busy set too: his next send there must wait for this
+          // turn instead of interleaving a second one. send() clears both.
+          if (ctx.workflowId !== workflowId && !extraTargets.has(ctx.workflowId)) {
+            busy.add(ctx.workflowId);
+            extraTargets.add(ctx.workflowId);
+          }
           conv.messages.push({ role: 'tool', tool_call_id: call.id, content: out.result });
           if (out.endTurn) endTurn = true;
         }

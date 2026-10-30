@@ -10,6 +10,12 @@ import { executors, type Bridge, type StepContext } from '../src/steps/registry.
 const SYSTEM_PROMPT =
   "You help a small business owner. Reply only with the JSON schema given. `why` is one plain-English sentence explaining what you did and why, with no jargon.";
 
+// Fixed clock for date-line pins: Friday 30 October 2026, 10:00 AM in LA.
+const FRIDAY = new Date('2026-10-30T10:00:00-07:00');
+const FRIDAY_TZ = 'America/Los_Angeles';
+const FRIDAY_LINE =
+  'Today is Friday, 30 October 2026, the time is 10:00 AM, timezone America/Los_Angeles. Resolve relative dates against this.';
+
 function completion(content: string) {
   return {
     choices: [{ message: { content } }],
@@ -49,6 +55,8 @@ function makeCtx(gateway: Gateway, tables?: TableStore, bridge?: Bridge): StepCo
     tables: tables ?? customersStore(),
     bridge: bridge ?? { call: vi.fn() },
     signal: new AbortController().signal,
+    now: () => FRIDAY,
+    timezone: FRIDAY_TZ,
   };
 }
 
@@ -85,7 +93,7 @@ test('ai.extract builds a fields schema, calls chatJson as builder, returns outp
   const sent = create.mock.calls[0]![0] as Record<string, any>;
   expect(sent['model']).toBe('muse-spark-1.3');
   expect(sent['messages']).toEqual([
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: `${SYSTEM_PROMPT} ${FRIDAY_LINE}` },
     { role: 'user', content: 'Read the enquiry.\n\nText to read:\nHi, I need help. - Sarah' },
   ]);
   const format = sent['response_format'] as Record<string, any>;
@@ -220,7 +228,7 @@ test('gmail.draftReply drafts via the bridge', async () => {
   expect(result.why).toBe('Saved the reply as a draft in Gmail.');
 });
 
-test('gmail.read reads via the bridge and names the sender and subject', async () => {
+test('gmail.read reads via the worker tab and names the sender and subject', async () => {
   const { gateway } = gatewayWithResponses(0, '{}');
   const email = {
     from: 'sarah@x.com',
@@ -236,7 +244,9 @@ test('gmail.read reads via the bridge and names the sender and subject', async (
     makeCtx(gateway, undefined, { call }),
   );
   expect(call).toHaveBeenCalledTimes(1);
-  expect(call).toHaveBeenCalledWith('gmail', 'readOpenEmail', { threadId: 't1' });
+  expect(call).toHaveBeenCalledWith('gmail', 'readOpenEmail', { threadId: 't1' }, undefined, {
+    tab: 'worker',
+  });
   expect(result.output).toEqual(email);
   expect(result.why).toBe('Read the email from Sarah Lee ("Need help").');
 });
@@ -260,7 +270,7 @@ test('ai.write calls chatJson as builder and returns the text and why', async ()
   const sent = create.mock.calls[0]![0] as Record<string, any>;
   expect(sent['model']).toBe('muse-spark-1.3');
   expect(sent['messages']).toEqual([
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: `${SYSTEM_PROMPT} ${FRIDAY_LINE}` },
     {
       role: 'user',
       content: `Write a reply.\n\nTone: friendly\n\nContext:\n${JSON.stringify(context)}`,
@@ -299,14 +309,27 @@ test('ai.write rejects with a friendly error after two schema failures', async (
 test('every catalog entry has an executor', () => {
   expect(Object.keys(catalog).sort()).toEqual(
     [
+      'ai.classify',
       'ai.extract',
       'ai.write',
       'approval.ask',
+      'calendar.createEvent',
+      'calendar.freeBusy',
+      'code.transform',
       'gmail.draftReply',
       'gmail.read',
+      'image.cutout',
+      'image.edit',
+      'image.generate',
+      'meta.draftPost',
+      'notify',
+      'table.insert',
+      'table.query',
       'table.upsert',
+      'trigger.email',
       'trigger.gmailButton',
       'trigger.manual',
+      'trigger.upload',
     ].sort(),
   );
   for (const type of Object.keys(catalog)) {
@@ -444,6 +467,56 @@ test('ai.extract config schema requires at least one field', () => {
   expect(() =>
     catalog['ai.extract']!.configSchema.parse({ instructions: 'x', fields: [] }),
   ).toThrow();
+});
+
+test('ai.extract with a fixed Friday clock sends the exact date line', async () => {
+  const { create, gateway } = gatewayWithResponses(
+    0,
+    JSON.stringify({ output: { name: 'Sarah' }, why: 'I read the email.' }),
+  );
+  await executors['ai.extract']!(
+    {
+      instructions: 'Read it.',
+      fields: [{ name: 'name', type: 'text', description: 'Name' }],
+    },
+    { text: 'hello' },
+    makeCtx(gateway),
+  );
+  const sent = create.mock.calls[0]![0] as Record<string, any>;
+  const system = (sent['messages'] as { role: string; content: string }[]).find(
+    (m) => m.role === 'system',
+  )!.content;
+  expect(system).toContain('Friday, 30 October 2026');
+  expect(system).toBe(`${SYSTEM_PROMPT} ${FRIDAY_LINE}`);
+});
+
+test('ai.write with a fixed Friday clock sends the exact date line', async () => {
+  const { create, gateway } = gatewayWithResponses(
+    0,
+    JSON.stringify({ output: { text: 'Hi!' }, why: 'I wrote it.' }),
+  );
+  await executors['ai.write']!(WRITE_CONFIG, { context: {} }, makeCtx(gateway));
+  const sent = create.mock.calls[0]![0] as Record<string, any>;
+  const system = (sent['messages'] as { role: string; content: string }[]).find(
+    (m) => m.role === 'system',
+  )!.content;
+  expect(system).toBe(`${SYSTEM_PROMPT} ${FRIDAY_LINE}`);
+});
+
+test('trigger.email echoes the trigger payload and names the sender and subject', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  const input = {
+    email: {
+      threadId: 't1',
+      from: 'jordan@x.com',
+      fromName: 'Jordan Lee',
+      subject: 'Booking for Saturday',
+      snippet: 'Can I book?',
+    },
+  };
+  const result = await executors['trigger.email']!({}, input, makeCtx(gateway));
+  expect(result.output).toEqual(input);
+  expect(result.why).toBe('A new email arrived from Jordan Lee ("Booking for Saturday").');
 });
 
 test('table.upsert preview fails like live for a bad keyField', async () => {
