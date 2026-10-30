@@ -261,4 +261,40 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({}),
     outputSchema: z.object({ file: fileRefSchema, note: z.string().optional() }),
   },
+  'image.cutout': {
+    type: 'image.cutout',
+    kind: 'enrich',
+    title: 'Cut out an object',
+    description: 'Cuts an object out of your photo.',
+    sample: {
+      file: { fileId: 'generated_abc123', mime: 'image/png', width: 400, height: 400 },
+    },
+    configSchema: z.object({ thing: z.string() }),
+    inputSchema: z.object({ file: fileRefSchema }),
+    outputSchema: z.object({ file: fileRefSchema }),
+  },
+  'image.generate': {
+    type: 'image.generate',
+    kind: 'enrich',
+    title: 'Generate a picture',
+    description: 'Makes a new picture in a style you choose.',
+    sample: {
+      file: { fileId: 'generated_def456', mime: 'image/png', width: 1024, height: 1024 },
+    },
+    configSchema: z.object({ style: z.string() }),
+    inputSchema: z.object({ text: z.string().optional(), reference: fileRefSchema.optional() }),
+    outputSchema: z.object({ file: fileRefSchema }),
+  },
+  'image.edit': {
+    type: 'image.edit',
+    kind: 'enrich',
+    title: 'Edit a photo',
+    description: 'Edits your photo following your instruction.',
+    sample: {
+      file: { fileId: 'generated_789abc', mime: 'image/png', width: 1200, height: 900 },
+    },
+    configSchema: z.object({ instruction: z.string() }),
+    inputSchema: z.object({ file: fileRefSchema }),
+    outputSchema: z.object({ file: fileRefSchema }),
+  },
 };

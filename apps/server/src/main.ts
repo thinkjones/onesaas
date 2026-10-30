@@ -14,6 +14,7 @@ import { createEngine } from './engine/engine.js';
 import { createTestRunner } from './engine/testRun.js';
 import { createFileStore } from './files/store.js';
 import { createGateway } from './models/gateway.js';
+import { createImageModels } from './models/image.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
@@ -67,9 +68,9 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     warnedMissingKey = true;
     console.warn('MODEL_API_KEY not set — AI steps will fail');
   }
-  const gateway = createGateway({
-    client: new OpenAI({ apiKey: apiKey ?? 'unconfigured', baseURL: 'https://api.meta.ai/v1' }),
-  });
+  const openai = new OpenAI({ apiKey: apiKey ?? 'unconfigured', baseURL: 'https://api.meta.ai/v1' });
+  const gateway = createGateway({ client: openai });
+  const image = createImageModels({ client: openai, fetch, apiKey: apiKey ?? 'unconfigured' });
 
   // The one StepContext base: the engine and the test runner share it by
   // reference, so a PUT /api/settings updates live runs immediately (the
@@ -79,6 +80,8 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     gateway,
     tables,
     bridge,
+    image,
+    files,
     now: () => new Date(),
     timezone: settings.get(TIMEZONE_KEY) ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   };

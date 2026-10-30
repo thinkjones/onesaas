@@ -78,6 +78,9 @@ importers:
       '@hono/node-ws':
         specifier: ^1.3.1
         version: 1.3.1(@hono/node-server@1.19.17(hono@4.13.14))(hono@4.13.14)
+      '@meta-sam/parser':
+        specifier: ^0.1.0
+        version: 0.1.0
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
@@ -871,6 +874,10 @@ packages:
 
   '@mdn/browser-compat-data@8.1.4':
     resolution: {integrity: sha512-Cgp3OP3u9x57kT1sZPI115SP5H1IyaBhdDPnvnHRYZ1988kW83wuqcIdcMinLJXlMKOL5Y2cufWHzngh5cVtow==}
+
+  '@meta-sam/parser@0.1.0':
+    resolution: {integrity: sha512-099xq4EhULxm7gV+kEllQ9WTaNgwYumGRvCX5WAT2bny/SEh+U9tVT9bAzN1mISOC7TO6mgOt3MJmZ2Mv2RTmw==}
+    engines: {node: ^20.17.0 || >=22.9.0}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -5162,6 +5169,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@mdn/browser-compat-data@8.1.4': {}
+
+  '@meta-sam/parser@0.1.0': {}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true

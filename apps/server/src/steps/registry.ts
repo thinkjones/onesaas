@@ -1,9 +1,12 @@
+import type { FileStore } from '../files/store.js';
 import type { Gateway } from '../models/gateway.js';
+import type { ImageModels } from '../models/image.js';
 import type { TableStore } from '../tables/store.js';
 import { extractExecutor, writeExecutor } from './ai.js';
 import { askExecutor } from './approval.js';
 import { createEventExecutor, freeBusyExecutor } from './calendar.js';
 import { classifyExecutor } from './classify.js';
+import { cutoutExecutor, editExecutor, generateExecutor } from './image.js';
 import { insertExecutor, queryExecutor, upsertExecutor } from './table.js';
 import {
   draftReplyExecutor,
@@ -32,6 +35,10 @@ export interface StepContext {
   tables: TableStore;
   bridge: Bridge;
   signal: AbortSignal;
+  // Image models + file store for the image.* steps. Optional so older
+  // callers keep working; the image executors fail readably when absent.
+  image?: ImageModels;
+  files?: FileStore;
   // True inside test runs ("Try it"): outside-world actions become previews.
   // Optional so existing live callers keep working; undefined means live.
   testMode?: boolean;
@@ -99,4 +106,7 @@ export const executors: Record<string, Executor> = {
   'calendar.freeBusy': freeBusyExecutor,
   'calendar.createEvent': createEventExecutor,
   'approval.ask': askExecutor,
+  'image.cutout': cutoutExecutor,
+  'image.generate': generateExecutor,
+  'image.edit': editExecutor,
 };
