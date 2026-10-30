@@ -1,7 +1,7 @@
 import { Workflow, catalog } from '@dad/shared';
 import { vi } from 'vitest';
 import { flow1Example } from '../src/agent/examples.js';
-import { buildSystemPrompt } from '../src/agent/prompt.js';
+import { TANGLED_MESSAGE, buildSystemPrompt } from '../src/agent/prompt.js';
 import { builderTools, type AgentEvent, type ToolContext } from '../src/agent/tools.js';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';
@@ -525,4 +525,20 @@ test('table store and ops types flow into tools without casts', () => {
   const { tables, ops }: { tables: TableStore; ops: WorkflowOps } = setup();
   expect(tables.listTables()).toHaveLength(1);
   expect(typeof ops.addStep).toBe('function');
+});
+
+test('TANGLED_MESSAGE matches the spec byte-exact (pinned for the Task 5 loop)', () => {
+  expect(TANGLED_MESSAGE).toBe("I've got a bit tangled. Can you tell me which part to focus on?");
+});
+
+test('system prompt states the tool-call cap and the exact tangled message', () => {
+  const { repo, tables } = setup();
+  const wf = repo.getWorkflow(ctxWorkflowId(repo))!;
+  const prompt = buildSystemPrompt({
+    business: { timezone: 'America/Chicago' },
+    workflow: wf,
+    problems: checkWorkflow(wf, tables),
+    tables: tables.listTables(),
+  });
+  expect(prompt).toContain("I've got a bit tangled. Can you tell me which part to focus on?");
 });

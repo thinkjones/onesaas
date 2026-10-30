@@ -13,7 +13,7 @@ export const VOICE =
  * enforces the cap and should reuse this exact message; the prompt states it.
  */
 export const TANGLED_MESSAGE =
-  'This got a bit tangled — let\u2019s start fresh with a smaller first step. What is the one chore you most want gone?';
+  "I've got a bit tangled. Can you tell me which part to focus on?";
 
 /** Maximum tool calls per request (enforced by the Task 5 loop). */
 export const TOOL_CALL_CAP = 20;
