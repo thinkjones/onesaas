@@ -38,6 +38,35 @@ describe('readDayEvents', () => {
     expect(titles).not.toContain('Election Day');
   });
 
+  it('parses the timed chip and silently skips the all-day chip', () => {
+    document.body.innerHTML =
+      '<div role="main"><div role="grid" aria-label="Day view">' +
+      '<div role="button" data-eventid="evt_timed" aria-label="Dentist checkup, November 3, 2026, 9:00 AM – 10:00 AM">Dentist checkup</div>' +
+      '<div role="button" data-eventid="evt_allday" aria-label="Election Day, November 3, 2026">Election Day</div>' +
+      '</div></div>';
+    expect(readDayEvents(document)).toEqual([
+      {
+        title: 'Dentist checkup',
+        start: '2026-11-03T17:00:00.000Z',
+        end: '2026-11-03T18:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('throws SELECTOR_MISSING on a chip matching neither the timed nor the all-day shape', () => {
+    document.body.innerHTML =
+      '<div role="main"><div role="grid" aria-label="Day view">' +
+      '<div role="button" data-eventid="evt_drifted" aria-label="Standup, 3 nov. 2026, 9h00 – 10h00">Standup</div>' +
+      '</div></div>';
+    let caught: unknown;
+    try {
+      readDayEvents(document);
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as { code?: unknown }).code).toBe('SELECTOR_MISSING');
+  });
+
   it('throws SELECTOR_MISSING when the day grid is absent', () => {
     document.body.innerHTML = '<div role="main"></div>';
     let caught: unknown;

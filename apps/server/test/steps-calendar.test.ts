@@ -287,7 +287,9 @@ describe('calendar.createEvent', () => {
   };
 
   test('saved event reports created:true', async () => {
-    const call = vi.fn(async () => ({ saved: true }));
+    // Honest two-call sequence: navigate:true opens the template page
+    // ({ navigated: true }), navigate:false clicks Save ({ saved: true }).
+    const call = vi.fn().mockResolvedValueOnce({ navigated: true }).mockResolvedValueOnce({ saved: true });
     const result = await executors['calendar.createEvent']!(
       {},
       INPUT,
@@ -295,14 +297,32 @@ describe('calendar.createEvent', () => {
     );
     expect(result.output).toEqual({ created: true });
     expect(result.why).toBe('Added "Fence quote – Sarah" to your calendar.');
-    expect(call).toHaveBeenCalledWith(
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call).toHaveBeenNthCalledWith(
+      1,
       'calendar',
       'createEvent',
       { ...INPUT, navigate: true },
       undefined,
       { tab: 'active' },
     );
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'calendar',
+      'createEvent',
+      { ...INPUT, navigate: false },
+      undefined,
+      { tab: 'active' },
+    );
     expect(catalog['calendar.createEvent']!.outputSchema.safeParse(result.output).success).toBe(true);
+  });
+
+  test('unexpected first-response shape fails instead of reporting created:true', async () => {
+    const call = vi.fn(async () => ({ saved: true }));
+    await expect(
+      executors['calendar.createEvent']!({}, INPUT, makeCtx({ call } as unknown as Bridge)),
+    ).rejects.toThrow("I couldn't open the new event page.");
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   test('navigates to the template page before saving', async () => {
@@ -363,7 +383,7 @@ describe('calendar.createEvent', () => {
   });
 
   test('titleTemplate applies its {{title}} placeholder', async () => {
-    const call = vi.fn(async () => ({ saved: true }));
+    const call = vi.fn().mockResolvedValueOnce({ navigated: true }).mockResolvedValueOnce({ saved: true });
     const result = await executors['calendar.createEvent']!(
       { titleTemplate: 'Work: {{title}}' },
       INPUT,
@@ -380,7 +400,7 @@ describe('calendar.createEvent', () => {
   });
 
   test('titleTemplate without the placeholder is used verbatim', async () => {
-    const call = vi.fn(async () => ({ saved: true }));
+    const call = vi.fn().mockResolvedValueOnce({ navigated: true }).mockResolvedValueOnce({ saved: true });
     const result = await executors['calendar.createEvent']!(
       { titleTemplate: 'Focus block' },
       INPUT,

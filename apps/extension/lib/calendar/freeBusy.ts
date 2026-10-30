@@ -18,12 +18,18 @@ export interface DayEvent {
 const LABEL_PATTERN =
   /^(.*), ([A-Z][a-z]+ \d{1,2}, \d{4}), (\d{1,2}:\d{2}\s?[AP]M)\s*[–-]\s*(\d{1,2}:\d{2}\s?[AP]M)$/;
 
+// Known all-day chip shape: "<title>, <Month D, YYYY>" with no timed part.
+// Anything matching neither pattern is an UNKNOWN shape (locale drift, new
+// suffix) and must fail closed into the vision fallback, not skip silently.
+const ALL_DAY_PATTERN = /^(.*), ([A-Z][a-z]+ \d{1,2}, \d{4})$/;
+
 /**
  * Read the timed events on the open Calendar day view. Times are absolute
  * ISO strings so the server can compare them with the queried range without
  * re-interpreting wall clocks. Throws SELECTOR_MISSING when the grid is
- * absent (the server falls back to screenshot + vision) or when a matched
- * label will not parse (the page looked different).
+ * absent (the server falls back to screenshot + vision), when a matched
+ * label will not parse, or when a chip matches neither the timed nor the
+ * all-day shape (the page looked different).
  */
 export function readDayEvents(doc: Document): DayEvent[] {
   const grid = doc.querySelector(SELECTORS.dayGrid);
@@ -32,7 +38,10 @@ export function readDayEvents(doc: Document): DayEvent[] {
   for (const el of grid.querySelectorAll(SELECTORS.event)) {
     const label = (el.getAttribute('aria-label') ?? '').trim();
     const m = LABEL_PATTERN.exec(label);
-    if (!m) continue;
+    if (!m) {
+      if (ALL_DAY_PATTERN.test(label)) continue;
+      throw new TabError('SELECTOR_MISSING', "I can't see the calendar day view.");
+    }
     const [, title, date, start, end] = m;
     const startMs = Date.parse(`${date} ${start}`);
     const endMs = Date.parse(`${date} ${end}`);

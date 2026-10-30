@@ -211,12 +211,11 @@ export const createEventExecutor: Executor = async (config, input, ctx) => {
       undefined,
       { tab: 'active' },
     )) as { navigated?: unknown } | null | undefined;
-    if (first?.navigated === true) {
-      await sleep(CREATE_SETTLE_MS);
-      await ctx.bridge.call('calendar', 'createEvent', { ...payload, navigate: false }, undefined, {
-        tab: 'active',
-      });
-    }
+    if (first?.navigated !== true) throw new Error("I couldn't open the new event page.");
+    await sleep(CREATE_SETTLE_MS);
+    await ctx.bridge.call('calendar', 'createEvent', { ...payload, navigate: false }, undefined, {
+      tab: 'active',
+    });
   } catch (err) {
     if (errCode(err) === 'HANDOFF') return { output: { created: false }, why: HANDOFF_WHY };
     throw err;
