@@ -4,7 +4,7 @@ import { ReactFlow } from '@xyflow/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { WorkflowDetail } from '../api.ts';
 import DesignView from './DesignView.tsx';
@@ -134,6 +134,9 @@ function renderOps(entry = '/reducers/flow-1') {
 
 beforeEach(() => {
   ReactFlowMock.mockClear();
+  // Sonner's toast store is module-global: a previous test's still-alive
+  // toast would re-render in the next test's fresh Toaster.
+  toast.dismiss();
 });
 
 afterEach(() => {
@@ -227,6 +230,101 @@ describe('DesignView canvas ops', () => {
       op: 'move',
       args: ['pick-out-the-details-undo1', { x: 500, y: 100 }],
     });
+  });
+
+  test('Undo attempts every wire and the move even when one reconnect fails, then says so', async () => {
+    // s1 fans out to s2 AND s3, so Undo must send TWO connects: the first
+    // is refused, the second (and the move) must still go out.
+    let current = ((): WorkflowDetail => {
+      const wf: Workflow = {
+        id: 'flow-1',
+        name: 'Test flow',
+        description: 'Test flow.',
+        version: 1,
+        status: 'draft',
+        trigger: TRIGGER,
+        steps: [step('s1', 'Pick out the details'), step('s2', 'Write the reply'), step('s3', 'File it')],
+        edges: [
+          { from: 'trigger', to: 's1' },
+          { from: 's1', to: 's2' },
+          { from: 's1', to: 's3' },
+        ],
+      };
+      return { ...wf, problems: [] };
+    })();
+    let connects = 0;
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const json = async () => {
+        if (url === '/api/workflows/flow-1') return current;
+        if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
+          const { op, args } = JSON.parse(String(init.body)) as OpCall;
+          if (op === 'removeStep') {
+            const [stepId] = args as [string];
+            current = {
+              ...current,
+              steps: current.steps.filter((s) => s.id !== stepId),
+              edges: current.edges.filter((e) => e.from !== stepId && e.to !== stepId),
+            };
+          } else if (op === 'addStep') {
+            const [o] = args as [
+              { type: string; title: string; summary: string; config: Record<string, unknown>; inputs: Record<string, string>; after?: string },
+            ];
+            const id = 'pick-out-the-details-undo1';
+            current = {
+              ...current,
+              steps: [
+                ...current.steps,
+                { id, type: o.type, title: o.title, summary: o.summary, config: o.config, inputs: o.inputs, position: { x: 0, y: 0 } },
+              ],
+              edges: o.after ? [...current.edges, { from: o.after, to: id }] : current.edges,
+            };
+          } else if (op === 'connect') {
+            connects += 1;
+            // The first reconnect is refused; the retry must still be attempted.
+            if (connects === 1) return { ok: false, error: 'Those boxes are already joined.' };
+            const [o] = args as [{ from: string; to: string; when?: string }];
+            current = { ...current, edges: [...current.edges, { ...o }] };
+          } else if (op === 'move') {
+            const [stepId, position] = args as [string, { x: number; y: number }];
+            current = {
+              ...current,
+              steps: current.steps.map((s) => (s.id === stepId ? { ...s, position } : s)),
+            };
+          }
+          return { ok: true, workflow: current, note: 'Done.' };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      };
+      return { ok: true, status: 200, json } as Response;
+    });
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/reducers/flow-1']}>
+          <Toaster />
+          <DesignView workflowId="flow-1" onRequestRuntime={() => {}} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => {
+      expect(ReactFlowMock.mock.calls.length).toBeGreaterThan(0);
+    });
+    lastFlowProps().onNodesChange!([{ id: 's1', type: 'remove' }]);
+    await waitFor(() => {
+      expect(opsCalls(fetch)).toEqual([{ op: 'removeStep', args: ['s1'] }]);
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    // BOTH reconnects fire despite the first refusal, and the move follows.
+    await waitFor(() => {
+      expect(opsCalls(fetch).filter((c) => c.op === 'connect')).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(opsCalls(fetch).filter((c) => c.op === 'move')).toHaveLength(1);
+    });
+    expect(await screen.findByText("Step restored, but 1 wire couldn't be put back.")).toBeDefined();
   });
 
   test('the trigger cannot be deleted (no op, plain-words toast)', async () => {

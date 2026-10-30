@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import {
   ApiError,
+  PENDING_BUILT_TIMEOUT_MS,
   getRun,
   useAgentEvents,
   useTestRun,
@@ -80,10 +81,16 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
   const [ghostEdges, setGhostEdges] = useState<Edge[]>([]);
   const [matchedGhostIds, setMatchedGhostIds] = useState<string[]>([]);
   const [pendingBuilt, setPendingBuilt] = useState<string[]>([]);
+  // Built steps whose refetch failed or timed out: surfaced already, but
+  // still matchable so a late-arriving step swaps its ghost in.
+  const [failedBuilt, setFailedBuilt] = useState<string[]>([]);
   const [builtIds, setBuiltIds] = useState<string[]>([]);
   const [testResult, setTestResult] = useState<TestRunResponse | null>(null);
   // onBuilt must fire exactly once per built step even under effect re-runs.
   const builtFired = useRef<Set<string>>(new Set());
+  // One timeout per pending built; an entry's presence means "still
+  // awaiting" (deleted on match, on surfacing, or on unmount).
+  const pendingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // One ops call with uniform failure surfacing: refused ops toast the
   // server's readable error, transport failures the fallback. Never throws.
@@ -101,6 +108,20 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     [mutateAsync],
   );
 
+  // A pending built that cannot resolve now (its refetch failed or timed
+  // out) leaves pending with a plain-words error — surfacing exactly once
+  // per step — but stays matchable for a later refetch. The "work is saved"
+  // claim holds: the server emits `built` only after persisting the step.
+  const failPendingBuilt = useCallback((stepId: string) => {
+    const timer = pendingTimers.current.get(stepId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    pendingTimers.current.delete(stepId);
+    setPendingBuilt((prev) => prev.filter((id) => id !== stepId));
+    setFailedBuilt((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
+    toast.error("Couldn't load the new step. Check your connection — the agent's work is saved.");
+  }, []);
+
   const handleAgentEvent = useCallback(
     (e: AgentEvent) => {
       if (e.type === 'plan') {
@@ -110,9 +131,25 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         setMatchedGhostIds([]);
       } else if (e.type === 'built') {
         setPendingBuilt((prev) => (prev.includes(e.stepId) ? prev : [...prev, e.stepId]));
+        if (!pendingTimers.current.has(e.stepId)) {
+          pendingTimers.current.set(
+            e.stepId,
+            setTimeout(() => failPendingBuilt(e.stepId), PENDING_BUILT_TIMEOUT_MS),
+          );
+        }
         // Agent ops don't push workflow state over SSE, so the fresh step
-        // arrives via refetch; resolution happens in the effect below.
-        void client.invalidateQueries({ queryKey: ['workflow', workflowId] });
+        // arrives via refetch; resolution happens in the effect below. The
+        // invalidate promise settles once the refetch does (it never rejects
+        // for query failures), so a still-failing query surfaces here — while
+        // the timeout above catches the silently-hung fetch. Either way a
+        // pending built resolves or surfaces; it never strands its ghost.
+        const surfaceIfFailed = (): void => {
+          if (client.getQueryState(['workflow', workflowId])?.status !== 'error') return;
+          failPendingBuilt(e.stepId);
+        };
+        void client
+          .invalidateQueries({ queryKey: ['workflow', workflowId] })
+          .then(surfaceIfFailed, surfaceIfFailed);
       } else if (e.type === 'test') {
         getRun(e.runId).then(
           (runDetail) =>
@@ -126,18 +163,37 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         );
       }
     },
-    [client, workflowId],
+    [client, failPendingBuilt, workflowId],
   );
   useAgentEvents(workflowId, handleAgentEvent);
 
-  // Resolves pending builts once the refetched workflow contains their steps.
+  // Pending-built timeouts must not fire (and toast) after leaving the screen.
   useEffect(() => {
-    if (!detail || pendingBuilt.length === 0) return;
+    const timers = pendingTimers.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  // Resolves pending builts once the refetched workflow contains their steps.
+  // Previously-surfaced ids stay matchable so a late step still lands.
+  useEffect(() => {
+    const awaiting = [...pendingBuilt, ...failedBuilt];
+    if (!detail || awaiting.length === 0) return;
     const stepsById = new Map<string, StepInstance>([[detail.trigger.id, detail.trigger]]);
     for (const s of detail.steps) stepsById.set(s.id, s);
-    const resolved = pendingBuilt.filter((id) => stepsById.has(id) && !builtIds.includes(id));
+    const resolved = awaiting.filter((id) => stepsById.has(id) && !builtIds.includes(id));
     if (resolved.length === 0) return;
+    for (const id of resolved) {
+      const timer = pendingTimers.current.get(id);
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        pendingTimers.current.delete(id);
+      }
+    }
     setPendingBuilt((prev) => prev.filter((id) => !resolved.includes(id)));
+    setFailedBuilt((prev) => prev.filter((id) => !resolved.includes(id)));
     setBuiltIds((prev) => [...prev, ...resolved.filter((id) => !prev.includes(id))]);
     setMatchedGhostIds((prevMatched) => {
       const matched = [...prevMatched];
@@ -153,7 +209,7 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         onBuilt?.({ stepId: id, title: stepsById.get(id)!.title });
       }
     }
-  }, [detail, pendingBuilt, builtIds, ghosts, onBuilt]);
+  }, [detail, pendingBuilt, failedBuilt, builtIds, ghosts, onBuilt]);
 
   const visibleGhosts = useMemo(
     () => ghosts.filter((g) => !matchedGhostIds.includes(g.id)),
@@ -223,6 +279,9 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
       const ids = new Set([added.workflow.trigger.id, ...added.workflow.steps.map((s) => s.id)]);
       const have = new Set(added.workflow.edges.map((e) => `${e.from}->${e.to}`));
       const map = (id: string): string => (id === snapshot.id ? restored.id : id);
+      // Every wire is attempted even when one refuses: an early return here
+      // would leave a half-restored step while the toast implied a full undo.
+      let skipped = 0;
       for (const e of [...incoming, ...outgoing]) {
         const from = map(e.from);
         const to = map(e.to);
@@ -232,11 +291,20 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
           op: 'connect',
           args: [{ from, to, ...(e.when ? { when: e.when } : {}) }],
         });
-        if (!res?.ok) return;
+        if (!res?.ok) {
+          skipped += 1;
+          continue;
+        }
         have.add(`${from}->${to}`);
       }
-      const moved = await send({ op: 'move', args: [restored.id, snapshot.position] });
-      if (!moved?.ok) return;
+      await send({ op: 'move', args: [restored.id, snapshot.position] });
+      if (skipped > 0) {
+        toast.error(
+          skipped === 1
+            ? "Step restored, but 1 wire couldn't be put back."
+            : `Step restored, but ${skipped} wires couldn't be put back.`,
+        );
+      }
       setSelectedStep(restored.id);
     },
     [client, workflowId, send, setSelectedStep],

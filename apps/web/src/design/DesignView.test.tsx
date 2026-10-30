@@ -2,9 +2,9 @@ import type { StepInstance, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { WorkflowDetail } from '../api.ts';
+import { PENDING_BUILT_TIMEOUT_MS, type WorkflowDetail } from '../api.ts';
 import DesignView from './DesignView.tsx';
 
 function step(id: string, title: string, position = { x: 500, y: 100 }): StepInstance {
@@ -107,6 +107,9 @@ function renderDesign(
 
 beforeEach(() => {
   FakeEventSource.instances = [];
+  // Sonner's toast store is module-global: a previous test's still-alive
+  // toast would re-render in the next test's fresh Toaster.
+  toast.dismiss();
   vi.stubGlobal('EventSource', FakeEventSource);
   vi.stubGlobal(
     'ResizeObserver',
@@ -198,6 +201,121 @@ describe('DesignView ghosts', () => {
       await new Promise((r) => setTimeout(r, 20));
     });
     expect(container.querySelectorAll('[data-ghost="true"]')).toHaveLength(0);
+  });
+});
+
+describe('DesignView built failure', () => {
+  const PLAN = {
+    type: 'plan',
+    ghosts: [
+      { id: 'ghost-a', type: 'gmail.read', title: 'Read the email', summary: 'Reads it.' },
+      { id: 'ghost-b', type: 'table.upsert', title: 'Save the customer', summary: 'Saves it.' },
+      { id: 'ghost-c', type: 'ai.write', title: 'Write the reply', summary: 'Writes it.' },
+    ],
+    edges: [
+      { from: 'ghost-a', to: 'ghost-b' },
+      { from: 'ghost-b', to: 'ghost-c' },
+    ],
+  };
+  const LOAD_ERROR =
+    "Couldn't load the new step. Check your connection — the agent's work is saved.";
+
+  function withSave1(): WorkflowDetail {
+    return detail([step('s1', 'Pick out the details'), step('save-1', 'Save the customer')]);
+  }
+
+  test('a built whose refetch fails toasts, then still matches when the step lands late', async () => {
+    const onBuilt = vi.fn();
+    const initial = detail([step('s1', 'Pick out the details')]);
+    let current = initial;
+    let failDetail = false;
+    const { container, client } = renderDesign(initial, {
+      onBuilt,
+      fetchHandler: (url, init) => {
+        if (url === '/api/workflows/flow-1') {
+          if (failDetail) throw new Error('offline');
+          return current;
+        }
+        if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
+          return { ok: true, workflow: current, note: 'Done.' };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    await screen.findByText('Pick out the details');
+    act(() => emitAgent('flow-1', PLAN));
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-ghost="true"]')).toHaveLength(3);
+    });
+
+    // The agent built the step server-side, but the refetch fails (offline):
+    // a plain-words error surfaces instead of stranding the ghost silently.
+    failDetail = true;
+    act(() => emitAgent('flow-1', { type: 'built', stepId: 'save-1' }));
+    expect(await screen.findByText(LOAD_ERROR)).toBeDefined();
+
+    // Back online with the step present: it still swaps its ghost in.
+    failDetail = false;
+    current = withSave1();
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['workflow', 'flow-1'] });
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-ghost="true"]')).toHaveLength(2);
+    });
+    expect(onBuilt).toHaveBeenCalledWith({ stepId: 'save-1', title: 'Save the customer' });
+  });
+
+  test('a built that never lands toasts after the timeout, then still matches late', async () => {
+    const onBuilt = vi.fn();
+    const initial = detail([step('s1', 'Pick out the details')]);
+    let current = initial;
+    const { container, client } = renderDesign(initial, {
+      onBuilt,
+      fetchHandler: (url, init) => {
+        // A silently-hung read: succeeds but the step never appears.
+        if (url === '/api/workflows/flow-1') return current;
+        if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
+          return { ok: true, workflow: current, note: 'Done.' };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    await screen.findByText('Pick out the details');
+    act(() => emitAgent('flow-1', PLAN));
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-ghost="true"]')).toHaveLength(3);
+    });
+
+    try {
+      vi.useFakeTimers();
+      act(() => emitAgent('flow-1', { type: 'built', stepId: 'save-1' }));
+      await act(async () => {
+        vi.advanceTimersByTime(PENDING_BUILT_TIMEOUT_MS - 1);
+      });
+      expect(screen.queryByText(LOAD_ERROR)).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      // Sonner paints toasts behind a setTimeout(0); flush it without
+      // reaching the toast's 4s auto-dismiss.
+      await act(async () => {
+        vi.advanceTimersByTime(10);
+      });
+      expect(screen.getByText(LOAD_ERROR)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The step lands on a later refetch: its ghost still matches.
+    current = withSave1();
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['workflow', 'flow-1'] });
+    });
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-ghost="true"]')).toHaveLength(2);
+    });
+    expect(onBuilt).toHaveBeenCalledWith({ stepId: 'save-1', title: 'Save the customer' });
   });
 });
 

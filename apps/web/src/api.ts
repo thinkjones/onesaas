@@ -278,6 +278,14 @@ export type AgentEvent =
   | { type: 'done' };
 
 /**
+ * How long DesignView waits for a `built` step to land in the refetched
+ * workflow before surfacing "couldn't load" (a silently-hung fetch must not
+ * strand its ghost forever). Exported for the fake-timer test; lives here
+ * (not DesignView) so the component file exports components only.
+ */
+export const PENDING_BUILT_TIMEOUT_MS = 20_000;
+
+/**
  * Subscribes to one workflow's agent events over SSE. A dedicated EventSource
  * (useLiveEvents ignores agent events): cheap enough for one design screen,
  * skipped outside browsers like useEvents.
