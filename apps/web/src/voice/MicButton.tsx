@@ -39,6 +39,7 @@ export default function MicButton({ onSend, useVoiceFn = useVoice }: MicButtonPr
   }, [voice, onSend]);
 
   const listening = voice.state === 'listening';
+  const thinking = voice.state === 'thinking';
   const pressRef = useRef<{ downAt: number } | null>(null);
   // The click that ends a press belongs to that press: it must neither stop
   // a tap-started session nor restart a hold-released one.
@@ -77,7 +78,8 @@ export default function MicButton({ onSend, useVoiceFn = useVoice }: MicButtonPr
       startedByPressRef.current = false;
       return;
     }
-    if (voice.state === 'listening') {
+    if (voice.state === 'listening' || voice.state === 'thinking') {
+      // From thinking, stop() is the user's cancel back to idle.
       voice.stop();
     } else if (voice.state === 'idle' || voice.state === 'error') {
       begin();
@@ -108,6 +110,14 @@ export default function MicButton({ onSend, useVoiceFn = useVoice }: MicButtonPr
       {listening && voice.partial.length > 0 && (
         <p aria-live="polite" className="max-w-56 text-center text-sm text-muted-foreground italic">
           {voice.partial}
+        </p>
+      )}
+      {thinking && (
+        <p
+          aria-live="polite"
+          className="text-center text-sm text-muted-foreground motion-safe:animate-pulse"
+        >
+          Thinking… tap to cancel
         </p>
       )}
       {hint && <p className="text-center text-sm text-muted-foreground">{hint}</p>}

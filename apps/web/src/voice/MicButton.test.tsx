@@ -83,4 +83,16 @@ describe('MicButton', () => {
 
     expect(screen.getByText('when a customer')).not.toBeNull();
   });
+
+  test('while thinking it shows a cancel affordance and click cancels', () => {
+    const onSend = vi.fn();
+    const stop = vi.fn(() => {});
+    const { voice } = createFakeVoice({ state: 'thinking', stop });
+    render(<MicButton onSend={onSend} useVoiceFn={() => voice} />);
+
+    expect(screen.getByText(/thinking/i)).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /hold to talk/i }));
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });

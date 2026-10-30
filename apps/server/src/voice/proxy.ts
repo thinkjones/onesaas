@@ -68,10 +68,25 @@ export function mapUpstreamEvent(raw: string): VoiceDownFrame | null {
   }
 }
 
+/** Bound on the upstream TCP/TLS/WebSocket handshake; a hang fails loudly. */
+export const VOICE_UPSTREAM_CONNECT_TIMEOUT_MS = 10_000;
+/** Bound on waiting for the final transcript after endStream went upstream. */
+export const VOICE_FINAL_WAIT_TIMEOUT_MS = 20_000;
+
 export interface VoiceProxyOptions {
   apiKey?: string;
   /** Overridden in tests with a fake upstream URL. */
   upstreamUrl?: string;
+  /** Overridden in tests; defaults to VOICE_UPSTREAM_CONNECT_TIMEOUT_MS. */
+  connectTimeoutMs?: number;
+  /** Overridden in tests; defaults to VOICE_FINAL_WAIT_TIMEOUT_MS. */
+  finalWaitTimeoutMs?: number;
+}
+
+/** A session timer must never hold the process open by itself. */
+function unref(timer: ReturnType<typeof setTimeout>): void {
+  const t = timer as unknown as { unref?: () => void };
+  if (typeof t.unref === 'function') t.unref();
 }
 
 /** The @hono/node-ws sender surface the proxy drives. */
@@ -92,11 +107,17 @@ class VoiceSession {
   private endStreamSent = false;
   private settled = false;
   private closed = false;
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private finalWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly connectTimeoutMs: number;
+  private readonly finalWaitTimeoutMs: number;
 
   constructor(
     private readonly browser: VoiceBrowserSocket,
     opts: VoiceProxyOptions,
   ) {
+    this.connectTimeoutMs = opts.connectTimeoutMs ?? VOICE_UPSTREAM_CONNECT_TIMEOUT_MS;
+    this.finalWaitTimeoutMs = opts.finalWaitTimeoutMs ?? VOICE_FINAL_WAIT_TIMEOUT_MS;
     const apiKey = opts.apiKey;
     if (!apiKey) {
       this.send({ type: 'error', message: 'Voice transcription is not configured.' });
@@ -109,9 +130,16 @@ class VoiceSession {
     url.searchParams.set('sessionId', `voice-${randomUUID()}`);
     const upstream = new WebSocket(url.toString());
     this.upstream = upstream;
+    // A TCP-level connect hang emits neither error nor close: bound it.
+    this.connectTimer = setTimeout(() => this.onConnectTimeout(), this.connectTimeoutMs);
+    unref(this.connectTimer);
     // The handshake must be the first frame, within 10 s of connect.
     upstream.on('open', () => {
+      this.clearConnectTimer();
       upstream.send(buildVoiceHandshake(apiKey));
+      // A stop that landed while CONNECTING could not send endStream then;
+      // retry it now so the turn always half-closes (after the handshake).
+      if (this.stopRequested && !this.endStreamSent) this.sendEndStream();
     });
     upstream.on('message', (data: WebSocket.RawData) => {
       this.onUpstreamMessage(data);
@@ -147,6 +175,7 @@ class VoiceSession {
   dispose(): void {
     this.closed = true;
     this.stopRequested = true;
+    this.clearTimers();
     try {
       this.upstream?.close();
     } catch {
@@ -158,8 +187,48 @@ class VoiceSession {
   private requestStop(): void {
     this.stopRequested = true;
     if (!this.endStreamSent && this.upstream?.readyState === WebSocket.OPEN) {
-      this.endStreamSent = true;
-      this.upstream.send(JSON.stringify({ type: 'endStream' }));
+      this.sendEndStream();
+    }
+  }
+
+  /** Caller guarantees the socket is open (or just opened) and unsent. */
+  private sendEndStream(): void {
+    this.endStreamSent = true;
+    this.upstream?.send(JSON.stringify({ type: 'endStream' }));
+    // Upstream may never answer: bound the wait for the final.
+    if (this.finalWaitTimer === null && !this.settled) {
+      this.finalWaitTimer = setTimeout(() => this.onFinalWaitTimeout(), this.finalWaitTimeoutMs);
+      unref(this.finalWaitTimer);
+    }
+  }
+
+  private onConnectTimeout(): void {
+    this.connectTimer = null;
+    if (this.closed || this.settled) return;
+    if (this.upstream?.readyState === WebSocket.OPEN) return;
+    this.send({ type: 'error', message: 'Voice transcription timed out.' });
+    this.closeBrowser(1011, 'Upstream connect timed out');
+  }
+
+  private onFinalWaitTimeout(): void {
+    this.finalWaitTimer = null;
+    if (this.closed || this.settled) return;
+    this.send({ type: 'error', message: 'Voice transcription timed out.' });
+    this.closeBrowser(1011, 'Final wait timed out');
+  }
+
+  private clearConnectTimer(): void {
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
+  }
+
+  private clearTimers(): void {
+    this.clearConnectTimer();
+    if (this.finalWaitTimer !== null) {
+      clearTimeout(this.finalWaitTimer);
+      this.finalWaitTimer = null;
     }
   }
 
@@ -179,6 +248,7 @@ class VoiceSession {
     this.send(frame);
     if (frame.type === 'final' || frame.type === 'error') {
       this.settled = true;
+      this.clearTimers();
       if (frame.type === 'final' && this.stopRequested) this.closeBrowser(1000);
       if (frame.type === 'error') this.closeBrowser(1011, 'Voice transcription failed');
     }
@@ -211,6 +281,7 @@ class VoiceSession {
 
   private closeBrowser(code: number, reason?: string): void {
     this.closed = true;
+    this.clearTimers();
     try {
       this.upstream?.close();
     } catch {

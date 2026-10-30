@@ -607,7 +607,12 @@ export function createApp(deps: AppDeps): Hono {
   app.get(
     '/api/voice',
     upgradeWebSocket(() =>
-      createVoiceHandlers({ apiKey: voice?.apiKey, upstreamUrl: voice?.upstreamUrl }),
+      createVoiceHandlers({
+        apiKey: voice?.apiKey,
+        upstreamUrl: voice?.upstreamUrl,
+        connectTimeoutMs: voice?.connectTimeoutMs,
+        finalWaitTimeoutMs: voice?.finalWaitTimeoutMs,
+      }),
     ),
   );
 

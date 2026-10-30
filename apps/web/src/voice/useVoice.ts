@@ -5,7 +5,9 @@ export type VoiceState = 'idle' | 'listening' | 'thinking' | 'error';
 
 export const MICROPHONE_ERROR_MESSAGE =
   "I can't hear you. Check your microphone in Chrome's settings.";
-const VOICE_SERVICE_ERROR = "Voice isn't working right now. Try again in a moment.";
+export const VOICE_SERVICE_ERROR = "Voice isn't working right now. Try again in a moment.";
+/** Bound on waiting for the final transcript after a stop; then fail loudly. */
+export const VOICE_THINKING_TIMEOUT_MS = 15_000;
 
 export interface UseVoiceResult {
   state: VoiceState;
@@ -49,10 +51,19 @@ export function useVoice(): UseVoiceResult {
   const runRef = useRef(0);
   // Socket callbacks read this instead of state: they fire outside render.
   const stateRef = useRef<VoiceState>('idle');
+  // Bounds the `thinking` wait: a stalled upstream must fail, not hang.
+  const thinkingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setVoiceState = useCallback((next: VoiceState): void => {
     stateRef.current = next;
     setState(next);
+  }, []);
+
+  const clearThinkingTimer = useCallback((): void => {
+    if (thinkingTimerRef.current !== null) {
+      clearTimeout(thinkingTimerRef.current);
+      thinkingTimerRef.current = null;
+    }
   }, []);
 
   const releaseCapture = useCallback((): void => {
@@ -76,11 +87,12 @@ export function useVoice(): UseVoiceResult {
 
   /** Fully idle: no capture, no socket. The final already went out. */
   const finish = useCallback((): void => {
+    clearThinkingTimer();
     releaseCapture();
     closeSocket();
     setPartial('');
     setVoiceState('idle');
-  }, [closeSocket, releaseCapture, setVoiceState]);
+  }, [clearThinkingTimer, closeSocket, releaseCapture, setVoiceState]);
 
   const emitFinal = useCallback(
     (text: string): void => {
@@ -94,18 +106,30 @@ export function useVoice(): UseVoiceResult {
 
   const fail = useCallback(
     (message: string): void => {
+      clearThinkingTimer();
       releaseCapture();
       closeSocket();
       setPartial('');
       setError(message);
       setVoiceState('error');
     },
-    [closeSocket, releaseCapture, setVoiceState],
+    [clearThinkingTimer, closeSocket, releaseCapture, setVoiceState],
   );
 
   const stop = useCallback((): void => {
-    // stop() ends capture and waits for the server's final as `thinking`;
-    // a second call while thinking is a no-op (the endStream is upstream).
+    // A stop while thinking is the user's cancel: kill the run so late
+    // frames can't land, release everything, and return to idle with no
+    // error — Dad can press again to retry.
+    if (stateRef.current === 'thinking') {
+      runRef.current += 1;
+      clearThinkingTimer();
+      releaseCapture();
+      closeSocket();
+      setPartial('');
+      setVoiceState('idle');
+      return;
+    }
+    // stop() ends capture and waits for the server's final as `thinking`.
     if (wsRef.current === null || stateRef.current !== 'listening') return;
     releaseCapture();
     try {
@@ -114,13 +138,22 @@ export function useVoice(): UseVoiceResult {
       // The socket died; onclose reports it.
     }
     setVoiceState('thinking');
-  }, [releaseCapture, setVoiceState]);
+    // The final may never come: fail loudly instead of hanging in thinking.
+    const run = runRef.current;
+    clearThinkingTimer();
+    thinkingTimerRef.current = setTimeout(() => {
+      thinkingTimerRef.current = null;
+      if (run !== runRef.current || stateRef.current !== 'thinking') return;
+      fail(VOICE_SERVICE_ERROR);
+    }, VOICE_THINKING_TIMEOUT_MS);
+  }, [clearThinkingTimer, closeSocket, fail, releaseCapture, setVoiceState]);
 
   const start = useCallback(async (): Promise<void> => {
     const run = runRef.current + 1;
     runRef.current = run;
     // A previous run's socket and tracks (if any) die here, so a second
     // start() can never orphan them; its callbacks are stale via `run`.
+    clearThinkingTimer();
     releaseCapture();
     closeSocket();
     finalSentRef.current = false;
@@ -197,33 +230,40 @@ export function useVoice(): UseVoiceResult {
     // Capture starts only once the socket is up, so no audio is lost to a
     // failed connection; a socket failure first fails via onclose above.
     const openCapture = async (): Promise<void> => {
-      if (run !== runRef.current) return;
-      const ctx = new AudioContext();
-      ctxRef.current = ctx;
-      // The worklet source ships as a string (?raw) and loads via a Blob
-      // URL: a plain `new URL('./pcm-worklet.js', import.meta.url)` inlines
-      // to a data: URL, which AudioWorklet.addModule rejects in Chrome.
-      const workletUrl = URL.createObjectURL(
-        new Blob([pcmWorkletSource], { type: 'application/javascript' }),
-      );
+      // The whole body sits inside try/catch: a throw from the AudioContext
+      // or node constructors must fail the run loudly, never escape as an
+      // unhandled rejection with the mic left on.
       try {
-        await ctx.audioWorklet.addModule(workletUrl);
+        if (run !== runRef.current) return;
+        const ctx = new AudioContext();
+        ctxRef.current = ctx;
+        // The worklet source ships as a string (?raw) and loads via a Blob
+        // URL: a plain `new URL('./pcm-worklet.js', import.meta.url)` inlines
+        // to a data: URL, which AudioWorklet.addModule rejects in Chrome.
+        const workletUrl = URL.createObjectURL(
+          new Blob([pcmWorkletSource], { type: 'application/javascript' }),
+        );
+        try {
+          await ctx.audioWorklet.addModule(workletUrl);
+        } finally {
+          URL.revokeObjectURL(workletUrl);
+        }
+        if (run !== runRef.current) return;
+        // The socket may have died while the module loaded: onclose already
+        // reported it, so bail instead of wiring nodes onto a dead socket.
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const source = ctx.createMediaStreamSource(stream);
+        const node = new AudioWorkletNode(ctx, 'pcm-capture');
+        // Never connect to the destination: Dad must not hear himself back.
+        source.connect(node);
+        node.port.onmessage = (event: MessageEvent): void => {
+          if (run !== runRef.current) return;
+          if (ws.readyState === WebSocket.OPEN) ws.send(event.data as ArrayBuffer);
+        };
       } catch {
         if (run !== runRef.current) return;
         fail(VOICE_SERVICE_ERROR);
-        return;
-      } finally {
-        URL.revokeObjectURL(workletUrl);
       }
-      if (run !== runRef.current) return;
-      const source = ctx.createMediaStreamSource(stream);
-      const node = new AudioWorkletNode(ctx, 'pcm-capture');
-      // Never connect to the destination: Dad must not hear himself back.
-      source.connect(node);
-      node.port.onmessage = (event: MessageEvent): void => {
-        if (run !== runRef.current) return;
-        if (ws.readyState === WebSocket.OPEN) ws.send(event.data as ArrayBuffer);
-      };
     };
 
     if (ws.readyState === WebSocket.OPEN) {
@@ -237,7 +277,7 @@ export function useVoice(): UseVoiceResult {
         { once: true },
       );
     }
-  }, [closeSocket, emitFinal, fail, releaseCapture, setVoiceState, stop]);
+  }, [clearThinkingTimer, closeSocket, emitFinal, fail, releaseCapture, setVoiceState, stop]);
 
   const onFinal = useCallback((cb: (text: string) => void): void => {
     finalCbRef.current = cb;
@@ -247,6 +287,10 @@ export function useVoice(): UseVoiceResult {
   useEffect(() => {
     return () => {
       runRef.current += 1;
+      if (thinkingTimerRef.current !== null) {
+        clearTimeout(thinkingTimerRef.current);
+        thinkingTimerRef.current = null;
+      }
       for (const track of streamRef.current?.getTracks() ?? []) track.stop();
       streamRef.current = null;
       void ctxRef.current?.close().catch(() => {});
