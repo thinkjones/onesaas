@@ -26,12 +26,16 @@ export type AgentTranscriptItem =
   | { kind: 'activity'; text: string; at: number };
 
 export interface UseAgentResult {
-  /** Persisted transcript (GET once on mount) + live events appended. */
+  /** Persisted transcript (GET on mount) + live events appended. */
   transcript: AgentTranscriptItem[];
   /** True from send until the turn's final `done` settles (see above). */
   busy: boolean;
   /** The last send failure, for inline display; cleared on the next send. */
   sendError: string | null;
+  /** The transcript GET hasn't resolved yet and no rows are cached. */
+  historyPending: boolean;
+  /** The transcript GET failed and no rows are cached. Live events still append. */
+  historyError: boolean;
   send(text: string): Promise<void>;
 }
 
@@ -51,13 +55,16 @@ export function workflowNameFromSentence(sentence: string): string {
  * The agent-panel conversation: transcript, busy flag, and send.
  *
  * Composition (deliberately no refetch-on-done): the persisted transcript is
- * fetched ONCE on mount — before any live turn, so it cannot overlap what SSE
- * replays — and live `say`/`ask`/`activity` events append after it. Dad's
+ * fetched on EVERY mount — before any live turn, so it cannot overlap what
+ * SSE replays — and live `say`/`ask`/`activity` events append after it. Dad's
  * sends append optimistically (the server only persists at turn end and emits
  * no event for Dad's own message). Refetching after `done` would duplicate
- * every live row against its freshly-persisted twin, so the hook never does.
- * `plan`/`built`/`test` events are the canvas's, not the transcript's — they
- * still prove the turn is alive for the settling window.
+ * every live row against its freshly-persisted twin, so the hook never does;
+ * refetching on mount is safe because `live` starts empty on every mount (a
+ * collapse/reopen mid-turn loses its optimistic rows — the accepted,
+ * refresh-like loss — but can never duplicate them). `plan`/`built`/`test`
+ * events are the canvas's, not the transcript's — they still prove the turn
+ * is alive for the settling window.
  *
  * Send failures: a 409 (a turn is already running) keeps `busy` and surfaces
  * the server's message in `sendError`; anything else idles with a fallback.
@@ -69,11 +76,14 @@ export function useAgent(workflowId: string): UseAgentResult {
   const [sendError, setSendError] = useState<string | null>(null);
   const settlingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Fetched once per mount (no invalidation anywhere): see above.
+  // Refetched on every mount (no invalidation anywhere): without it a
+  // collapse/reopen would serve the cached pre-turn transcript while `live`
+  // resets, hiding the completed answer until reload. Safe per above.
   const persistedQuery = useQuery({
     queryKey: ['agent-transcript', workflowId],
     queryFn: () => getAgentTranscript(workflowId),
     staleTime: Infinity,
+    refetchOnMount: 'always',
   });
   const persisted = useMemo<AgentTranscriptItem[]>(
     () =>
@@ -151,5 +161,15 @@ export function useAgent(workflowId: string): UseAgentResult {
   );
 
   const transcript = useMemo(() => [...persisted, ...live], [persisted, live]);
-  return { transcript, busy, sendError, send };
+  return {
+    transcript,
+    busy,
+    sendError,
+    // Live events append to `live` regardless of the GET outcome, so the
+    // panel keeps working through a history failure (verified: the event and
+    // send paths never read persistedQuery).
+    historyPending: persistedQuery.isPending,
+    historyError: persistedQuery.isError,
+    send,
+  };
 }

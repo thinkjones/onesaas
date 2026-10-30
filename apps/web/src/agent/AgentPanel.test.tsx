@@ -33,9 +33,12 @@ function renderPanel(opts?: {
   transcript?: AgentTranscriptEntry[];
   agentPost?: (body: { text: string }) => StubResponse;
   failPost?: boolean;
+  failGet?: boolean;
+  getGate?: Promise<void>;
   prefill?: string;
   onPrefillConsumed?: () => void;
   initialPrompt?: string;
+  onInitialSent?: () => void;
   onCollapse?: () => void;
 }) {
   const posts: { text: string }[] = [];
@@ -44,6 +47,14 @@ function renderPanel(opts?: {
     const url = String(input);
     if (url === '/api/workflows/flow-1/agent' && init?.method !== 'POST') {
       getCount += 1;
+      if (opts?.failGet) {
+        return {
+          ok: false,
+          status: 500,
+          text: async () => JSON.stringify({ error: 'boom' }),
+        } as Response;
+      }
+      if (opts?.getGate) await opts.getGate;
       const body = opts?.transcript ?? [];
       return { ok: true, status: 200, json: async () => body } as Response;
     }
@@ -71,6 +82,7 @@ function renderPanel(opts?: {
         prefill={opts?.prefill}
         onPrefillConsumed={opts?.onPrefillConsumed}
         initialPrompt={opts?.initialPrompt}
+        onInitialSent={opts?.onInitialSent}
         onCollapse={opts?.onCollapse}
       />
     </QueryClientProvider>,
@@ -393,6 +405,13 @@ describe('AgentPanel chrome', () => {
     });
     expect(posts).toHaveLength(1);
   });
+
+  test('initialPrompt reports the opening send once so the page can consume it', async () => {
+    const onInitialSent = vi.fn();
+    renderPanel({ transcript: [], initialPrompt: 'Build me a saver', onInitialSent });
+    await screen.findByText('Build me a saver');
+    expect(onInitialSent).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('workflowNameFromSentence', () => {
@@ -410,5 +429,146 @@ describe('workflowNameFromSentence', () => {
   test('empty input names nothing (callers guard before POSTing)', () => {
     expect(workflowNameFromSentence('')).toBe('');
     expect(workflowNameFromSentence('   ')).toBe('');
+  });
+});
+
+describe('AgentPanel history loading states', () => {
+  test('a failed transcript GET shows a plain-words error, not the empty hint', async () => {
+    renderPanel({ failGet: true });
+    expect(await screen.findByText("Couldn't load earlier messages.")).toBeDefined();
+    expect(screen.queryByText('Tell me what you want this chore reducer to do.')).toBeNull();
+  });
+
+  test('a slow transcript GET shows Loading… until rows arrive (never the empty hint)', async () => {
+    let release!: () => void;
+    const getGate = new Promise<void>((r) => {
+      release = r;
+    });
+    renderPanel({ transcript: PERSISTED, getGate });
+    expect(await screen.findByText('Loading…')).toBeDefined();
+    expect(screen.queryByText('Tell me what you want this chore reducer to do.')).toBeNull();
+    await act(async () => {
+      release();
+    });
+    expect(await screen.findByText('On it.')).toBeDefined();
+    expect(screen.queryByText('Loading…')).toBeNull();
+  });
+
+  test('live events still render while the transcript GET is failing', async () => {
+    renderPanel({ failGet: true });
+    await screen.findByText("Couldn't load earlier messages.");
+    act(() => emitAgent('flow-1', { type: 'say', text: 'I am still here.' }));
+    expect(await screen.findByText('I am still here.')).toBeDefined();
+    // The history error stays: earlier messages are still missing.
+    expect(screen.getByText("Couldn't load earlier messages.")).toBeDefined();
+  });
+});
+
+describe('AgentPanel scroll-follow', () => {
+  // jsdom never lays out, so scrollHeight is stubbed and the scrollTop setter
+  // is spied: the effect under test assigns scrollTop = scrollHeight.
+  function watchScroll(): { scrolledTo: () => number } {
+    const conv = screen.getByLabelText('Conversation');
+    Object.defineProperty(conv, 'scrollHeight', { value: 1000, configurable: true });
+    let lastTop = -1;
+    Object.defineProperty(conv, 'scrollTop', {
+      get: () => lastTop,
+      set: (v: number) => {
+        lastTop = v;
+      },
+      configurable: true,
+    });
+    return { scrolledTo: () => lastTop };
+  }
+
+  test('a new row scrolls the conversation to the bottom', async () => {
+    renderPanel({ transcript: PERSISTED });
+    await screen.findByText('On it.');
+    const scroll = watchScroll();
+    act(() => emitAgent('flow-1', { type: 'say', text: 'Fresh news.' }));
+    await screen.findByText('Fresh news.');
+    expect(scroll.scrolledTo()).toBe(1000);
+  });
+
+  test('a send error scrolls the alert into view', async () => {
+    renderPanel({ transcript: PERSISTED, failPost: true });
+    await screen.findByText('On it.');
+    const scroll = watchScroll();
+    fireEvent.change(textarea(), { target: { value: 'hello' } });
+    fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
+    await screen.findByText("Couldn't reach the server. Try again.");
+    expect(scroll.scrolledTo()).toBe(1000);
+  });
+});
+
+describe('AgentPanel remount', () => {
+  test('remounting refetches the transcript so a completed turn stays visible', async () => {
+    // One client across both mounts, like the app's singleton: without a
+    // remount refetch, the second mount would serve the cached pre-turn [].
+    let current: AgentTranscriptEntry[] = [];
+    const posts: { text: string }[] = [];
+    let getCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/workflows/flow-1/agent' && init?.method !== 'POST') {
+          getCount += 1;
+          const body = current;
+          return { ok: true, status: 200, json: async () => body } as Response;
+        }
+        if (url === '/api/workflows/flow-1/agent' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body)) as { text: string };
+          posts.push(body);
+          return { ok: true, status: 202, text: async () => '{}', json: async () => ({}) } as Response;
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const panel = (
+      <QueryClientProvider client={client}>
+        <AgentPanel workflowId="flow-1" />
+      </QueryClientProvider>
+    );
+    const first = render(panel);
+    await screen.findByText('Tell me what you want this chore reducer to do.');
+    expect(getCount).toBe(1);
+
+    // Complete a turn (mocked): Dad sends, the agent answers, done settles.
+    fireEvent.change(textarea(), { target: { value: 'hello' } });
+    fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
+    await waitFor(() => {
+      expect(posts).toEqual([{ text: 'hello' }]);
+    });
+    act(() => emitAgent('flow-1', { type: 'say', text: 'Done deal.' }));
+    await screen.findByText('Done deal.');
+    try {
+      vi.useFakeTimers();
+      act(() => emitAgent('flow-1', { type: 'done' }));
+      await act(async () => {
+        vi.advanceTimersByTime(AGENT_SETTLING_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => {
+      expect((textarea() as HTMLTextAreaElement).disabled).toBe(false);
+    });
+
+    // The server persisted the turn; collapse/reopen remounts the panel.
+    current = [
+      { role: 'dad', text: 'hello', at: 10 },
+      { role: 'agent', text: 'Done deal.', at: 11 },
+    ];
+    first.unmount();
+    render(panel);
+    // The remount refetches instead of serving the stale pre-turn cache…
+    await waitFor(() => {
+      expect(getCount).toBe(2);
+    });
+    // …so the completed answer is visible without a reload.
+    expect(await screen.findByText('Done deal.')).toBeDefined();
+    expect(screen.getByText('hello')).toBeDefined();
   });
 });

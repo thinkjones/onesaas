@@ -12,6 +12,8 @@ export interface AgentPanelProps {
   onPrefillConsumed?(): void;
   /** HomePage's first sentence: sent once on mount as Dad's opening message. */
   initialPrompt?: string;
+  /** Fired after the opening send so the page can consume `initialPrompt`. */
+  onInitialSent?(): void;
   /** The page collapses the panel (state lives in the page, per mount). */
   onCollapse?(): void;
 }
@@ -27,9 +29,10 @@ export default function AgentPanel({
   prefill,
   onPrefillConsumed,
   initialPrompt,
+  onInitialSent,
   onCollapse,
 }: AgentPanelProps) {
-  const { transcript, busy, sendError, send } = useAgent(workflowId);
+  const { transcript, busy, sendError, historyPending, historyError, send } = useAgent(workflowId);
   const [input, setInput] = useState('');
 
   // Each prefill value applies once (guarded by ref, so re-renders and
@@ -45,14 +48,28 @@ export default function AgentPanel({
   }, [prefill, onPrefillConsumed]);
 
   // One-shot opening send (ref-guarded, so StrictMode's double effect still
-  // sends exactly once — a second POST would 409 against the first turn).
+  // sends exactly once — a second POST would 409 against the first turn). The
+  // ref dies with the panel, so the page ALSO consumes its held prompt via
+  // onInitialSent (mirroring the prefill seam): without that, collapse/reopen
+  // would fire a duplicate turn.
   const initialSent = useRef(false);
   useEffect(() => {
     if (initialSent.current) return;
     if ((initialPrompt?.trim() ?? '').length === 0) return;
     initialSent.current = true;
     void send(initialPrompt!.trim());
-  }, [initialPrompt, send]);
+    onInitialSent?.();
+  }, [initialPrompt, onInitialSent, send]);
+
+  // Scroll-follow: keep the newest row (or error) in view. An instant jump,
+  // never smooth animation, so reduced-motion needs no special case.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    if (transcript.length === 0 && !busy && sendError === null) return;
+    el.scrollTop = el.scrollHeight;
+  }, [transcript.length, busy, sendError]);
 
   const lastAskIndex = transcript.findLastIndex((m) => m.kind === 'ask');
 
@@ -83,7 +100,11 @@ export default function AgentPanel({
           </AppButton>
         )}
       </div>
-      <div aria-label="Conversation" className="flex max-h-[55vh] min-h-[280px] flex-col gap-3 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        aria-label="Conversation"
+        className="flex max-h-[55vh] min-h-[280px] flex-col gap-3 overflow-y-auto"
+      >
         {transcript.map((item, i) => (
           <Message
             key={`${item.at}-${i}`}
@@ -93,10 +114,16 @@ export default function AgentPanel({
             onSend={submitChip}
           />
         ))}
-        {transcript.length === 0 && !busy && (
+        {historyPending && transcript.length === 0 && (
+          <p className="text-base text-muted-foreground">Loading…</p>
+        )}
+        {transcript.length === 0 && !busy && !historyPending && !historyError && (
           <p className="text-base text-muted-foreground">
             Tell me what you want this chore reducer to do.
           </p>
+        )}
+        {historyError && (
+          <p className="text-base text-muted-foreground">Couldn&apos;t load earlier messages.</p>
         )}
         {sendError && (
           <p role="alert" className="text-base text-destructive">

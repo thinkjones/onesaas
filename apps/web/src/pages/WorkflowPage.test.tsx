@@ -1,6 +1,6 @@
 import type { Run, StepInstance, StepRun, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { RunDetail, WorkflowDetail } from '../api.ts';
@@ -75,12 +75,24 @@ const RUN_DETAIL: RunDetail = {
 
 const DESIGN_DETAIL: WorkflowDetail = { ...workflow(), problems: [] };
 
-function LocationProbe({ onSearch }: { onSearch: (search: string) => void }) {
-  onSearch(useLocation().search);
+function LocationProbe({
+  onSearch,
+  onState,
+}: {
+  onSearch: (search: string) => void;
+  onState?: (state: unknown) => void;
+}) {
+  const location = useLocation();
+  onSearch(location.search);
+  onState?.(location.state);
   return null;
 }
 
-function renderPage(onAgentPrefill: (text: string) => void, onSearch: (search: string) => void) {
+function renderPage(
+  onAgentPrefill: (text: string) => void,
+  onSearch: (search: string) => void,
+  opts?: { agentPrompt?: string; search?: string; onState?: (state: unknown) => void },
+) {
   const agentPosts: unknown[] = [];
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -105,8 +117,20 @@ function renderPage(onAgentPrefill: (text: string) => void, onSearch: (search: s
   render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <MemoryRouter initialEntries={['/reducers/flow-1']}>
-          <LocationProbe onSearch={onSearch} />
+        <MemoryRouter
+          initialEntries={
+            opts?.agentPrompt === undefined
+              ? ['/reducers/flow-1']
+              : [
+                  {
+                    pathname: '/reducers/flow-1',
+                    search: opts.search ?? '',
+                    state: { agentPrompt: opts.agentPrompt },
+                  },
+                ]
+          }
+        >
+          <LocationProbe onSearch={onSearch} onState={opts?.onState} />
           <Routes>
             <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={onAgentPrefill} />} />
           </Routes>
@@ -206,5 +230,38 @@ describe('WorkflowPage helper panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
     fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
     expect((panelInput() as HTMLTextAreaElement).value).toBe('');
+  });
+
+  test('an opening prompt sends once: collapse/reopen never resends and the history entry is consumed', async () => {
+    let locationState: unknown;
+    // Design mode, like the real HomePage start: nothing else here navigates
+    // on mount (runtime mode's ?run= pinning would also wipe state as a side
+    // effect), so the replaced entry below is exactly this fix's doing.
+    const { agentPosts } = renderPage(() => {}, () => {}, {
+      agentPrompt: 'Build me a saver',
+      search: '?mode=design',
+      onState: (s) => {
+        locationState = s;
+      },
+    });
+    expect(locationState).toEqual({ agentPrompt: 'Build me a saver' });
+
+    // The opening prompt sends on mount…
+    await screen.findByText('Build me a saver');
+    expect(agentPosts).toEqual([{ text: 'Build me a saver' }]);
+
+    // …the history entry is replaced without the prompt (refresh/back-nav safe)…
+    await waitFor(() => {
+      expect(locationState).toEqual({});
+    });
+
+    // …and collapse/reopen sends nothing more.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    expect(panelInput()).toBeDefined();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(agentPosts).toHaveLength(1);
   });
 });

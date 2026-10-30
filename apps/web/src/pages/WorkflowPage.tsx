@@ -1,6 +1,6 @@
 import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
-import { useLocation, useParams, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import AgentPanel from '../agent/AgentPanel.tsx';
 import { useWorkflow } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
@@ -34,18 +34,22 @@ export interface WorkflowPageProps {
  * consumes the state as its initial input (clearing it on consume and on
  * send). The handoff string is pinned by WorkflowPage.test.tsx via the
  * `onAgentPrefill` probe. HomePage's one-sentence start arrives as location
- * state (`agentPrompt`) and is captured once per mount as the opening send.
+ * state (`agentPrompt`), is captured once per mount as the opening send, and
+ * is consumed after the first send — both the page-held prompt AND the
+ * history entry (replaced without `agentPrompt`) — so collapse/reopen,
+ * refresh, and back-nav can never fire a duplicate turn.
  */
 export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
   const mode = parseModeParam(params.get('mode'));
   const [agentPrefill, setAgentPrefill] = useState<string | undefined>();
   // Collapsed state lives here per page-mount (no persistence yet).
   const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const [initialPrompt] = useState<string | undefined>(() => {
+  const [initialPrompt, setInitialPrompt] = useState<string | undefined>(() => {
     const state = location.state as { agentPrompt?: unknown } | null;
     return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
   });
@@ -79,6 +83,22 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   const handleRequestRuntime = useCallback(() => handleModeChange('runtime'), [handleModeChange]);
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
+
+  // Consume-once for the opening prompt (mirrors the prefill seam, but the
+  // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
+  // it). history.state ALSO survives refresh/back-nav — and a page-level ref
+  // would not — so the history entry itself is replaced without `agentPrompt`
+  // (a same-path `replace`, so back still leaves the page). Any other state
+  // keys are preserved.
+  const handleInitialSent = useCallback(() => {
+    setInitialPrompt(undefined);
+    const state = location.state as Record<string, unknown> | null;
+    if (typeof state?.agentPrompt === 'string') {
+      const next = { ...state };
+      delete next.agentPrompt;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: next });
+    }
+  }, [location.pathname, location.search, location.state, navigate]);
 
   if (workflowQuery.isPending) return <p className="text-base">Loading chore reducer…</p>;
   if (workflowQuery.isError || !workflowQuery.data) {
@@ -124,6 +144,7 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
               prefill={agentPrefill}
               onPrefillConsumed={handlePrefillConsumed}
               initialPrompt={initialPrompt}
+              onInitialSent={handleInitialSent}
               onCollapse={() => setPanelCollapsed(true)}
             />
           </div>
