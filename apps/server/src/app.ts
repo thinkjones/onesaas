@@ -13,6 +13,7 @@ import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { TableStore } from './tables/store.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
@@ -56,6 +57,7 @@ export function createApp(deps: AppDeps): Hono {
   const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
   const settings = deps.settings as PairingStore | undefined;
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
+  const files = deps.files as FileStore | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -127,6 +129,36 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/api/workflows', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     return c.json(repo.listWorkflows());
+  });
+
+  // Photo uploads: multipart field `file` → FileRef. Rejections (not a
+  // photo, unreadable HEIC) are 400s with the store's readable message.
+  app.post('/api/files', async (c) => {
+    if (!files) return c.json({ error: 'Server not configured' }, 500);
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) return c.json({ error: 'Choose a photo to upload.' }, 400);
+    try {
+      const ref = await files.saveUpload(
+        Buffer.from(await file.arrayBuffer()),
+        file.type || 'application/octet-stream',
+      );
+      return c.json(ref);
+    } catch (err) {
+      if (err instanceof FileRejectedError) return c.json({ error: err.message }, 400);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  app.get('/api/files/:id', async (c) => {
+    if (!files) return c.json({ error: 'Server not configured' }, 500);
+    try {
+      const { buf, mime } = await files.read(c.req.param('id'));
+      return new Response(buf, { headers: { 'Content-Type': mime } });
+    } catch (err) {
+      if (err instanceof FileNotFoundError) return c.json({ error: err.message }, 404);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
   });
 
   const createWorkflowBody = z.object({ name: z.string(), description: z.string() }).strict();
@@ -298,6 +330,35 @@ export function createApp(deps: AppDeps): Hono {
         story: buildRunStory(workflow, steps, { usedSample }),
       });
     } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // The photo drop zone: multipart `file` (+ optional `note`) → saves the
+  // photo and starts a run with { file, note? }. An explicit user start, so
+  // it runs whatever the workflow status is (like "Try it", no status gate).
+  app.post('/api/workflows/:id/upload', async (c) => {
+    if (!repo || !engine || !files) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const wf = repo.getWorkflow(id);
+    if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    if (wf.trigger.type !== 'trigger.upload') {
+      return c.json({ error: "This chore reducer doesn't start from a photo upload." }, 400);
+    }
+    const body = await c.req.parseBody();
+    const file = body['file'];
+    if (!(file instanceof File)) return c.json({ error: 'Choose a photo to upload.' }, 400);
+    const rawNote = body['note'];
+    const note = typeof rawNote === 'string' && rawNote !== '' ? rawNote : undefined;
+    try {
+      const saved = await files.saveUpload(
+        Buffer.from(await file.arrayBuffer()),
+        file.type || 'application/octet-stream',
+      );
+      const run = await engine.start(id, note === undefined ? { file: saved } : { file: saved, note });
+      return c.json({ run, file: saved });
+    } catch (err) {
+      if (err instanceof FileRejectedError) return c.json({ error: err.message }, 400);
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });

@@ -28,6 +28,20 @@ export const emailSchema = z.object({
   threadId: z.string(),
 });
 
+// A stored photo: the file store (apps/server/src/files/store.ts) mints these
+// for uploads and generated images. Width/height are absent only when the
+// bytes' dimensions could not be determined.
+export const fileRefSchema = z.object({
+  fileId: z.string(),
+  mime: z.string(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
+export type FileRef = z.infer<typeof fileRefSchema>;
+
+/** The seeded sample photo's id (apps/server/assets/sample-mug.jpg). */
+export const SAMPLE_FILE_ID = 'sample-mug';
+
 export const catalog: Record<string, StepDef> = {
   'trigger.gmailButton': {
     type: 'trigger.gmailButton',
@@ -232,5 +246,19 @@ export const catalog: Record<string, StepDef> = {
     configSchema: z.object({ question: z.string().default('Is this OK to use?') }),
     inputSchema: z.object({ text: z.string() }),
     outputSchema: z.object({ text: z.string(), decision: z.enum(['approved', 'edited']) }),
+  },
+  'trigger.upload': {
+    type: 'trigger.upload',
+    kind: 'trigger',
+    title: 'Photo upload',
+    description: 'Runs when you drop a photo.',
+    sample: {
+      file: { fileId: SAMPLE_FILE_ID, mime: 'image/jpeg', width: 1200, height: 900 },
+    },
+    // Guard-only default (see trigger.email above): the web drop zone reads
+    // (config.prompt ?? 'Drop a photo here') manually.
+    configSchema: z.object({ prompt: z.string().default('Drop a photo here') }),
+    inputSchema: z.object({}),
+    outputSchema: z.object({ file: fileRefSchema, note: z.string().optional() }),
   },
 };

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import type { Run, StepRun, Workflow } from '@dad/shared';
+import type { FileRef, Run, StepRun, Workflow } from '@dad/shared';
 
 // Mirrors apps/server/src/engine/events.ts. The web package cannot import it
 // (server is not a dependency), so the shape is redeclared here.
@@ -103,6 +103,28 @@ export function retryStep(runId: string, stepId: string): Promise<RunUpdate> {
   return postJson(
     `/api/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/retry`,
   );
+}
+
+/** POST /api/workflows/:id/upload: saves the photo and starts a run with it. */
+export interface UploadResult {
+  run: Run;
+  file: FileRef;
+}
+
+export async function uploadPhoto(
+  workflowId: string,
+  file: File,
+  note?: string,
+): Promise<UploadResult> {
+  const form = new FormData();
+  form.set('file', file);
+  if (note !== undefined) form.set('note', note);
+  const res = await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as UploadResult;
 }
 
 export async function startPairing(): Promise<{ code: string }> {

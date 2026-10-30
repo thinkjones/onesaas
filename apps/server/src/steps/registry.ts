@@ -11,6 +11,7 @@ import {
   gmailButtonExecutor,
   manualExecutor,
   readExecutor,
+  uploadExecutor,
 } from './trigger.js';
 
 // Structural stand-in for the Task 8 bridge: the call shape executors need
@@ -86,6 +87,7 @@ export const executors: Record<string, Executor> = {
   'trigger.gmailButton': gmailButtonExecutor,
   'trigger.manual': manualExecutor,
   'trigger.email': emailExecutor,
+  'trigger.upload': uploadExecutor,
   'ai.extract': extractExecutor,
   'ai.write': writeExecutor,
   'ai.classify': classifyExecutor,

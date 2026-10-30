@@ -32,6 +32,10 @@ export const emailExecutor: Executor = async (_config, input, _ctx) => {
   return { output: input, why: `A new email arrived from ${fromName} ("${subject}").` };
 };
 
+export const uploadExecutor: Executor = async (_config, input, _ctx) => {
+  return { output: input, why: 'Started with your photo.' };
+};
+
 export const readExecutor: Executor = async (_config, input, ctx) => {
   // Worker tab: the extension navigates its pinned background Gmail tab to
   // this thread and reads it there, so Dad's view never moves.

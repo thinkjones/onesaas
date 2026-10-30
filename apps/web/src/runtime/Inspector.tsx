@@ -6,23 +6,54 @@ import { ScrollArea } from '../components/ui/scroll-area.tsx';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/sheet.tsx';
 import { formatCost, formatDateTime, formatDuration } from './format.ts';
 
-/**
- * M4 returns a thumbnail URL for image values; until then this is always null
- * and every value falls through to the text/nested-list fallback below.
- */
-function imageUrlOf(_value: unknown): string | null {
-  return null;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** One scalar or nested value: strings as text, objects as nested lists. */
+/** Any object carrying a `fileId` is a stored photo (FileRef): serve it. */
+function imageUrlOf(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  const fileId = value['fileId'];
+  if (typeof fileId !== 'string' || fileId === '') return null;
+  return `/api/files/${encodeURIComponent(fileId)}`;
+}
+
+/** A max-240px thumbnail that opens the photo full size on click. */
+function FileThumb({ url }: { url: string }) {
+  const [fullSize, setFullSize] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setFullSize(true)} aria-label="Open photo full size">
+        <img
+          src={url}
+          alt="Photo thumbnail"
+          style={{ maxWidth: 240, maxHeight: 240 }}
+          className="rounded-[var(--radius)] object-cover"
+        />
+      </button>
+      {fullSize && (
+        <div
+          role="dialog"
+          aria-label="Full-size photo"
+          onClick={() => setFullSize(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <img
+            src={url}
+            alt="Full-size photo"
+            className="max-h-full max-w-full rounded-[var(--radius)]"
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** One scalar or nested value: photos as thumbnails, the rest as text/lists. */
 function ValueView({ value }: { value: unknown }) {
   const thumb = imageUrlOf(value);
   if (thumb !== null) {
-    return <img src={thumb} alt="" className="h-16 w-16 rounded-[var(--radius)] object-cover" />;
+    return <FileThumb url={thumb} />;
   }
   if (value === null || value === undefined) return <span>—</span>;
   if (Array.isArray(value)) {
@@ -98,6 +129,11 @@ export default function Inspector({ stepRun, title, open, onClose }: InspectorPr
       ? (stepRun.output as Record<string, unknown>)['proposed']
       : undefined;
 
+  // A bare FileRef as the WHOLE input/output renders as a photo, not as
+  // fileId/mime rows (nested refs are caught by ValueView instead).
+  const inputThumb = stepRun ? imageUrlOf(stepRun.input) : null;
+  const outputThumb = stepRun && skippedProposal === undefined ? imageUrlOf(stepRun.output) : null;
+
   return (
     <Sheet
       open={open}
@@ -128,6 +164,8 @@ export default function Inspector({ stepRun, title, open, onClose }: InspectorPr
                 <h3 className="mb-2 text-base font-semibold">What came in</h3>
                 {stepRun.input === undefined || stepRun.input === null ? (
                   <p className="text-base text-muted-foreground">Nothing came in yet.</p>
+                ) : inputThumb !== null ? (
+                  <FileThumb url={inputThumb} />
                 ) : isRecord(stepRun.input) ? (
                   <KvList record={stepRun.input} />
                 ) : (
@@ -148,6 +186,8 @@ export default function Inspector({ stepRun, title, open, onClose }: InspectorPr
                   </div>
                 ) : stepRun.output === undefined || stepRun.output === null ? (
                   <p className="text-base text-muted-foreground">Nothing came out yet.</p>
+                ) : outputThumb !== null ? (
+                  <FileThumb url={outputThumb} />
                 ) : isRecord(stepRun.output) ? (
                   <KvList record={stepRun.output} />
                 ) : (

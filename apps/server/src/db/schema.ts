@@ -40,6 +40,16 @@ export const seenEmails = sqliteTable('seen_emails', {
   seenAt: text('seen_at').notNull(),
 });
 
+export const files = sqliteTable('files', {
+  id: text('id').notNull().primaryKey(),
+  path: text('path').notNull(),
+  mime: text('mime').notNull(),
+  width: integer('width'),
+  height: integer('height'),
+  source: text('source').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const stepRuns = sqliteTable('step_runs', {
   id: text('id').notNull().primaryKey(),
   runId: text('run_id').notNull(),

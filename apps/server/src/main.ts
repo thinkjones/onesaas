@@ -12,6 +12,7 @@ import { openDb } from './db/connection.js';
 import { createRepo } from './db/repo.js';
 import { createEngine } from './engine/engine.js';
 import { createTestRunner } from './engine/testRun.js';
+import { createFileStore } from './files/store.js';
 import { createGateway } from './models/gateway.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
@@ -29,7 +30,7 @@ let warnedMissingKey = false;
  * gateway/engine, registers triggers, seeds flow 1 + the customers table, and
  * returns the app plus every handle tests need.
  */
-export function createServer(opts?: { dbFile?: string }): {
+export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   app: ReturnType<typeof createApp>;
   db: ReturnType<typeof openDb>;
   tables: ReturnType<typeof createTableStore>;
@@ -43,6 +44,7 @@ export function createServer(opts?: { dbFile?: string }): {
   conversations: ReturnType<typeof createConversationStore>;
   agentEvents: EventEmitter;
   testRun: ReturnType<typeof createTestRunner>['testRun'];
+  files: ReturnType<typeof createFileStore>;
 } {
   const dbFile = opts?.dbFile ?? 'data/app.db';
   // File DBs need their directory to exist; :memory: has no path to create.
@@ -50,6 +52,9 @@ export function createServer(opts?: { dbFile?: string }): {
   const db = openDb(dbFile);
   const tables = createTableStore(db);
   const repo = createRepo(db);
+  // Photo bytes live next to the DB (data/files by default; both gitignored).
+  const filesDir = opts?.filesDir ?? 'data/files';
+  const files = createFileStore({ db, dir: filesDir });
   const settings = createSettingsStore(db);
   const pairing = createPairing(settings);
   const bridge = createBridge({ pairing });
@@ -149,6 +154,7 @@ export function createServer(opts?: { dbFile?: string }): {
     testRun,
     settings,
     setTimezone,
+    files,
   });
-  return { app, db, tables, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun };
+  return { app, db, tables, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
 }

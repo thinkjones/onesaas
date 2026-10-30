@@ -323,6 +323,7 @@ test('every catalog entry has an executor', () => {
       'trigger.email',
       'trigger.gmailButton',
       'trigger.manual',
+      'trigger.upload',
     ].sort(),
   );
   for (const type of Object.keys(catalog)) {

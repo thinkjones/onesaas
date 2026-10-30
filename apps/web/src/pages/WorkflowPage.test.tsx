@@ -187,6 +187,126 @@ describe('WorkflowPage fix-this-step seam', () => {
   });
 });
 
+describe('WorkflowPage photo drop zone', () => {
+  const UPLOAD_TRIGGER: StepInstance = {
+    id: 'trigger',
+    type: 'trigger.upload',
+    title: 'Photo upload',
+    summary: 'Runs when you drop a photo.',
+    config: { prompt: 'Drop the mug shot here' },
+    inputs: {},
+    position: { x: 100, y: 100 },
+  };
+
+  function uploadWorkflow(): Workflow {
+    return {
+      id: 'flow-upload',
+      name: 'Photo flow',
+      description: 'Photo flow.',
+      version: 1,
+      status: 'on',
+      trigger: UPLOAD_TRIGGER,
+      steps: [],
+      edges: [],
+    };
+  }
+
+  const NEW_RUN: Run = {
+    id: 'run-new',
+    workflowId: 'flow-upload',
+    workflowVersion: 1,
+    triggerPayload: { file: { fileId: 'f1', mime: 'image/jpeg' } },
+    status: 'done',
+    kind: 'live',
+    usedSample: false,
+    startedAt: '2026-10-30T10:42:00.000Z',
+    endedAt: '2026-10-30T10:42:01.000Z',
+  };
+
+  function renderUploadPage(opts?: { search?: string; uploadError?: string }) {
+    const uploads: unknown[] = [];
+    let runs: Run[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const respond = (body: unknown, status = 200) =>
+        ({
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        }) as Response;
+      if (url === '/api/workflows') return respond([uploadWorkflow()]);
+      if (url === '/api/workflows/flow-upload')
+        return respond({ ...uploadWorkflow(), problems: [] });
+      if (url === '/api/runs?workflowId=flow-upload') return respond(runs);
+      if (url === '/api/runs/run-new')
+        return respond({
+          run: NEW_RUN,
+          steps: [],
+          story: ['Runs when you drop a photo.'],
+          workflow: uploadWorkflow(),
+        });
+      if (url === '/api/workflows/flow-upload/agent' && init?.method !== 'POST') return respond([]);
+      if (url === '/api/workflows/flow-upload/upload' && init?.method === 'POST') {
+        uploads.push(init.body);
+        if (opts?.uploadError !== undefined)
+          return respond({ error: opts.uploadError }, 400);
+        runs = [NEW_RUN];
+        return respond({ run: NEW_RUN, file: { fileId: 'f1', mime: 'image/jpeg' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    let search = '';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={[`/reducers/flow-upload${opts?.search ?? ''}`]}>
+            <LocationProbe onSearch={(s) => { search = s; }} />
+            <Routes>
+              <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={() => {}} />} />
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    return { uploads, search: () => search };
+  }
+
+  test('runtime mode shows the trigger prompt drop zone', async () => {
+    renderUploadPage();
+    expect(await screen.findByText('Drop the mug shot here')).toBeDefined();
+  });
+
+  test('design mode hides the drop zone', async () => {
+    renderUploadPage({ search: '?mode=design' });
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
+    expect(screen.queryByText('Drop the mug shot here')).toBeNull();
+  });
+
+  test('dropping a photo posts it and jumps to the new run', async () => {
+    const page = renderUploadPage();
+    const zone = await screen.findByText('Drop the mug shot here');
+    const file = new File(['fake-image-bytes'], 'mug.jpg', { type: 'image/jpeg' });
+    fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+    await waitFor(() => {
+      expect(page.search()).toContain('run=run-new');
+    });
+    expect(page.uploads).toHaveLength(1);
+    expect(page.uploads[0]).toBeInstanceOf(FormData);
+  });
+
+  test('a rejected photo shows the server message', async () => {
+    renderUploadPage({ uploadError: "That doesn't look like a photo." });
+    const zone = await screen.findByText('Drop the mug shot here');
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' })] },
+    });
+    expect((await screen.findByRole('alert')).textContent).toBe("That doesn't look like a photo.");
+  });
+});
+
 describe('WorkflowPage helper panel', () => {
   const HANDOFF =
     '"Pick out the details" stopped with: I could not read the email. Can you help me fix it?';
