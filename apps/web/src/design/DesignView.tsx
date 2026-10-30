@@ -20,6 +20,9 @@ import {
 } from '../api.ts';
 import WorkflowCanvas, { type CanvasOp, type GhostStep } from '../canvas/WorkflowCanvas.tsx';
 import { resolveStepId } from '../runtime/params.ts';
+import { sound } from '../sound/sound.ts';
+import SoundControl from '../sound/SoundControl.tsx';
+import { useSound } from '../sound/useSound.ts';
 import AppButton from './AppButton.tsx';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
@@ -76,6 +79,9 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
   const op = useWorkflowOp(workflowId);
   const { mutateAsync } = op;
   const testRun = useTestRun(workflowId);
+  // Ambient loops while the design screen is mounted; unmounting (e.g.
+  // switching to runtime mode) stops them.
+  useSound(true);
 
   const [ghosts, setGhosts] = useState<GhostStep[]>([]);
   const [ghostEdges, setGhostEdges] = useState<Edge[]>([]);
@@ -152,13 +158,15 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
           .then(surfaceIfFailed, surfaceIfFailed);
       } else if (e.type === 'test') {
         getRun(e.runId).then(
-          (runDetail) =>
+          (runDetail) => {
             setTestResult({
               run: runDetail.run,
               steps: runDetail.steps,
               usedSample: runDetail.run.usedSample,
               story: runDetail.story,
-            }),
+            });
+            sound.chime('done');
+          },
           () => toast.error("Couldn't load the test results."),
         );
       }
@@ -206,6 +214,7 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     for (const id of resolved) {
       if (!builtFired.current.has(id)) {
         builtFired.current.add(id);
+        sound.chime('step');
         onBuilt?.({ stepId: id, title: stepsById.get(id)!.title });
       }
     }
@@ -405,7 +414,10 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
 
   const handleTryIt = useCallback(() => {
     testRun.mutate(undefined, {
-      onSuccess: (res) => setTestResult(res),
+      onSuccess: (res) => {
+        setTestResult(res);
+        sound.chime('done');
+      },
       onError: (err) => toastOpError(err),
     });
   }, [testRun]);
@@ -476,6 +488,7 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
           {testRun.isPending ? 'Trying…' : 'Try it'}
         </AppButton>
+        <SoundControl />
       </div>
       {testResult && <TestResults story={testResult.story} />}
       {/* Wraps instead of crushing: at narrow widths the canvas keeps a
