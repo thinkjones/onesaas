@@ -173,3 +173,112 @@ test('POST /api/views with a bad body is a 400', async () => {
   });
   expect(res.status).toBe(400);
 });
+
+test('save rejects an operator-shaped where value (mirrors query_table)', () => {
+  const { views } = setup();
+  expect(() =>
+    views.save({
+      table: 'customers',
+      kind: 'stat',
+      title: 'X',
+      pinned: true,
+      config: { stat: { op: 'count', where: { name: { $ne: 'Sam' } } } },
+    }),
+  ).toThrow('Invalid where value for column name');
+});
+
+test('POST /api/views with an operator where value is a 400 and saves nothing', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const res = await app.request('/api/views', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      table: 'customers',
+      kind: 'stat',
+      title: 'X',
+      pinned: true,
+      config: { stat: { op: 'count', where: { name: { $ne: 'Sam' } } } },
+    }),
+  });
+  expect(res.status).toBe(400);
+  expect((await res.json()) as { error: string }).toMatchObject({
+    error: expect.stringContaining('Invalid where value for column name'),
+  });
+  const listed = await app.request('/api/views');
+  expect(await listed.json()).toEqual([]);
+});
+
+test('compute fails closed on a stale where key instead of counting unfiltered rows', () => {
+  const { tables, views } = setup();
+  tables.insert('customers', { name: 'A', amount: 1 });
+  const stale: ViewDef = {
+    id: 'stale',
+    table: 'customers',
+    kind: 'stat',
+    title: 'Stale',
+    pinned: true,
+    config: { stat: { op: 'count', where: { naem: 'A' } } },
+  };
+  expect(() => views.compute(stale)).toThrow('Unknown column: naem for table customers');
+});
+
+test('compute fails closed on a stale sum column instead of returning a silent 0', () => {
+  const { tables, views } = setup();
+  tables.insert('customers', { name: 'A', amount: 1 });
+  const stale: ViewDef = {
+    id: 'stale',
+    table: 'customers',
+    kind: 'stat',
+    title: 'Stale',
+    pinned: true,
+    config: { stat: { op: 'sum', column: 'total' } },
+  };
+  expect(() => views.compute(stale)).toThrow('Unknown column: total for table customers');
+});
+
+test('compute fails closed on a stale operator where value', () => {
+  const { tables, views } = setup();
+  tables.insert('customers', { name: 'A', amount: 1 });
+  const stale: ViewDef = {
+    id: 'stale',
+    table: 'customers',
+    kind: 'stat',
+    title: 'Stale',
+    pinned: true,
+    config: { stat: { op: 'count', where: { name: { $ne: 'B' } } } },
+  };
+  expect(() => views.compute(stale)).toThrow('Invalid where value for column name');
+});
+
+test('compute fails closed on stale grid columns instead of projecting undefined', () => {
+  const { tables, views } = setup();
+  tables.insert('customers', { name: 'A', amount: 1 });
+  const stale: ViewDef = {
+    id: 'stale',
+    table: 'customers',
+    kind: 'grid',
+    title: 'Stale',
+    pinned: false,
+    config: { columns: ['name', 'gone'] },
+  };
+  expect(() => views.compute(stale)).toThrow('Unknown column: gone for table customers');
+});
+
+test('GET /api/views/:id/data on a stale saved view is a loud 400', async () => {
+  const { app, db } = createServer({ dbFile: ':memory:' });
+  db.prepare(
+    'INSERT INTO "views" ("id", "table_name", "kind", "config", "pinned", "title") VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(
+    'stale-1',
+    'customers',
+    'stat',
+    JSON.stringify({ stat: { op: 'count', where: { naem: 'A' } } }),
+    1,
+    'Stale',
+  );
+  const res = await app.request('/api/views/stale-1/data');
+  expect(res.status).toBe(400);
+  expect((await res.json()) as { error: string }).toMatchObject({
+    error: expect.stringContaining('Unknown column: naem'),
+  });
+});

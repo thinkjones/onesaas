@@ -779,7 +779,7 @@ const pinView: ToolImpl = {
     type: 'object',
     properties: {
       table: { type: 'string', description: 'The list to count or sum, e.g. "customers".' },
-      kind: { type: 'string', enum: ['grid', 'cards', 'stat'] },
+      kind: { type: 'string', enum: ['stat'] },
       title: { type: 'string', description: 'Short label shown with the pinned number.' },
       config: {
         type: 'object',
@@ -805,6 +805,13 @@ const pinView: ToolImpl = {
     additionalProperties: false,
   },
   run: async (args: any, ctx: ToolContext) => {
+    // The home screen renders pinned numbers (stat) only: a grid/cards pin
+    // would confirm success yet show Dad nothing, so reject it with a steer.
+    if (args?.kind !== 'stat') {
+      return problem(
+        `pin_view can only pin numbers (kind "stat", e.g. a count or a sum); "${String(args?.kind)}" views are not shown on the home screen.`,
+      );
+    }
     try {
       const saved = ctx.views.save({
         table: args?.table,

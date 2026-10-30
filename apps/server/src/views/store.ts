@@ -115,10 +115,12 @@ export function createViewStore(d: {
       if (stat.where === null || typeof stat.where !== 'object' || Array.isArray(stat.where)) {
         throw new Error('Stat filters must be an object of exact matches.');
       }
-      // FAIL CLOSED on unknown filter keys, mirroring query_table: the store
-      // ignores them, so a typo would silently count unfiltered rows.
+      // FAIL CLOSED on unknown filter keys and operator-shaped values,
+      // mirroring query_table: the store ignores unknown keys (a typo would
+      // silently count unfiltered rows) and chokes on object values with a
+      // cryptic binding error at data time.
       const names = knownColumns(table);
-      for (const rawKey of Object.keys(stat.where)) {
+      for (const [rawKey, value] of Object.entries(stat.where)) {
         let col: string;
         try {
           col = sanitiseName(rawKey);
@@ -126,6 +128,19 @@ export function createViewStore(d: {
           throw new Error(`Unknown column: ${rawKey} for table ${table}`);
         }
         if (!names.has(col)) throw new Error(`Unknown column: ${rawKey} for table ${table}`);
+        if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+          throw new Error(`Invalid where value for column ${rawKey}: operators are not supported`);
+        }
+      }
+    }
+  }
+
+  function checkColumns(table: string, columns: unknown): void {
+    if (!Array.isArray(columns)) throw new Error('View columns must be a list.');
+    const names = knownColumns(table);
+    for (const col of columns) {
+      if (typeof col !== 'string' || !names.has(col)) {
+        throw new Error(`Unknown column: ${String(col)} for table ${table}`);
       }
     }
   }
@@ -144,13 +159,7 @@ export function createViewStore(d: {
     if (!def) throw new Error(`Unknown table: ${v.table}`);
     const config = v.config ?? {};
     if (config.columns !== undefined) {
-      if (!Array.isArray(config.columns)) throw new Error('View columns must be a list.');
-      const names = knownColumns(v.table);
-      for (const col of config.columns) {
-        if (typeof col !== 'string' || !names.has(col)) {
-          throw new Error(`Unknown column: ${String(col)} for table ${v.table}`);
-        }
-      }
+      checkColumns(v.table, config.columns);
     }
     if (v.kind === 'stat') {
       if (!config.stat || typeof config.stat !== 'object') {
@@ -173,7 +182,12 @@ export function createViewStore(d: {
   }
 
   function compute(v: ViewDef): ViewData {
+    // FAIL CLOSED on stale saved config: re-run the save-time validators so
+    // a typo'd where key, a deleted sum column, or a deleted grid column
+    // throws loud (into the route's 400) instead of counting unfiltered rows,
+    // summing to a silent 0, or projecting undefined.
     if (v.kind === 'grid' || v.kind === 'cards') {
+      if (v.config.columns !== undefined) checkColumns(v.table, v.config.columns);
       const rows = tables.query(v.table) as Record<string, unknown>[];
       const cols = v.config.columns;
       if (!cols) return { rows };
@@ -187,6 +201,8 @@ export function createViewStore(d: {
     }
     const stat = v.config.stat;
     if (!stat) throw new Error("Stat views need a stat config with op 'count' or 'sum'.");
+    knownColumns(v.table);
+    checkStat(v.table, stat);
     let rows = tables.query(v.table, {
       ...(stat.where !== undefined ? { where: stat.where } : {}),
     }) as Record<string, unknown>[];

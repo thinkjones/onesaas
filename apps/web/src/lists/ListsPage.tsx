@@ -22,6 +22,8 @@ function PinnedStat({ view }: { view: ViewDef }) {
     <div className="flex flex-col gap-2">
       {data.data ? (
         <StatView title={view.title} value={data.data.value ?? 0} />
+      ) : data.isError ? (
+        <p role="alert">Couldn't load this number. Try again.</p>
       ) : (
         <p>Loading…</p>
       )}
@@ -214,18 +216,27 @@ export default function ListsPage() {
             <p>Loading rows…</p>
           ) : rows.isError ? (
             <p role="alert">Couldn't load these rows. Try again.</p>
-          ) : mode === 'grid' ? (
-            <GridView
-              table={table}
-              rows={rows.data.rows}
-              timezone={timezone.data?.timezone ?? null}
-            />
           ) : (
-            <CardsView
-              table={table}
-              rows={rows.data.rows}
-              timezone={timezone.data?.timezone ?? null}
-            />
+            <>
+              {rows.data.rows.length < rows.data.total && (
+                <p>
+                  Showing {rows.data.rows.length} of {rows.data.total}
+                </p>
+              )}
+              {mode === 'grid' ? (
+                <GridView
+                  table={table}
+                  rows={rows.data.rows}
+                  timezone={timezone.data?.timezone ?? null}
+                />
+              ) : (
+                <CardsView
+                  table={table}
+                  rows={rows.data.rows}
+                  timezone={timezone.data?.timezone ?? null}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

@@ -494,6 +494,19 @@ test('pin_view on an unknown list returns a Problem and saves nothing', async ()
   expect(ctx.views.list()).toEqual([]);
 });
 
+test('pin_view rejects grid and cards kinds: the home screen shows only pinned numbers', async () => {
+  const { ctx } = setup();
+  for (const kind of ['grid', 'cards']) {
+    const out = await tool('pin_view').run(
+      { table: 'customers', kind, title: 'X', config: { columns: ['name'] } },
+      ctx,
+    );
+    expect(out.result.startsWith('Problem:')).toBe(true);
+    expect(out.result).toContain('stat');
+  }
+  expect(ctx.views.list()).toEqual([]);
+});
+
 test('query_runs finds runs whose story contains the text', async () => {
   const { ctx, repo } = setup();
   const wfId = ctx.workflowId;
