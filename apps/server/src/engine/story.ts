@@ -9,7 +9,9 @@ import { topoOrder, type StepRun, type Workflow } from '@dad/shared';
 //
 // The "1–4 lines" in the plan describes milestone-scale flows (flow 1 lands 2
 // lines); longer flows produce more lines rather than dropping story beats.
-export function buildRunStory(wf: Workflow, steps: StepRun[]): string[] {
+export const TEST_SAMPLE_PREFIX = 'Tested with a sample email because none was open in Gmail.';
+
+export function buildRunStory(wf: Workflow, steps: StepRun[], opts?: { usedSample?: boolean }): string[] {
   const order = topoOrder(wf);
   const byStepId = new Map(steps.map((s) => [s.stepId, s]));
   const titleById = new Map<string, string>([[wf.trigger.id, wf.trigger.title]]);
@@ -43,5 +45,8 @@ export function buildRunStory(wf: Workflow, steps: StepRun[]): string[] {
     const title = titleById.get(waitingId) ?? waitingId;
     lines.push(`Waiting for you to check "${title}".`);
   }
+  // A test run that fell back to the sample email says so first, so Dad
+  // knows the run previewed against example data rather than his open email.
+  if (opts?.usedSample === true) lines.unshift(TEST_SAMPLE_PREFIX);
   return lines;
 }

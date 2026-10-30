@@ -40,3 +40,11 @@ export const draftReplyExecutor: Executor = async (_config, input, ctx) => {
   await ctx.bridge.call('gmail', 'draftReply', { threadId, body });
   return { output: { drafted: true }, why: 'Saved the reply as a draft in Gmail.' };
 };
+
+// Test-mode preview: describes the draft without touching Gmail.
+draftReplyExecutor.preview = async () => {
+  return {
+    output: { drafted: true },
+    why: 'In a real run I would put this reply into Gmail as a draft.',
+  };
+};

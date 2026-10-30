@@ -22,6 +22,7 @@ export const runs = sqliteTable('runs', {
   workflowVersion: integer('workflow_version').notNull(),
   triggerPayload: text('trigger_payload'),
   status: text('status').notNull(),
+  kind: text('kind').notNull().default('live'),
   startedAt: text('started_at').notNull(),
   endedAt: text('ended_at'),
 });

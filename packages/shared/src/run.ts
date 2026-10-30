@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const RunStatus = z.enum(['running', 'waiting', 'done', 'failed']);
 export type RunStatus = z.infer<typeof RunStatus>;
 
+export const RunKind = z.enum(['live', 'test']);
+export type RunKind = z.infer<typeof RunKind>;
+
 export const StepRunStatus = z.enum(['pending', 'running', 'waiting', 'done', 'failed', 'skipped']);
 export type StepRunStatus = z.infer<typeof StepRunStatus>;
 
@@ -15,6 +18,10 @@ export const Run = z.object({
   workflowVersion: z.number(),
   triggerPayload: z.unknown(),
   status: RunStatus,
+  // Test runs (the canvas "Try it" button) preview outside-world actions
+  // instead of doing them. Default 'live' keeps every pre-existing
+  // row and caller a live run (migration-safe at the parse layer).
+  kind: RunKind.default('live'),
   startedAt: z.string(),
   endedAt: z.string().optional(),
 });

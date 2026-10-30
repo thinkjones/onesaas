@@ -8,7 +8,7 @@ import {
   type StepRun as StepRunType,
   type Workflow as WorkflowType,
 } from '@dad/shared';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { nanoid } from 'nanoid';
 import type { Database } from './connection.js';
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS "runs" (
   "workflow_version" INTEGER NOT NULL,
   "trigger_payload" TEXT,
   "status" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'live',
   "started_at" TEXT NOT NULL,
   "ended_at" TEXT
 );
@@ -58,11 +59,11 @@ export interface Repo {
   listWorkflows(): WorkflowType[];
   createWorkflow(o: { name: string; description: string }): WorkflowType;
   updateLatestInPlace(wf: WorkflowType): WorkflowType;
-  createRun(r: Omit<RunType, 'id' | 'startedAt'>): RunType;
+  createRun(r: Omit<RunType, 'id' | 'startedAt' | 'kind'> & { kind?: RunType['kind'] }): RunType;
   updateRun(id: string, patch: Partial<RunType>): void;
   upsertStepRun(sr: StepRunType): void;
   getRun(id: string): { run: RunType; steps: StepRunType[] } | undefined;
-  listRuns(o?: { workflowId?: string; limit?: number }): RunType[];
+  listRuns(o?: { workflowId?: string; limit?: number; includeTests?: boolean }): RunType[];
 }
 
 /** Deterministic JSON with recursively sorted keys; key order never matters. */
@@ -103,6 +104,7 @@ function rowToRun(row: typeof runs.$inferSelect): RunType {
     workflowVersion: row.workflowVersion,
     triggerPayload: fromJson(row.triggerPayload),
     status: row.status,
+    kind: row.kind,
     startedAt: row.startedAt,
     ...(row.endedAt !== null ? { endedAt: row.endedAt } : {}),
   });
@@ -128,6 +130,13 @@ function rowToStepRun(row: typeof stepRuns.$inferSelect): StepRunType {
 
 export function createRepo(db: Database): Repo {
   db.exec(DDL);
+  // `kind` postdates existing app.db files, whose runs table was created
+  // without the column (CREATE TABLE IF NOT EXISTS never alters). Backfill
+  // in place; the 'live' default keeps every pre-existing run a live run.
+  const runCols = db.prepare(`PRAGMA table_info("runs")`).all() as { name: string }[];
+  if (!runCols.some((c) => c.name === 'kind')) {
+    db.exec(`ALTER TABLE "runs" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'live'`);
+  }
   const orm = drizzle(db);
 
   function insertWorkflowVersion(parsed: WorkflowType, version: number): WorkflowType {
@@ -266,7 +275,7 @@ export function createRepo(db: Database): Repo {
       return latest.map((row) => parseWorkflowDef(row.def, row.id, row.version));
     },
 
-    createRun(r: Omit<RunType, 'id' | 'startedAt'>): RunType {
+    createRun(r: Omit<RunType, 'id' | 'startedAt' | 'kind'> & { kind?: RunType['kind'] }): RunType {
       const run = Run.parse({ ...r, id: randomUUID(), startedAt: new Date().toISOString() });
       orm
         .insert(runs)
@@ -276,6 +285,7 @@ export function createRepo(db: Database): Repo {
           workflowVersion: run.workflowVersion,
           triggerPayload: toJson(run.triggerPayload),
           status: run.status,
+          kind: run.kind,
           startedAt: run.startedAt,
           endedAt: run.endedAt ?? null,
         })
@@ -299,6 +309,7 @@ export function createRepo(db: Database): Repo {
           workflowVersion: merged.workflowVersion,
           triggerPayload: toJson(merged.triggerPayload),
           status: merged.status,
+          kind: merged.kind,
           startedAt: merged.startedAt,
           endedAt: merged.endedAt ?? null,
         })
@@ -357,14 +368,18 @@ export function createRepo(db: Database): Repo {
     },
 
     // Newest first (started_at DESC, rowid DESC breaks ties deterministically).
-    listRuns(o?: { workflowId?: string; limit?: number }): RunType[] {
+    // Test runs are hidden unless explicitly asked for (history shows live runs).
+    listRuns(o?: { workflowId?: string; limit?: number; includeTests?: boolean }): RunType[] {
       if (o?.limit !== undefined) {
         if (typeof o.limit !== 'number' || !Number.isInteger(o.limit) || o.limit < 0) {
           throw new Error(`Invalid limit: ${o.limit}`);
         }
         if (o.limit === 0) return [];
       }
-      const where = o?.workflowId !== undefined ? eq(runs.workflowId, o.workflowId) : undefined;
+      const conds = [];
+      if (o?.workflowId !== undefined) conds.push(eq(runs.workflowId, o.workflowId));
+      if (o?.includeTests !== true) conds.push(ne(runs.kind, 'test'));
+      const where = conds.length === 0 ? undefined : and(...conds);
       const order = [desc(runs.startedAt), sql`"rowid" DESC`] as const;
       if (o?.limit !== undefined) {
         return orm

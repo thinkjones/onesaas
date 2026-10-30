@@ -12,6 +12,7 @@ const UPDATE: RunUpdate = {
     workflowVersion: 1,
     triggerPayload: {},
     status: 'running',
+    kind: 'live',
     startedAt: '2026-10-28T10:42:00.000Z',
   },
   steps: [],

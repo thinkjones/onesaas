@@ -25,7 +25,7 @@ export function createEngine(d: {
   executors: Record<string, Executor>;
   ctx: Omit<StepContext, 'signal'>;
 }): {
-  start: (workflowId: string, triggerPayload: unknown) => Promise<Run>;
+  start: (workflowId: string, triggerPayload: unknown, opts?: { kind?: Run['kind'] }) => Promise<Run>;
   resolveApproval: (runId: string, stepId: string, d: ApprovalDecision) => Promise<Run>;
   retryStep: (runId: string, stepId: string) => Promise<Run>;
   resumeAll: () => Promise<void>;
@@ -215,7 +215,13 @@ export function createEngine(d: {
               ? run.triggerPayload
               : await resolveBindings(step.inputs, bindings);
           def.inputSchema.parse(input);
-          const result = await executor(step.config, input, { ...ctxBase, signal });
+          // Test runs ("Try it") preview outside-world actions: act/store
+          // executors define `preview`, everything else runs for real.
+          const fn =
+            ctxBase.testMode === true && typeof executor.preview === 'function'
+              ? executor.preview
+              : executor;
+          const result = await fn(step.config, input, { ...ctxBase, signal });
           // A waiting result parks the step: output validation is SKIPPED
           // because the output is provisional ({ proposed }, not the final
           // schema — the final output is written by resolveApproval). The
@@ -328,7 +334,11 @@ export function createEngine(d: {
     }
   }
 
-  async function start(workflowId: string, triggerPayload: unknown): Promise<Run> {
+  async function start(
+    workflowId: string,
+    triggerPayload: unknown,
+    opts?: { kind?: Run['kind'] },
+  ): Promise<Run> {
     const wf = repo.getWorkflow(workflowId);
     if (!wf) throw new Error(`Unknown workflow: ${workflowId}`);
     // Pre-flight before any run row exists: invalid workflows never run.
@@ -345,6 +355,7 @@ export function createEngine(d: {
       workflowVersion: wf.version,
       triggerPayload,
       status: 'running',
+      kind: opts?.kind ?? 'live',
     });
     emit({ type: 'run', run });
 
