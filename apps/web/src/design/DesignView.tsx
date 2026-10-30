@@ -500,7 +500,7 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
           desktop widths, where palette + canvas + inspector fit one line). */}
       <div className="flex flex-wrap gap-4">
         <StepPalette onAddStep={(type) => void handleAddStep(type)} disabled={op.isPending} />
-        <div className="relative min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
+        <div className="relative isolate min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
           <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
           <WorkflowCanvas
             workflow={detail}
