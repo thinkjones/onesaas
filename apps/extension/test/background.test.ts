@@ -62,6 +62,10 @@ function makeBrowser(
   const store: Record<string, unknown> = {};
   if (opts.token !== undefined) store['dadExtToken'] = opts.token;
   const tabs = opts.tabs ?? [{ id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' }];
+  // Active tab id, like the real browser: Dad starts on tab 7, and
+  // update({active:true}) moves activation (so the pre-capture verification
+  // query sees the just-activated worker tab).
+  let activeId = 7;
   let listener: ((msg: never) => unknown) | null = null;
   const tabMessages: Array<{ tabId: number; msg: unknown }> = [];
   const created: Array<{ url?: string; active?: boolean; pinned?: boolean }> = [];
@@ -80,10 +84,16 @@ function makeBrowser(
       },
     },
     tabs: {
-      query: vi.fn(async (q: { url?: string; active?: boolean; currentWindow?: boolean }) => {
-        if (q.active) return [{ id: 7, active: true, windowId: 1 }];
-        return tabs;
-      }),
+      query: vi.fn(
+        async (q: { url?: string; active?: boolean; currentWindow?: boolean; windowId?: number }) => {
+          if (q.active) return [{ id: activeId, active: true, windowId: 1 }];
+          if (q.url) {
+            const prefix = q.url.replace(/\*$/, '');
+            return tabs.filter((t) => t.url?.startsWith(prefix));
+          }
+          return tabs;
+        },
+      ),
       get: vi.fn(async (tabId: number) => {
         const found = tabs.find((t) => t.id === tabId);
         if (!found) throw new Error('No tab with id');
@@ -98,6 +108,7 @@ function makeBrowser(
       }),
       update: vi.fn(async (tabId: number, props: Record<string, unknown>) => {
         updated.push({ tabId, props });
+        if (props['active'] === true) activeId = tabId;
         return { id: tabId, status: 'complete' };
       }),
       captureVisibleTab: vi.fn(async () => {
@@ -291,7 +302,10 @@ describe('server messages', () => {
   it('buttons fan out to every Gmail tab', async () => {
     const t = makeBrowser({
       token: 'tok',
-      tabs: [{ id: 11 }, { id: 22 }],
+      tabs: [
+        { id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' },
+        { id: 22, url: 'https://mail.google.com/mail/u/0/#sent' },
+      ],
     });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
@@ -308,7 +322,13 @@ describe('server messages', () => {
   });
 
   it('runStatus fans out to every Gmail tab', async () => {
-    const t = makeBrowser({ token: 'tok', tabs: [{ id: 11 }, { id: 22 }] });
+    const t = makeBrowser({
+      token: 'tok',
+      tabs: [
+        { id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' },
+        { id: 22, url: 'https://mail.google.com/mail/u/0/#sent' },
+      ],
+    });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
@@ -514,7 +534,10 @@ describe('worker tab routing', () => {
 
 describe('active routing for new sites', () => {
   it('focuses an existing visible tab', async () => {
-    const t = makeBrowser({ token: 'tok', tabs: [{ id: 21 }] });
+    const t = makeBrowser({
+      token: 'tok',
+      tabs: [{ id: 21, url: 'https://business.facebook.com/home' }],
+    });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
@@ -541,6 +564,22 @@ describe('active routing for new sites', () => {
     expect(sentJson(lastSocket())).toEqual([
       { type: 'result', id: 'a2', ok: true, output: { drafted: true } },
     ]);
+    bg.dispose();
+  });
+
+  it('does not reuse a tab whose URL does not match the site', async () => {
+    const t = makeBrowser({ token: 'tok', tabs: [{ id: 31, url: 'https://example.com/' }] });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().sent.length = 0;
+    lastSocket().receive({ type: 'cmd', id: 'a3', site: 'meta', action: 'read', input: {} });
+    await flush();
+    // Falls through to the open path instead of focusing tab 31.
+    expect(t.created).toHaveLength(1);
+    expect(t.created[0]?.url).toContain('business.facebook.com');
+    expect(t.updated.find((u) => u.tabId === 31)).toBeUndefined();
+    expect(t.tabMessages[0]?.tabId).not.toBe(31);
     bg.dispose();
   });
 });

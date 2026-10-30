@@ -23,6 +23,7 @@ export interface TabQuery {
   url?: string;
   active?: boolean;
   currentWindow?: boolean;
+  windowId?: number;
 }
 
 export interface TabsLike {
@@ -91,6 +92,16 @@ export function createTabManager(o: {
 
   const cache = new Map<WorkerSite, number>();
   const inflight = new Map<WorkerSite, Promise<number>>();
+  // Per-site tail of the capture promise chain: captures on one site run one
+  // at a time so concurrent workflows can't interleave navigate/activate/
+  // capture on the shared worker tab. The stored tail never rejects (a failed
+  // capture must not wedge later ones); each caller still gets its own
+  // promise, which rejects with that capture's real error.
+  const captureChains = new Map<WorkerSite, Promise<unknown>>();
+  // Last URL each worker tab was navigated to by us (seeded when we create
+  // the tab, updated on every navigate). Absent = a reused tab whose page we
+  // never chose: capturing it blind would serve a stale page.
+  const lastUrl = new Map<number, string>();
 
   async function getWorkerTab(site: WorkerSite): Promise<number> {
     const running = inflight.get(site);
@@ -113,9 +124,12 @@ export function createTabManager(o: {
         // Closed (or otherwise gone): fall through and recreate.
       }
       cache.delete(site);
+      lastUrl.delete(cached);
     }
     // A matching tab may already be open (e.g. background restarted and lost
-    // the cache): reuse it instead of opening a duplicate.
+    // the cache): reuse it instead of opening a duplicate. Its page is NOT
+    // recorded in lastUrl: capture treats it as unknown and navigates to a
+    // known page rather than photographing whatever it last showed.
     try {
       const open = await tabs.query({ url: SITE_TAB_QUERY[site] });
       const reuse = open.map((t) => t.id).find((id): id is number => typeof id === 'number');
@@ -136,6 +150,8 @@ export function createTabManager(o: {
       throw new TabError('NOT_OPEN', 'Could not open a background tab.');
     }
     cache.set(site, created.id);
+    // We chose this tab's page, so it is a known (non-stale) starting point.
+    if (typeof created.url === 'string') lastUrl.set(created.id, created.url);
     return created.id;
   }
 
@@ -159,14 +175,52 @@ export function createTabManager(o: {
     }
   }
 
-  async function captureScreenshot(site: WorkerSite, url?: string): Promise<{ dataUrl: string }> {
+  function captureScreenshot(site: WorkerSite, url?: string): Promise<{ dataUrl: string }> {
+    const prev = captureChains.get(site) ?? Promise.resolve();
+    // Chain on settled (both branches run the capture) so one failure never
+    // wedges the site; the caller gets `next`, which carries its own result.
+    const next = prev.then(
+      () => captureInner(site, url),
+      () => captureInner(site, url),
+    );
+    captureChains.set(
+      site,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
+  }
+
+  async function captureInner(site: WorkerSite, url?: string): Promise<{ dataUrl: string }> {
     const tabId = await getWorkerTab(site);
-    if (url !== undefined) {
+    // The worker tab may live in any window, but captureVisibleTab with no
+    // arg photographs the CURRENT window: resolve the tab's window and aim
+    // the capture (and the previous-tab lookup/restore) at that window.
+    let windowId: number | undefined;
+    try {
+      const self = await tabs.get(tabId);
+      windowId = typeof self?.windowId === 'number' ? self.windowId : undefined;
+    } catch {
+      throw new TabError('TIMEOUT', 'The tab closed before the screenshot.');
+    }
+    const activeQuery: TabQuery =
+      windowId === undefined ? { active: true, currentWindow: true } : { active: true, windowId };
+    // Stale-page rule: navigate when a url is given and differs from what we
+    // last put in this tab; when url is omitted, capture as-is EXCEPT on a
+    // tab whose page we never chose (reused open tab), which first navigates
+    // to the site start URL. Same-page re-reads stay cheap, reused tabs never
+    // serve a stale page.
+    const last = lastUrl.get(tabId);
+    const target = url ?? (last === undefined ? SITE_START_URL[site] : undefined);
+    if (target !== undefined && target !== last) {
       try {
-        await tabs.update(tabId, { url });
+        await tabs.update(tabId, { url: target });
       } catch (err) {
         throw new TabError('TIMEOUT', `Could not open the page: ${(err as Error).message}`);
       }
+      lastUrl.set(tabId, target);
       await waitForComplete(tabId);
     }
     // captureVisibleTab needs a VISIBLE tab: briefly activate the worker tab,
@@ -174,7 +228,7 @@ export function createTabManager(o: {
     // try/finally (restore failures are swallowed: Dad's tab may have closed).
     let previous: number | undefined;
     try {
-      const active = await tabs.query({ active: true, currentWindow: true });
+      const active = await tabs.query(activeQuery);
       const id = active[0]?.id;
       previous = typeof id === 'number' && id !== tabId ? id : undefined;
     } catch {
@@ -182,7 +236,19 @@ export function createTabManager(o: {
     }
     try {
       await tabs.update(tabId, { active: true });
-      const dataUrl = await tabs.captureVisibleTab();
+      // Dad may have switched tabs in the activate→capture window: re-check
+      // the active tab in the target window and fail instead of capturing a
+      // stranger tab as success.
+      let stillActive: TabLike[];
+      try {
+        stillActive = await tabs.query(activeQuery);
+      } catch {
+        throw new TabError('TIMEOUT', 'Could not verify the tab before the screenshot.');
+      }
+      if (stillActive[0]?.id !== tabId) {
+        throw new TabError('TIMEOUT', 'The tab changed before the screenshot.');
+      }
+      const dataUrl = await tabs.captureVisibleTab(windowId);
       return { dataUrl };
     } catch (err) {
       if (err instanceof TabError) throw err;

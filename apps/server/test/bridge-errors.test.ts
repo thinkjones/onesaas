@@ -234,6 +234,85 @@ describe('withVisionFallback', () => {
       expect(gateway.visionJson).not.toHaveBeenCalled();
     },
   );
+
+  test('screenshot failure propagates identically with no vision call', async () => {
+    const original = new BridgeError('capture blew up', 'TIMEOUT');
+    const bridge = fakeBridgeImpl(async (_site, action) => {
+      if (action === 'readEvents') {
+        throw new BridgeError('selector .event-row not found', 'SELECTOR_MISSING');
+      }
+      throw original;
+    });
+    const gateway = { visionJson: vi.fn() } as unknown as Pick<Gateway, 'visionJson'>;
+    const err = await withVisionFallback({
+      bridge,
+      gateway,
+      site: 'calendar',
+      action: 'readEvents',
+      input: {},
+      prompt: 'List events.',
+      schema: eventSchema,
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBe(original);
+    expect(gateway.visionJson).not.toHaveBeenCalled();
+  });
+
+  test('malformed screenshot output (missing dataUrl) throws a plain Error', async () => {
+    const bridge = fakeBridgeImpl(async (_site, action) => {
+      if (action === 'readEvents') {
+        throw new BridgeError('selector .event-row not found', 'SELECTOR_MISSING');
+      }
+      return {}; // No dataUrl: fails the typeof shot?.dataUrl !== 'string' check.
+    });
+    const gateway = { visionJson: vi.fn() } as unknown as Pick<Gateway, 'visionJson'>;
+    const err = await withVisionFallback({
+      bridge,
+      gateway,
+      site: 'calendar',
+      action: 'readEvents',
+      input: {},
+      prompt: 'List events.',
+      schema: eventSchema,
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(BridgeError);
+    expect((err as Error).message).toBe('Screenshot did not return a data URL.');
+    expect(gateway.visionJson).not.toHaveBeenCalled();
+  });
+
+  test('visionJson failure propagates identically', async () => {
+    const original = new Error('model down');
+    const bridge = fakeBridgeImpl(async (_site, action) => {
+      if (action === 'readEvents') {
+        throw new BridgeError('selector .event-row not found', 'SELECTOR_MISSING');
+      }
+      return { dataUrl: 'data:image/png;base64,AAAA' };
+    });
+    const gateway = {
+      visionJson: vi.fn(async () => {
+        throw original;
+      }),
+    } as unknown as Pick<Gateway, 'visionJson'>;
+    const err = await withVisionFallback({
+      bridge,
+      gateway,
+      site: 'calendar',
+      action: 'readEvents',
+      input: {},
+      prompt: 'List events.',
+      schema: eventSchema,
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBe(original);
+  });
 });
 
 // ---------------------------------------------------------------------------
