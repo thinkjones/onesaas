@@ -12,7 +12,7 @@ import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
 import type { TableStore } from './tables/store.js';
-import { createWorkflowOps, type OpResult } from './workflows/ops.js';
+import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
 
 // Grows in later tasks (gateway, store, engine, bridge...). Kept as an
@@ -112,7 +112,11 @@ export function createApp(deps: AppDeps): Hono {
   //   { op: 'move', args: ['save-k3j2a1', { x: 10, y: 20 }] }
   // These schemas check shapes only; the ops do the semantic validation.
   // A refused op is still a 200: the OpResult body carries the readable error.
-  const OP_ARGS: Record<string, z.ZodTypeAny> = {
+  // Keyed by DispatchOp (every WorkflowOps method except create) so a schema
+  // key with no matching method — or a method with no schema — fails the
+  // build instead of throwing a TypeError at runtime on user input.
+  type DispatchOp = Exclude<keyof WorkflowOps, 'create'>;
+  const OP_ARGS: Record<DispatchOp, z.ZodTypeAny> = {
     setTrigger: z.tuple([
       z
         .object({
@@ -157,7 +161,8 @@ export function createApp(deps: AppDeps): Hono {
       z.object({ name: z.string(), description: z.string().optional() }).strict(),
     ]),
   };
-  const OP_NAMES = new Set(Object.keys(OP_ARGS));
+  const OP_NAMES: ReadonlySet<string> = new Set(Object.keys(OP_ARGS));
+  const isDispatchOp = (op: string): op is DispatchOp => OP_NAMES.has(op);
   const opsBody = z.object({ op: z.string(), args: z.array(z.unknown()) }).strict();
 
   app.post('/api/workflows/:id/ops', async (c) => {
@@ -175,12 +180,14 @@ export function createApp(deps: AppDeps): Hono {
     if (op === 'create') {
       return c.json({ error: 'Use POST /api/workflows to create a workflow' }, 400);
     }
-    if (!OP_NAMES.has(op)) return c.json({ error: `Unknown op: ${op}` }, 400);
-    const argsParsed = OP_ARGS[op]!.safeParse(args);
+    if (!isDispatchOp(op)) return c.json({ error: `Unknown op: ${op}` }, 400);
+    const argsParsed = OP_ARGS[op].safeParse(args);
     if (!argsParsed.success) {
       return c.json({ error: 'Invalid op body' }, 400);
     }
-    const fn = (ops as unknown as Record<string, (...a: unknown[]) => OpResult>)[op]!;
+    // Indexed by DispatchOp, so the method must exist; the single `as` only
+    // unifies the per-op signatures into one variadic call shape.
+    const fn = ops[op] as (...a: unknown[]) => OpResult;
     // Forward the validated args, not the raw body, so unknown keys can
     // never ride through to the op even if a schema stops being strict.
     const validatedArgs = argsParsed.data as unknown[];
