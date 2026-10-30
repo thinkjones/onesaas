@@ -16,6 +16,7 @@ import { buildRunStory } from './engine/story.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { TableStore } from './tables/store.js';
+import type { ViewStore } from './views/store.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
 
@@ -58,6 +59,7 @@ export function createApp(deps: AppDeps): Hono {
   const settings = deps.settings as PairingStore | undefined;
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
   const files = deps.files as FileStore | undefined;
+  const views = deps.views as ViewStore | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -158,6 +160,101 @@ export function createApp(deps: AppDeps): Hono {
     } catch (err) {
       if (err instanceof FileNotFoundError) return c.json({ error: err.message }, 404);
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // Lists + saved views (M4 Task 8). Counts and paging slice the full
+  // query: Dad-scale lists fit in memory, so no SQL-level paging.
+  app.get('/api/lists', (c) => {
+    if (!tables) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(
+      tables.listTables().map((t) => ({ ...t, count: tables.query(t.name).length })),
+    );
+  });
+
+  app.get('/api/lists/:table/rows', (c) => {
+    if (!tables) return c.json({ error: 'Server not configured' }, 500);
+    const table = c.req.param('table');
+    if (!tables.getTable(table)) return c.json({ error: `Unknown table: ${table}` }, 404);
+    const limitRaw = c.req.query('limit') ?? '50';
+    const offsetRaw = c.req.query('offset') ?? '0';
+    const limit = Number(limitRaw);
+    const offset = Number(offsetRaw);
+    if (!Number.isInteger(limit) || limit < 0) {
+      return c.json({ error: `Invalid limit: ${limitRaw}` }, 400);
+    }
+    if (!Number.isInteger(offset) || offset < 0) {
+      return c.json({ error: `Invalid offset: ${offsetRaw}` }, 400);
+    }
+    const all = tables.query(table);
+    return c.json({ rows: all.slice(offset, offset + limit), total: all.length });
+  });
+
+  app.get('/api/views', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(views.list());
+  });
+
+  const viewBody = z
+    .object({
+      table: z.string(),
+      kind: z.enum(['grid', 'cards', 'stat']),
+      title: z.string(),
+      pinned: z.boolean(),
+      config: z
+        .object({
+          columns: z.array(z.string()).optional(),
+          stat: z
+            .object({
+              op: z.enum(['count', 'sum']),
+              column: z.string().optional(),
+              where: z.record(z.string(), z.unknown()).optional(),
+              sinceDays: z.number().optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict();
+
+  app.post('/api/views', async (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid view body' }, 400);
+    }
+    const parsed = viewBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid view body' }, 400);
+    try {
+      return c.json(views.save({ ...parsed.data, config: parsed.data.config ?? {} }));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.delete('/api/views/:id', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    try {
+      views.remove(c.req.param('id'));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 404);
+    }
+    return c.json({ removed: true });
+  });
+
+  app.get('/api/views/:id/data', (c) => {
+    if (!views) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const view = views.list().find((v) => v.id === id);
+    if (!view) return c.json({ error: `Unknown view: ${id}` }, 404);
+    try {
+      return c.json(views.compute(view));
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
     }
   });
 

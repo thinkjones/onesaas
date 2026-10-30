@@ -13,6 +13,7 @@ import { createServer } from '../src/main.js';
 import type { ChatToolsOptions, ChatToolsResult, Gateway } from '../src/models/gateway.js';
 import { executors } from '../src/steps/registry.js';
 import { createTableStore } from '../src/tables/store.js';
+import { createViewStore } from '../src/views/store.js';
 import { createWorkflowOps } from '../src/workflows/ops.js';
 
 // A scripted model response: assistant text and/or tool calls. A thunk form
@@ -72,6 +73,7 @@ function scriptedGateway(script: ScriptStep[]): { gateway: Gateway; calls: ChatT
 function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
   const db = openDb(':memory:');
   const tables = createTableStore(db);
+  const views = createViewStore({ db, tables });
   const repo = createRepo(db);
   const conversations = createConversationStore(db);
   const agentEvents = new EventEmitter();
@@ -94,6 +96,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
     gateway,
     ops,
     tables,
+    views,
     repo,
     engine: {} as never,
     events: agentEvents,
@@ -101,7 +104,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
     testRun,
   });
   const wf = ops.create({ name: 'Test chore', description: 'A test.' });
-  return { db, tables, repo, conversations, ops, agent, agentEvents, seen, calls, testRun, wf, gateway };
+  return { db, tables, views, repo, conversations, ops, agent, agentEvents, seen, calls, testRun, wf, gateway };
 }
 
 function setupApp(script: ScriptStep[] = [{ text: 'ok' }]) {
@@ -333,6 +336,7 @@ test('a mid-turn noteManualChange lands in the live conversation and the next mo
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -403,6 +407,7 @@ test('a direct second send while busy rejects with the busy error', async () => 
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -441,6 +446,7 @@ test('busy is per workflow: two workflows can think at once', async () => {
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -478,6 +484,7 @@ test('a second POST while busy returns 409', async () => {
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -611,6 +618,7 @@ test("a gateway failure on the first call still persists Dad's message and ends 
     gateway: boom,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -652,6 +660,7 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
     gateway: flaky,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,
@@ -755,6 +764,7 @@ test('after create_workflow the new reducer is busy-guarded until the turn ends'
     gateway: gated,
     ops: s.ops,
     tables: s.tables,
+    views: s.views,
     repo: s.repo,
     engine: {} as never,
     events: s.agentEvents,

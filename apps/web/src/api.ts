@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import type { FileRef, Run, StepRun, Workflow } from '@dad/shared';
+import type { ListSummary, ViewData, ViewDef } from './lists/types.ts';
 
 // Mirrors apps/server/src/engine/events.ts. The web package cannot import it
 // (server is not a dependency), so the shape is redeclared here.
@@ -155,6 +156,87 @@ export function getSettings(): Promise<{ timezone: string | null }> {
 /** PUT /api/settings: store the business timezone (IANA name). */
 export function putSettings(timezone: string): Promise<{ timezone: string }> {
   return putJson('/api/settings', { timezone });
+}
+
+// --- Lists + views (M4 Task 8) ---
+
+/** GET /api/lists: every table plus its row count. */
+export function getLists(): Promise<ListSummary[]> {
+  return getJson('/api/lists');
+}
+
+export function useLists() {
+  return useQuery({ queryKey: ['lists'], queryFn: getLists });
+}
+
+/** GET /api/lists/:table/rows: one page of rows plus the total. */
+export function getListRows(
+  table: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  const params = new URLSearchParams();
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+  if (opts?.offset !== undefined) params.set('offset', String(opts.offset));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
+  return getJson(`/api/lists/${encodeURIComponent(table)}/rows${qs}`);
+}
+
+export function useListRows(table: string | null, opts?: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ['list-rows', table, opts?.limit, opts?.offset],
+    queryFn: () => getListRows(table!, opts),
+    enabled: table !== null,
+  });
+}
+
+/** GET /api/views: every saved view. */
+export function getViews(): Promise<ViewDef[]> {
+  return getJson('/api/views');
+}
+
+export function useViews() {
+  return useQuery({ queryKey: ['views'], queryFn: getViews });
+}
+
+/** GET /api/views/:id/data: a view's computed rows or value. */
+export function getViewData(id: string): Promise<ViewData> {
+  return getJson(`/api/views/${encodeURIComponent(id)}/data`);
+}
+
+export function useViewData(id: string) {
+  return useQuery({ queryKey: ['view-data', id], queryFn: () => getViewData(id) });
+}
+
+/** POST /api/views: save a view (every pin is a save with pinned: true). */
+export function createView(body: Omit<ViewDef, 'id'>): Promise<ViewDef> {
+  return postJson('/api/views', body);
+}
+
+export function useCreateView() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Omit<ViewDef, 'id'>) => createView(body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['views'] });
+    },
+  });
+}
+
+export function useDeleteView() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<void> => {
+      const res = await fetch(`/api/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) await throwApiError(res);
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['views'] });
+    },
+  });
+}
+
+export function useBusinessTimezone() {
+  return useQuery({ queryKey: ['settings'], queryFn: getSettings });
 }
 
 /** Subscribes to the SSE stream; closes the connection on unmount. */

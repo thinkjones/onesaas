@@ -3,6 +3,7 @@ import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, AgentMessage } from '../models/gateway.js';
 import type { Repo } from '../db/repo.js';
 import type { TableStore } from '../tables/store.js';
+import type { ViewStore } from '../views/store.js';
 import type { WorkflowOps } from '../workflows/ops.js';
 import { checkWorkflow } from '../workflows/validate.js';
 import type { Conversation, ConversationStore, TranscriptEntry } from './conversations.js';
@@ -23,6 +24,7 @@ export interface BuilderAgentDeps {
   gateway: Gateway;
   ops: WorkflowOps;
   tables: TableStore;
+  views: ViewStore;
   repo: Repo;
   engine: Engine;
   events: EventEmitter;
@@ -46,7 +48,7 @@ function serverTimezone(): string {
 }
 
 export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
-  const { gateway, ops, tables, repo, engine, events, conversations, testRun } = d;
+  const { gateway, ops, tables, views, repo, engine, events, conversations, testRun } = d;
   const toolsByName = new Map(builderTools.map((t) => [t.name, t]));
   const busy = new Set<string>();
   // Live turns by workflow: noteManualChange appends to the in-flight
@@ -127,6 +129,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
       workflowId,
       ops,
       tables,
+      views,
       repo,
       engine,
       gateway,

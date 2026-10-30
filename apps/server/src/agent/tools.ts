@@ -6,6 +6,7 @@ import { buildRunStory } from '../engine/story.js';
 import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, ToolSpec } from '../models/gateway.js';
 import { sanitiseName, type TableStore } from '../tables/store.js';
+import type { ViewDef, ViewStore } from '../views/store.js';
 import type { OpResult, WorkflowOps } from '../workflows/ops.js';
 import { checkWorkflow } from '../workflows/validate.js';
 
@@ -26,6 +27,7 @@ export interface ToolContext {
   workflowId: string;
   ops: WorkflowOps;
   tables: TableStore;
+  views: ViewStore;
   repo: Repo;
   engine: Engine;
   gateway: Gateway;
@@ -769,6 +771,56 @@ const queryRuns: ToolImpl = {
   },
 };
 
+const pinView: ToolImpl = {
+  name: 'pin_view',
+  description:
+    'Pin a number from one of Dad\'s lists to his home screen: a count of rows, or the sum of a number column, optionally only rows from the last N days. Use it when Dad asks to pin, watch or keep track of a number.',
+  parameters: {
+    type: 'object',
+    properties: {
+      table: { type: 'string', description: 'The list to count or sum, e.g. "customers".' },
+      kind: { type: 'string', enum: ['grid', 'cards', 'stat'] },
+      title: { type: 'string', description: 'Short label shown with the pinned number.' },
+      config: {
+        type: 'object',
+        description: 'For a stat: { stat: { op, column?, where?, sinceDays? } }.',
+        properties: {
+          columns: { type: 'array', items: { type: 'string' } },
+          stat: {
+            type: 'object',
+            properties: {
+              op: { type: 'string', enum: ['count', 'sum'] },
+              column: { type: 'string' },
+              where: { type: 'object' },
+              sinceDays: { type: 'number' },
+            },
+            required: ['op'],
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    required: ['table', 'kind', 'title', 'config'],
+    additionalProperties: false,
+  },
+  run: async (args: any, ctx: ToolContext) => {
+    try {
+      const saved = ctx.views.save({
+        table: args?.table,
+        kind: args?.kind,
+        title: args?.title,
+        config: args?.config ?? {},
+        pinned: true,
+      } as Omit<ViewDef, 'id'>);
+      const note = `Pinned "${saved.title}" to your home screen.`;
+      return { result: note, activity: note };
+    } catch (err) {
+      return problem(errMsg(err));
+    }
+  },
+};
+
 /** The builder agent's tools (consumed by the Task 5 loop). */
 export const builderTools: AgentTool[] = [
   askUser,
@@ -786,4 +838,5 @@ export const builderTools: AgentTool[] = [
   explain,
   queryTable,
   queryRuns,
+  pinView,
 ].map(toAgentTool);

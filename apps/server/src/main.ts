@@ -19,6 +19,7 @@ import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
 import { createTableStore } from './tables/store.js';
+import { createViewStore } from './views/store.js';
 import { registerEmailTrigger } from './triggers/email.js';
 import { registerGmailButtonTrigger } from './triggers/gmailButton.js';
 import { createWorkflowOps } from './workflows/ops.js';
@@ -35,6 +36,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   app: ReturnType<typeof createApp>;
   db: ReturnType<typeof openDb>;
   tables: ReturnType<typeof createTableStore>;
+  views: ReturnType<typeof createViewStore>;
   repo: ReturnType<typeof createRepo>;
   pairing: ReturnType<typeof createPairing>;
   bridge: ReturnType<typeof createBridge>;
@@ -52,6 +54,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   if (dbFile !== ':memory:') mkdirSync(dirname(dbFile), { recursive: true });
   const db = openDb(dbFile);
   const tables = createTableStore(db);
+  const views = createViewStore({ db, tables });
   const repo = createRepo(db);
   // Photo bytes live next to the DB (data/files by default; both gitignored).
   const filesDir = opts?.filesDir ?? 'data/files';
@@ -114,6 +117,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     gateway,
     ops,
     tables,
+    views,
     repo,
     engine,
     events: agentEvents,
@@ -151,6 +155,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     repo,
     engine,
     tables,
+    views,
     ops,
     agent,
     agentEvents,
@@ -159,5 +164,5 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     setTimezone,
     files,
   });
-  return { app, db, tables, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
+  return { app, db, tables, views, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
 }

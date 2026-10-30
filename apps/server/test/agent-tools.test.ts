@@ -7,6 +7,7 @@ import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';
 import flow1Seed from '../src/seed/flow1.json' with { type: 'json' };
 import { createTableStore, type TableStore } from '../src/tables/store.js';
+import { createViewStore } from '../src/views/store.js';
 import { createWorkflowOps, type OpBy, type WorkflowOps } from '../src/workflows/ops.js';
 import { checkWorkflow } from '../src/workflows/validate.js';
 
@@ -15,6 +16,7 @@ const WRITE_CONFIG = { instructions: 'Write a short reply.', tone: 'friendly' };
 function setup() {
   const db = openDb(':memory:');
   const tables = createTableStore(db);
+  const views = createViewStore({ db, tables });
   tables.createTable({
     name: 'customers',
     label: 'Customers',
@@ -42,6 +44,7 @@ function setup() {
     workflowId: wf.id,
     ops,
     tables,
+    views,
     repo,
     engine: {} as never,
     gateway,
@@ -70,7 +73,7 @@ function planEdges(n: number) {
   return Array.from({ length: n - 1 }, (_, i) => ({ from: `s${i + 1}`, to: `s${i + 2}` }));
 }
 
-test('builderTools exposes exactly the fifteen builder tools', () => {
+test('builderTools exposes exactly the sixteen builder tools', () => {
   expect(builderTools.map((t) => t.name).sort()).toEqual(
     [
       'ask_user',
@@ -88,6 +91,7 @@ test('builderTools exposes exactly the fifteen builder tools', () => {
       'explain',
       'query_table',
       'query_runs',
+      'pin_view',
     ].sort(),
   );
 });
@@ -461,6 +465,33 @@ test('query_table with an operator-shaped where value returns a Problem', async 
     ctx,
   );
   expect(out.result.startsWith('Problem: Invalid where value for column email')).toBe(true);
+});
+
+test('pin_view saves a pinned stat view and confirms in Dad words', async () => {
+  const { ctx } = setup();
+  const out = await tool('pin_view').run(
+    {
+      table: 'customers',
+      kind: 'stat',
+      title: 'New customers this week',
+      config: { stat: { op: 'count', sinceDays: 7 } },
+    },
+    ctx,
+  );
+  expect(out.result).toBe('Pinned "New customers this week" to your home screen.');
+  expect(ctx.views.list()).toEqual([
+    expect.objectContaining({ table: 'customers', kind: 'stat', pinned: true }),
+  ]);
+});
+
+test('pin_view on an unknown list returns a Problem and saves nothing', async () => {
+  const { ctx } = setup();
+  const out = await tool('pin_view').run(
+    { table: 'nope', kind: 'stat', title: 'X', config: { stat: { op: 'count' } } },
+    ctx,
+  );
+  expect(out.result).toBe('Problem: Unknown table: nope');
+  expect(ctx.views.list()).toEqual([]);
 });
 
 test('query_runs finds runs whose story contains the text', async () => {

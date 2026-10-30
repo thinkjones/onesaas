@@ -56,6 +56,14 @@ CREATE TABLE IF NOT EXISTS "seen_emails" (
   "thread_id" TEXT NOT NULL PRIMARY KEY,
   "seen_at" TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS "views" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "table_name" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "config" TEXT NOT NULL,
+  "pinned" INTEGER NOT NULL DEFAULT 0,
+  "title" TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS "files" (
   "id" TEXT NOT NULL PRIMARY KEY,
   "path" TEXT NOT NULL,
