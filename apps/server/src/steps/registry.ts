@@ -8,6 +8,7 @@ import { askExecutor } from './approval.js';
 import { createEventExecutor, freeBusyExecutor } from './calendar.js';
 import { classifyExecutor } from './classify.js';
 import { cutoutExecutor, editExecutor, generateExecutor } from './image.js';
+import { codeTransformExecutor } from './code.js';
 import { draftPostExecutor, notifyExecutor } from './meta.js';
 import { insertExecutor, queryExecutor, upsertExecutor } from './table.js';
 import {
@@ -104,6 +105,7 @@ export const executors: Record<string, Executor> = {
   'ai.extract': extractExecutor,
   'ai.write': writeExecutor,
   'ai.classify': classifyExecutor,
+  'code.transform': codeTransformExecutor,
   'table.upsert': upsertExecutor,
   'table.insert': insertExecutor,
   'table.query': queryExecutor,

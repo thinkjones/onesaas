@@ -41,7 +41,9 @@ interface ExtractField {
   description: string;
 }
 
-function fieldSchema(type: ColumnType): z.ZodTypeAny {
+// Shared with code.transform (steps/code.ts), which builds its output schema
+// from the same ColumnType union.
+export function fieldSchema(type: ColumnType): z.ZodTypeAny {
   switch (type) {
     case 'number':
       return z.number();

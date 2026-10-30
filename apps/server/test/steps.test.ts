@@ -315,6 +315,7 @@ test('every catalog entry has an executor', () => {
       'approval.ask',
       'calendar.createEvent',
       'calendar.freeBusy',
+      'code.transform',
       'gmail.draftReply',
       'gmail.read',
       'image.cutout',

@@ -315,4 +315,29 @@ export const catalog: Record<string, StepDef> = {
     inputSchema: z.object({ text: z.string() }),
     outputSchema: z.object({ notified: z.literal(true) }),
   },
+  'code.transform': {
+    type: 'code.transform',
+    kind: 'enrich',
+    title: 'Calculate',
+    description: 'Calculates new values from an earlier step.',
+    sample: { total: 120 },
+    configSchema: z.object({
+      explanation: z.string(),
+      code: z.string(),
+      outputFields: z
+        .array(
+          z.object({
+            name: z.string(),
+            type: columnTypeSchema,
+          }),
+        )
+        .min(1),
+    }),
+    inputSchema: z.object({ value: z.unknown() }),
+    // DYNAMIC per config (same caveat as ai.extract): exact per-field
+    // validation happens in the executor via the schema it builds from
+    // config.outputFields; the engine's output check against this is only a
+    // loose object-shape guard.
+    outputSchema: z.record(z.string(), z.unknown()),
+  },
 };

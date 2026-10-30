@@ -98,6 +98,7 @@ export function buildSystemPrompt(o: {
       '- When one sentence asks for two different jobs, build the first reducer first, then create_workflow and build the second in the new reducer.',
       '- Every tool call already narrates itself to Dad, and every add_step result already confirms the step: never call explain while building — use it only when Dad asks what something is.',
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
+      '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells Dad what it does in one plain sentence.',
     ].join('\n'),
     catalogSection(),
     workflowSection(o.workflow, o.problems),

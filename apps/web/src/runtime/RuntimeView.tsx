@@ -304,6 +304,12 @@ export default function RuntimeView({
         title={selectedStep?.title ?? selectedStepId ?? ''}
         open={selectedStepId !== undefined}
         onClose={handleCloseInspector}
+        code={
+          selectedStep?.type === 'code.transform' &&
+          typeof selectedStep.config['code'] === 'string'
+            ? (selectedStep.config['code'] as string)
+            : undefined
+        }
       />
     </RuntimeShell>
   );

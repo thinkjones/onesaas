@@ -107,6 +107,11 @@ export interface InspectorProps {
   title: string;
   open: boolean;
   onClose(): void;
+  /**
+   * The step's calculation code (code.transform only): shown read-only in a
+   * monospace block under the explanation. Undefined for every other step.
+   */
+  code?: string;
 }
 
 /**
@@ -121,7 +126,7 @@ export interface InspectorProps {
  * engine.resolveApproval) — shown as "Proposed (skipped)" with the proposal
  * nested below, so Dad sees what he skipped instead of a bare `proposed` key.
  */
-export default function Inspector({ stepRun, title, open, onClose }: InspectorProps) {
+export default function Inspector({ stepRun, title, open, onClose, code }: InspectorProps) {
   const [showDetails, setShowDetails] = useState(false);
 
   const skippedProposal =
@@ -154,6 +159,11 @@ export default function Inspector({ stepRun, title, open, onClose }: InspectorPr
           ) : (
             <div className="flex flex-col gap-5">
               {stepRun.why && <p className="text-xl font-medium">{stepRun.why}</p>}
+              {code !== undefined && (
+                <pre className="overflow-x-auto rounded-[var(--radius)] border border-border bg-muted p-3 font-mono text-sm break-words whitespace-pre-wrap">
+                  {code}
+                </pre>
+              )}
               {stepRun.error && (
                 <p role="alert" className="text-base text-destructive">
                   {stepRun.error}
