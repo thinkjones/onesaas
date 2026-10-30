@@ -2,10 +2,13 @@ import { serve } from '@hono/node-server';
 import { injectAppWebSocket } from './app.js';
 import { createServer } from './main.js';
 
-const port = 8787;
+const port = Number(process.env['PORT'] ?? 8787);
 const hostname = '127.0.0.1';
 
-const { app, engine } = createServer();
+// PORT/DB_FILE exist for the Playwright suite (apps/e2e), which boots an
+// isolated stack on alt ports with a fresh database. Defaults keep `pnpm dev`
+// exactly as before.
+const { app, engine } = createServer({ dbFile: process.env['DB_FILE'] });
 // Resume interrupted runs before listening. Lives here (not createServer) so
 // the composition root stays synchronous for tests; top-level await is fine
 // in this ESM entrypoint.

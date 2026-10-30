@@ -45,3 +45,6 @@ dist
 data/
 .env*
 .worktrees/
+
+# Playwright E2E output (videos, screenshots, temp DB)
+test-results/

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "test": "vitest run",
-    "typecheck": "pnpm -r --parallel typecheck"
+    "typecheck": "pnpm -r --parallel typecheck",
+    "e2e": "pnpm --filter @dad/e2e test",
+    "e2e:video": "pnpm --filter @dad/e2e test:video"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
