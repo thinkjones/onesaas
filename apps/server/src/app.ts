@@ -1,5 +1,7 @@
 import type { ServerType } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
+import type { Workflow } from '@dad/shared';
+import { catalog } from '@dad/shared';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -9,6 +11,9 @@ import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import type { TableStore } from './tables/store.js';
+import { createWorkflowOps, type OpResult } from './workflows/ops.js';
+import { checkWorkflow } from './workflows/validate.js';
 
 // Grows in later tasks (gateway, store, engine, bridge...). Kept as an
 // interface so call sites can add fields without changing createApp's shape.
@@ -39,6 +44,16 @@ export function createApp(deps: AppDeps): Hono {
   const bridge = deps.bridge as FullBridge | undefined;
   const repo = deps.repo as Repo | undefined;
   const engine = deps.engine as ReturnType<typeof createEngine> | undefined;
+  const tables = deps.tables as TableStore | undefined;
+  const onWorkflowChange = deps.onWorkflowChange as
+    | ((wf: Workflow, note: string, by: 'dad' | 'agent') => void)
+    | undefined;
+
+  // The canvas and the builder agent change workflows ONLY through these ops.
+  const ops =
+    repo && tables
+      ? createWorkflowOps({ repo, tables, catalog, onChange: onWorkflowChange })
+      : undefined;
 
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   injectors.set(app, injectWebSocket);
@@ -68,6 +83,98 @@ export function createApp(deps: AppDeps): Hono {
   app.get('/api/workflows', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     return c.json(repo.listWorkflows());
+  });
+
+  const createWorkflowBody = z.object({ name: z.string(), description: z.string() }).strict();
+
+  app.post('/api/workflows', async (c) => {
+    if (!repo || !ops) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid workflow body' }, 400);
+    }
+    const parsed = createWorkflowBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid workflow body' }, 400);
+    return c.json(ops.create(parsed.data));
+  });
+
+  app.get('/api/workflows/:id', (c) => {
+    if (!repo || !tables) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const wf = repo.getWorkflow(id);
+    if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    return c.json({ ...wf, problems: checkWorkflow(wf, tables) });
+  });
+
+  // The ops route takes positional args (the workflow id comes from the URL):
+  //   { op: 'move', args: ['save-k3j2a1', { x: 10, y: 20 }] }
+  // These schemas check shapes only; the ops do the semantic validation.
+  // A refused op is still a 200: the OpResult body carries the readable error.
+  const OP_ARGS: Record<string, z.ZodTypeAny> = {
+    setTrigger: z.tuple([
+      z.object({
+        type: z.string(),
+        config: z.record(z.string(), z.unknown()),
+        title: z.string().optional(),
+        summary: z.string().optional(),
+      }),
+    ]),
+    addStep: z.tuple([
+      z.object({
+        type: z.string(),
+        title: z.string(),
+        summary: z.string(),
+        config: z.record(z.string(), z.unknown()),
+        inputs: z.record(z.string(), z.string()),
+        after: z.string().optional(),
+      }),
+    ]),
+    updateStep: z.tuple([
+      z.string(),
+      z.object({
+        title: z.string().optional(),
+        summary: z.string().optional(),
+        config: z.record(z.string(), z.unknown()).optional(),
+        inputs: z.record(z.string(), z.string()).optional(),
+      }),
+    ]),
+    removeStep: z.tuple([z.string()]),
+    connect: z.tuple([
+      z.object({ from: z.string(), to: z.string(), when: z.string().optional() }),
+    ]),
+    disconnect: z.tuple([z.object({ from: z.string(), to: z.string() })]),
+    move: z.tuple([z.string(), z.object({ x: z.number(), y: z.number() })]),
+    setStatus: z.tuple([z.enum(['on', 'off'])]),
+    rename: z.tuple([
+      z.object({ name: z.string(), description: z.string().optional() }),
+    ]),
+  };
+  const OP_NAMES = new Set(Object.keys(OP_ARGS));
+  const opsBody = z.object({ op: z.string(), args: z.array(z.unknown()) }).strict();
+
+  app.post('/api/workflows/:id/ops', async (c) => {
+    if (!repo || !ops) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid op body' }, 400);
+    }
+    const parsed = opsBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid op body' }, 400);
+    const { op, args } = parsed.data;
+    if (op === 'create') {
+      return c.json({ error: 'Use POST /api/workflows to create a workflow' }, 400);
+    }
+    if (!OP_NAMES.has(op)) return c.json({ error: `Unknown op: ${op}` }, 400);
+    if (!OP_ARGS[op]!.safeParse(args).success) {
+      return c.json({ error: 'Invalid op body' }, 400);
+    }
+    const fn = (ops as unknown as Record<string, (...a: unknown[]) => OpResult>)[op]!;
+    return c.json(fn(id, ...args, { by: 'dad' }));
   });
 
   app.get('/api/runs', (c) => {

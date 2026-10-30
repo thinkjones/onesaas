@@ -81,6 +81,6 @@ export function createServer(opts?: { dbFile?: string }): {
   }
 
   // AppDeps grows with repo + engine; app.ts casts on read per existing style.
-  const app = createApp({ bridge, pairing, repo, engine });
+  const app = createApp({ bridge, pairing, repo, engine, tables });
   return { app, db, tables, repo, pairing, bridge, gateway, engine };
 }

@@ -3,12 +3,14 @@ import {
   Run,
   StepRun,
   Workflow,
+  catalog,
   type Run as RunType,
   type StepRun as StepRunType,
   type Workflow as WorkflowType,
 } from '@dad/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { nanoid } from 'nanoid';
 import type { Database } from './connection.js';
 import { runs, stepRuns, workflows } from './schema.js';
 
@@ -54,6 +56,8 @@ export interface Repo {
   saveWorkflow(wf: WorkflowType): WorkflowType;
   getWorkflow(id: string, version?: number): WorkflowType | undefined;
   listWorkflows(): WorkflowType[];
+  createWorkflow(o: { name: string; description: string }): WorkflowType;
+  updateLatestInPlace(wf: WorkflowType): WorkflowType;
   createRun(r: Omit<RunType, 'id' | 'startedAt'>): RunType;
   updateRun(id: string, patch: Partial<RunType>): void;
   upsertStepRun(sr: StepRunType): void;
@@ -142,6 +146,63 @@ export function createRepo(db: Database): Repo {
   }
 
   return {
+    // A blank chore reducer: status 'draft', a manual trigger, no steps.
+    // Trigger title/summary come from the catalog so the defaults stay in
+    // one place. The id is regenerated on the (essentially impossible)
+    // collision rather than version-bumping somebody else's workflow.
+    createWorkflow(o: { name: string; description: string }): WorkflowType {
+      const manual = catalog['trigger.manual']!;
+      let id = `wf-${nanoid(6)}`;
+      while (
+        orm.select().from(workflows).where(eq(workflows.id, id)).orderBy(desc(workflows.version)).get()
+      ) {
+        id = `wf-${nanoid(6)}`;
+      }
+      return insertWorkflowVersion(
+        Workflow.parse({
+          id,
+          name: o.name,
+          description: o.description,
+          version: 1,
+          status: 'draft',
+          trigger: {
+            id: 'trigger',
+            type: 'trigger.manual',
+            title: manual.title,
+            summary: manual.description,
+            config: {},
+            inputs: {},
+            position: { x: 0, y: 0 },
+          },
+          steps: [],
+          edges: [],
+        }),
+        1,
+      );
+    },
+
+    // Rewrites the latest version's row in place: the version number and
+    // created_at stay put. ONLY for position-only moves — everything else
+    // goes through saveWorkflow so the version history stays meaningful.
+    // The caller's version field is ignored (stamped with the latest).
+    updateLatestInPlace(wf: WorkflowType): WorkflowType {
+      const parsed = Workflow.parse(wf);
+      const latest = orm
+        .select()
+        .from(workflows)
+        .where(eq(workflows.id, parsed.id))
+        .orderBy(desc(workflows.version))
+        .get();
+      if (!latest) throw new Error(`Unknown workflow: ${parsed.id}`);
+      const stored: WorkflowType = { ...parsed, version: latest.version };
+      orm
+        .update(workflows)
+        .set({ def: JSON.stringify(stored), status: stored.status })
+        .where(and(eq(workflows.id, parsed.id), eq(workflows.version, latest.version)))
+        .run();
+      return stored;
+    },
+
     saveWorkflow(wf: WorkflowType): WorkflowType {
       // Validate first (throws on invalid incl. dup ids/dangling edges) and
       // store the parsed def, which also strips unknown keys.
