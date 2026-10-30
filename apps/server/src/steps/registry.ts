@@ -26,6 +26,9 @@ export interface StepContext {
   tables: TableStore;
   bridge: Bridge;
   signal: AbortSignal;
+  // True inside test runs ("Try it"): outside-world actions become previews.
+  // Optional so existing live callers keep working; undefined means live.
+  testMode?: boolean;
 }
 
 export interface ApprovalWait {
@@ -47,7 +50,15 @@ export interface StepResult {
 
 // Trust boundary: the engine validates config/input/output against the catalog
 // schemas before each executor runs. Executors cast instead of re-validating.
-export type Executor = (config: any, input: any, ctx: StepContext) => Promise<StepResult>;
+//
+// An executor is `run` (the callable itself) plus an optional `preview`: in
+// testMode the engine calls `preview` when present, otherwise `run`. Only
+// act/store executors (and approval.ask) define one — everything else runs
+// for real in tests.
+export type Executor = {
+  (config: any, input: any, ctx: StepContext): Promise<StepResult>;
+  preview?: (config: any, input: any, ctx: StepContext) => Promise<StepResult>;
+};
 
 export const executors: Record<string, Executor> = {
   'trigger.gmailButton': gmailButtonExecutor,

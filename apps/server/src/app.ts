@@ -1,14 +1,22 @@
 import type { ServerType } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
+import type { Workflow } from '@dad/shared';
+import { catalog } from '@dad/shared';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
+import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
 import type { Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import type { TestRunResult } from './engine/testRun.js';
+import type { TableStore } from './tables/store.js';
+import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
+import { checkWorkflow } from './workflows/validate.js';
 
 // Grows in later tasks (gateway, store, engine, bridge...). Kept as an
 // interface so call sites can add fields without changing createApp's shape.
@@ -39,6 +47,22 @@ export function createApp(deps: AppDeps): Hono {
   const bridge = deps.bridge as FullBridge | undefined;
   const repo = deps.repo as Repo | undefined;
   const engine = deps.engine as ReturnType<typeof createEngine> | undefined;
+  const tables = deps.tables as TableStore | undefined;
+  const onWorkflowChange = deps.onWorkflowChange as
+    | ((wf: Workflow, note: string, by: 'dad' | 'agent') => void)
+    | undefined;
+  const agent = deps.agent as BuilderAgent | undefined;
+  const agentEvents = deps.agentEvents as EventEmitter | undefined;
+  const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
+
+  // The canvas and the builder agent change workflows ONLY through these ops.
+  // The composition root shares ONE ops (so its onChange sees Dad's edits);
+  // direct createApp callers without one get a local instance as before.
+  const ops =
+    (deps.ops as WorkflowOps | undefined) ??
+    (repo && tables
+      ? createWorkflowOps({ repo, tables, catalog, onChange: onWorkflowChange })
+      : undefined);
 
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   injectors.set(app, injectWebSocket);
@@ -70,10 +94,177 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(repo.listWorkflows());
   });
 
+  const createWorkflowBody = z.object({ name: z.string(), description: z.string() }).strict();
+
+  app.post('/api/workflows', async (c) => {
+    if (!repo || !ops) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid workflow body' }, 400);
+    }
+    const parsed = createWorkflowBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid workflow body' }, 400);
+    return c.json(ops.create(parsed.data));
+  });
+
+  app.get('/api/workflows/:id', (c) => {
+    if (!repo || !tables) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const wf = repo.getWorkflow(id);
+    if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    return c.json({ ...wf, problems: checkWorkflow(wf, tables) });
+  });
+
+  // The ops route takes positional args (the workflow id comes from the URL):
+  //   { op: 'move', args: ['save-k3j2a1', { x: 10, y: 20 }] }
+  // These schemas check shapes only; the ops do the semantic validation.
+  // A refused op is still a 200: the OpResult body carries the readable error.
+  // Keyed by DispatchOp (every WorkflowOps method except create) so a schema
+  // key with no matching method — or a method with no schema — fails the
+  // build instead of throwing a TypeError at runtime on user input.
+  type DispatchOp = Exclude<keyof WorkflowOps, 'create'>;
+  const OP_ARGS: Record<DispatchOp, z.ZodTypeAny> = {
+    setTrigger: z.tuple([
+      z
+        .object({
+          type: z.string(),
+          config: z.record(z.string(), z.unknown()),
+          title: z.string().optional(),
+          summary: z.string().optional(),
+        })
+        .strict(),
+    ]),
+    addStep: z.tuple([
+      z
+        .object({
+          type: z.string(),
+          title: z.string(),
+          summary: z.string(),
+          config: z.record(z.string(), z.unknown()),
+          inputs: z.record(z.string(), z.string()),
+          after: z.string().optional(),
+        })
+        .strict(),
+    ]),
+    updateStep: z.tuple([
+      z.string(),
+      z
+        .object({
+          title: z.string().optional(),
+          summary: z.string().optional(),
+          config: z.record(z.string(), z.unknown()).optional(),
+          inputs: z.record(z.string(), z.string()).optional(),
+        })
+        .strict(),
+    ]),
+    removeStep: z.tuple([z.string()]),
+    connect: z.tuple([
+      z.object({ from: z.string(), to: z.string(), when: z.string().optional() }).strict(),
+    ]),
+    disconnect: z.tuple([z.object({ from: z.string(), to: z.string() }).strict()]),
+    move: z.tuple([z.string(), z.object({ x: z.number(), y: z.number() }).strict()]),
+    setStatus: z.tuple([z.enum(['on', 'off'])]),
+    rename: z.tuple([
+      z.object({ name: z.string(), description: z.string().optional() }).strict(),
+    ]),
+  };
+  const OP_NAMES: ReadonlySet<string> = new Set(Object.keys(OP_ARGS));
+  const isDispatchOp = (op: string): op is DispatchOp => OP_NAMES.has(op);
+  const opsBody = z.object({ op: z.string(), args: z.array(z.unknown()) }).strict();
+
+  app.post('/api/workflows/:id/ops', async (c) => {
+    if (!repo || !ops) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid op body' }, 400);
+    }
+    const parsed = opsBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid op body' }, 400);
+    const { op, args } = parsed.data;
+    if (op === 'create') {
+      return c.json({ error: 'Use POST /api/workflows to create a workflow' }, 400);
+    }
+    if (!isDispatchOp(op)) return c.json({ error: `Unknown op: ${op}` }, 400);
+    const argsParsed = OP_ARGS[op].safeParse(args);
+    if (!argsParsed.success) {
+      return c.json({ error: 'Invalid op body' }, 400);
+    }
+    // Indexed by DispatchOp, so the method must exist; the single `as` only
+    // unifies the per-op signatures into one variadic call shape.
+    const fn = ops[op] as (...a: unknown[]) => OpResult;
+    // Forward the validated args, not the raw body, so unknown keys can
+    // never ride through to the op even if a schema stops being strict.
+    const validatedArgs = argsParsed.data as unknown[];
+    return c.json(fn(id, ...validatedArgs, { by: 'dad' }));
+  });
+
+  const agentBody = z.object({ text: z.string().min(1) }).strict();
+
+  // One turn at a time per workflow: the 202 returns immediately and the turn
+  // runs in the background; a second send while busy is a 409.
+  app.post('/api/workflows/:id/agent', async (c) => {
+    if (!repo || !agent) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid agent body' }, 400);
+    }
+    const parsed = agentBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid agent body' }, 400);
+    // No await between the check and the send, so no second request can slip
+    // in: send sets the busy flag synchronously at call time.
+    if (agent.isBusy(id)) return c.json({ error: AGENT_BUSY_MESSAGE }, 409);
+    agent.send(id, parsed.data.text).catch((err) => {
+      console.error('[agent] turn failed:', err);
+    });
+    return c.json({}, 202);
+  });
+
+  app.get('/api/workflows/:id/agent', (c) => {
+    if (!repo || !agent) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    return c.json(agent.getTranscript(id));
+  });
+
   app.get('/api/runs', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     const workflowId = c.req.query('workflowId');
     return c.json(repo.listRuns(workflowId ? { workflowId } : {}));
+  });
+
+  // The canvas "Try it" button: runs the SHARED test runner (bound in main.ts,
+  // the same instance the builder agent uses — never a second construction)
+  // and returns the run, its steps, the sample flag, and the story lines, so
+  // the design screen needs no follow-up fetch for its story strip. The story
+  // is cheap (pure function over the run's own pinned version, same idiom as
+  // GET /api/runs/:id below). Runner failures (e.g. a trigger with no sample)
+  // are 500s with the message, matching the server's error idiom.
+  app.post('/api/workflows/:id/test', async (c) => {
+    if (!repo || !testRun) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    try {
+      const { run, steps, usedSample } = await testRun(id);
+      const workflow = repo.getWorkflow(run.workflowId, run.workflowVersion);
+      if (!workflow) return c.json({ error: `Unknown workflow: ${run.workflowId}` }, 500);
+      return c.json({
+        run,
+        steps,
+        usedSample,
+        story: buildRunStory(workflow, steps, { usedSample }),
+      });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
   });
 
   app.get('/api/runs/:id', (c) => {
@@ -85,7 +276,10 @@ export function createApp(deps: AppDeps): Hono {
     // definition the run actually executed.
     const workflow = repo.getWorkflow(got.run.workflowId, got.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${got.run.workflowId}` }, 500);
-    return c.json({ run: got.run, steps: got.steps, story: buildRunStory(workflow, got.steps), workflow });
+    // usedSample is read from the persisted run (M3 Task 6), so a refetch
+    // keeps the "sample email" prefix exactly as the test response had it.
+    const story = buildRunStory(workflow, got.steps, { usedSample: got.run.usedSample });
+    return c.json({ run: got.run, steps: got.steps, story, workflow });
   });
 
   // Strict: approve/skip take no text, edit requires it. A surplus field is a
@@ -132,7 +326,11 @@ export function createApp(deps: AppDeps): Hono {
     const full = repo.getRun(id)!;
     const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
-    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
+    return c.json({
+      run: full.run,
+      steps: full.steps,
+      story: buildRunStory(workflow, full.steps, { usedSample: full.run.usedSample }),
+    });
   });
 
   app.post('/api/runs/:id/steps/:stepId/retry', async (c) => {
@@ -152,7 +350,11 @@ export function createApp(deps: AppDeps): Hono {
     const full = repo.getRun(id)!;
     const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
-    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
+    return c.json({
+      run: full.run,
+      steps: full.steps,
+      story: buildRunStory(workflow, full.steps, { usedSample: full.run.usedSample }),
+    });
   });
 
   app.get('/api/events', (c) => {
@@ -165,7 +367,11 @@ export function createApp(deps: AppDeps): Hono {
         // the stream) instead of surfacing an unhandled rejection.
         void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
       };
+      const onAgent = (e: { type: 'agent'; workflowId: string; event: unknown }): void => {
+        void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
+      };
       engine.events.on('event', onEvent);
+      agentEvents?.on('event', onAgent);
       try {
         await new Promise<void>((resolve) => {
           if (c.req.raw.signal.aborted) return resolve();
@@ -175,6 +381,7 @@ export function createApp(deps: AppDeps): Hono {
         // Always unsubscribe: one leaked listener per SSE connection would
         // accumulate on the singleton engine's emitter.
         engine.events.off('event', onEvent);
+        agentEvents?.off('event', onAgent);
       }
     });
   });

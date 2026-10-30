@@ -17,3 +17,13 @@ export const askExecutor: Executor = async (config, input, _ctx) => {
     wait: { kind: 'approval', question, proposed: { text } },
   };
 };
+
+// Test-mode preview: auto-approves (no `wait`), so downstream steps run and
+// the test finishes with every step done instead of parking on approval.
+askExecutor.preview = async (_config, input, _ctx) => {
+  const text = (input as { text: string }).text;
+  return {
+    output: { text, decision: 'approved' },
+    why: "In a real run I'd ask you to check this first.",
+  };
+};

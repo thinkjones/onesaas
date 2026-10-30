@@ -86,6 +86,8 @@ function detailWith(wf: Workflow, steps: StepRun[]): RunDetail {
       workflowVersion: 1,
       triggerPayload: {},
       status: 'waiting',
+      kind: 'live',
+    usedSample: false,
       startedAt: '2026-10-28T10:42:00.000Z',
     },
     steps,

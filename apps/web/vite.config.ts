@@ -12,6 +12,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/api': 'http://127.0.0.1:8787' },
+    // E2E_API_URL exists for the Playwright suite (apps/e2e), which proxies
+    // to an isolated API on an alt port. Default keeps `pnpm dev` as before.
+    proxy: { '/api': process.env['E2E_API_URL'] ?? 'http://127.0.0.1:8787' },
   },
 })

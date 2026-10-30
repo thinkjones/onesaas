@@ -34,7 +34,7 @@ function freshRepo(): Repo {
   return createRepo(db);
 }
 
-function makeRunInput(workflowId = 'flow-1'): Omit<Run, 'id' | 'startedAt'> {
+function makeRunInput(workflowId = 'flow-1'): Omit<Run, 'id' | 'startedAt' | 'kind' | 'usedSample'> {
   return { workflowId, workflowVersion: 1, triggerPayload: { hello: 'world' }, status: 'running' };
 }
 

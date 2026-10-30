@@ -17,6 +17,8 @@ const SARAH_RUN: Run = {
     },
   },
   status: 'done',
+  kind: 'live',
+  usedSample: false,
   startedAt: '2026-10-28T10:42:00.000Z',
 };
 
@@ -26,6 +28,8 @@ const MANUAL_RUN: Run = {
   workflowVersion: 1,
   triggerPayload: { payload: { hello: 'world' } },
   status: 'running',
+  kind: 'live',
+  usedSample: false,
   startedAt: '2026-10-28T11:05:00.000Z',
 };
 

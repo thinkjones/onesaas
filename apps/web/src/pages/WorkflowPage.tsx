@@ -1,24 +1,58 @@
-import { SearchX, TriangleAlert } from 'lucide-react';
-import { useCallback } from 'react';
-import { useParams, useSearchParams } from 'react-router';
+import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import AgentPanel from '../agent/AgentPanel.tsx';
 import { useWorkflow } from '../api.ts';
+import AppButton from '../design/AppButton.tsx';
+import DesignView from '../design/DesignView.tsx';
 import EmptyState from '../design/EmptyState.tsx';
 import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
-import RuntimeView from '../runtime/RuntimeView.tsx';
+import RuntimeView, { type FixStepInfo } from '../runtime/RuntimeView.tsx';
 import ModeSwitch from '../shell/ModeSwitch.tsx';
 
+export interface WorkflowPageProps {
+  /**
+   * Test probe for the Task 7 seam: fired with the agent-input prefill text
+   * whenever "Fix this step" sets it. Task 7's panel reads `agentPrefill`
+   * state directly; this prop exists so tests can pin the handoff string.
+   */
+  onAgentPrefill?: (text: string) => void;
+}
+
 /**
- * The workflow screen: ModeSwitch on top, runtime view below. Param contract
- * (validated in runtime/params.ts, choices documented there):
- * - ?mode=: 'runtime' default; 'design' and garbage fall back to runtime (M3).
+ * The workflow screen: ModeSwitch on top, design or runtime view below. Param
+ * contract (validated in runtime/params.ts, choices documented there):
+ * - ?mode=: 'runtime' default, 'design' for the builder; garbage → runtime.
  * - unknown workflowId: useWorkflow resolves success+undefined → not-found.
- * - ?run=/?step=: validated in RuntimeView (newest run / closed inspector).
+ * - ?run=/?step=: validated in RuntimeView (newest run / closed inspector);
+ *   DesignView reuses ?step= for its selection.
+ *
+ * The helper panel sits on the right (380px, collapsible) in BOTH modes, at
+ * the same tree position so switching modes never remounts it mid-turn. "Fix
+ * this step" sets `agentPrefill` to `"<title>" stopped with: <error>. Can you
+ * help me fix it?` and opens design mode on the failed step; the panel
+ * consumes the state as its initial input (clearing it on consume and on
+ * send). The handoff string is pinned by WorkflowPage.test.tsx via the
+ * `onAgentPrefill` probe. HomePage's one-sentence start arrives as location
+ * state (`agentPrompt`), is captured once per mount as the opening send, and
+ * is consumed after the first send — both the page-held prompt AND the
+ * history entry (replaced without `agentPrompt`) — so collapse/reopen,
+ * refresh, and back-nav can never fire a duplicate turn.
  */
-export default function WorkflowPage() {
+export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
   const mode = parseModeParam(params.get('mode'));
+  const [agentPrefill, setAgentPrefill] = useState<string | undefined>();
+  // Collapsed state lives here per page-mount (no persistence yet).
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [initialPrompt, setInitialPrompt] = useState<string | undefined>(() => {
+    const state = location.state as { agentPrompt?: unknown } | null;
+    return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
+  });
 
   const handleModeChange = useCallback(
     (next: WorkflowMode) => {
@@ -30,6 +64,41 @@ export default function WorkflowPage() {
     },
     [setParams],
   );
+
+  const handleFixStep = useCallback(
+    (info: FixStepInfo) => {
+      const prefill = `"${info.title}" stopped with: ${info.error}. Can you help me fix it?`;
+      setAgentPrefill(prefill);
+      onAgentPrefill?.(prefill);
+      setParams((prev) => {
+        const updated = new URLSearchParams(prev);
+        updated.set('mode', 'design');
+        updated.set('step', info.stepId);
+        return updated;
+      });
+    },
+    [onAgentPrefill, setParams],
+  );
+
+  const handleRequestRuntime = useCallback(() => handleModeChange('runtime'), [handleModeChange]);
+
+  const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
+
+  // Consume-once for the opening prompt (mirrors the prefill seam, but the
+  // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
+  // it). history.state ALSO survives refresh/back-nav — and a page-level ref
+  // would not — so the history entry itself is replaced without `agentPrompt`
+  // (a same-path `replace`, so back still leaves the page). Any other state
+  // keys are preserved.
+  const handleInitialSent = useCallback(() => {
+    setInitialPrompt(undefined);
+    const state = location.state as Record<string, unknown> | null;
+    if (typeof state?.agentPrompt === 'string') {
+      const next = { ...state };
+      delete next.agentPrompt;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: next });
+    }
+  }, [location.pathname, location.search, location.state, navigate]);
 
   if (workflowQuery.isPending) return <p className="text-base">Loading chore reducer…</p>;
   if (workflowQuery.isError || !workflowQuery.data) {
@@ -55,8 +124,32 @@ export default function WorkflowPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">{workflowQuery.data.name}</h1>
       <ModeSwitch mode={mode} onModeChange={handleModeChange} />
-      {/* mode is always 'runtime' until M3 wires the design branch. */}
-      <RuntimeView workflowId={workflowQuery.data.id} />
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          {mode === 'design' ? (
+            <DesignView workflowId={workflowQuery.data.id} onRequestRuntime={handleRequestRuntime} />
+          ) : (
+            <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+          )}
+        </div>
+        {panelCollapsed ? (
+          <AppButton variant="outline" onClick={() => setPanelCollapsed(false)}>
+            <PanelRightOpen />
+            Show helper
+          </AppButton>
+        ) : (
+          <div className="w-[380px] shrink-0">
+            <AgentPanel
+              workflowId={workflowQuery.data.id}
+              prefill={agentPrefill}
+              onPrefillConsumed={handlePrefillConsumed}
+              initialPrompt={initialPrompt}
+              onInitialSent={handleInitialSent}
+              onCollapse={() => setPanelCollapsed(true)}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

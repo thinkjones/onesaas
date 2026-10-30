@@ -3,12 +3,14 @@ import {
   Run,
   StepRun,
   Workflow,
+  catalog,
   type Run as RunType,
   type StepRun as StepRunType,
   type Workflow as WorkflowType,
 } from '@dad/shared';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { nanoid } from 'nanoid';
 import type { Database } from './connection.js';
 import { runs, stepRuns, workflows } from './schema.js';
 
@@ -30,6 +32,8 @@ CREATE TABLE IF NOT EXISTS "runs" (
   "workflow_version" INTEGER NOT NULL,
   "trigger_payload" TEXT,
   "status" TEXT NOT NULL,
+  "kind" TEXT NOT NULL DEFAULT 'live',
+  "used_sample" INTEGER NOT NULL DEFAULT 0,
   "started_at" TEXT NOT NULL,
   "ended_at" TEXT
 );
@@ -54,11 +58,15 @@ export interface Repo {
   saveWorkflow(wf: WorkflowType): WorkflowType;
   getWorkflow(id: string, version?: number): WorkflowType | undefined;
   listWorkflows(): WorkflowType[];
-  createRun(r: Omit<RunType, 'id' | 'startedAt'>): RunType;
+  createWorkflow(o: { name: string; description: string }): WorkflowType;
+  updateLatestInPlace(wf: WorkflowType): WorkflowType;
+  createRun(
+    r: Omit<RunType, 'id' | 'startedAt' | 'kind' | 'usedSample'> & { kind?: RunType['kind'] },
+  ): RunType;
   updateRun(id: string, patch: Partial<RunType>): void;
   upsertStepRun(sr: StepRunType): void;
   getRun(id: string): { run: RunType; steps: StepRunType[] } | undefined;
-  listRuns(o?: { workflowId?: string; limit?: number }): RunType[];
+  listRuns(o?: { workflowId?: string; limit?: number; includeTests?: boolean }): RunType[];
 }
 
 /** Deterministic JSON with recursively sorted keys; key order never matters. */
@@ -99,6 +107,8 @@ function rowToRun(row: typeof runs.$inferSelect): RunType {
     workflowVersion: row.workflowVersion,
     triggerPayload: fromJson(row.triggerPayload),
     status: row.status,
+    kind: row.kind,
+    usedSample: row.usedSample === 1,
     startedAt: row.startedAt,
     ...(row.endedAt !== null ? { endedAt: row.endedAt } : {}),
   });
@@ -124,6 +134,18 @@ function rowToStepRun(row: typeof stepRuns.$inferSelect): StepRunType {
 
 export function createRepo(db: Database): Repo {
   db.exec(DDL);
+  // `kind` postdates existing app.db files, whose runs table was created
+  // without the column (CREATE TABLE IF NOT EXISTS never alters). Backfill
+  // in place; the 'live' default keeps every pre-existing run a live run.
+  const runCols = db.prepare(`PRAGMA table_info("runs")`).all() as { name: string }[];
+  if (!runCols.some((c) => c.name === 'kind')) {
+    db.exec(`ALTER TABLE "runs" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'live'`);
+  }
+  // Same story for `used_sample` (M3 Task 6): old DBs predate the column, and
+  // every pre-existing run keeps usedSample false via the 0 default.
+  if (!runCols.some((c) => c.name === 'used_sample')) {
+    db.exec(`ALTER TABLE "runs" ADD COLUMN "used_sample" INTEGER NOT NULL DEFAULT 0`);
+  }
   const orm = drizzle(db);
 
   function insertWorkflowVersion(parsed: WorkflowType, version: number): WorkflowType {
@@ -142,6 +164,63 @@ export function createRepo(db: Database): Repo {
   }
 
   return {
+    // A blank chore reducer: status 'draft', a manual trigger, no steps.
+    // Trigger title/summary come from the catalog so the defaults stay in
+    // one place. The id is regenerated on the (essentially impossible)
+    // collision rather than version-bumping somebody else's workflow.
+    createWorkflow(o: { name: string; description: string }): WorkflowType {
+      const manual = catalog['trigger.manual']!;
+      let id = `wf-${nanoid(6)}`;
+      while (
+        orm.select().from(workflows).where(eq(workflows.id, id)).orderBy(desc(workflows.version)).get()
+      ) {
+        id = `wf-${nanoid(6)}`;
+      }
+      return insertWorkflowVersion(
+        Workflow.parse({
+          id,
+          name: o.name,
+          description: o.description,
+          version: 1,
+          status: 'draft',
+          trigger: {
+            id: 'trigger',
+            type: 'trigger.manual',
+            title: manual.title,
+            summary: manual.description,
+            config: {},
+            inputs: {},
+            position: { x: 0, y: 0 },
+          },
+          steps: [],
+          edges: [],
+        }),
+        1,
+      );
+    },
+
+    // Rewrites the latest version's row in place: the version number and
+    // created_at stay put. ONLY for position-only moves — everything else
+    // goes through saveWorkflow so the version history stays meaningful.
+    // The caller's version field is ignored (stamped with the latest).
+    updateLatestInPlace(wf: WorkflowType): WorkflowType {
+      const parsed = Workflow.parse(wf);
+      const latest = orm
+        .select()
+        .from(workflows)
+        .where(eq(workflows.id, parsed.id))
+        .orderBy(desc(workflows.version))
+        .get();
+      if (!latest) throw new Error(`Unknown workflow: ${parsed.id}`);
+      const stored: WorkflowType = { ...parsed, version: latest.version };
+      orm
+        .update(workflows)
+        .set({ def: JSON.stringify(stored), status: stored.status })
+        .where(and(eq(workflows.id, parsed.id), eq(workflows.version, latest.version)))
+        .run();
+      return stored;
+    },
+
     saveWorkflow(wf: WorkflowType): WorkflowType {
       // Validate first (throws on invalid incl. dup ids/dangling edges) and
       // store the parsed def, which also strips unknown keys.
@@ -205,7 +284,9 @@ export function createRepo(db: Database): Repo {
       return latest.map((row) => parseWorkflowDef(row.def, row.id, row.version));
     },
 
-    createRun(r: Omit<RunType, 'id' | 'startedAt'>): RunType {
+    createRun(
+      r: Omit<RunType, 'id' | 'startedAt' | 'kind' | 'usedSample'> & { kind?: RunType['kind'] },
+    ): RunType {
       const run = Run.parse({ ...r, id: randomUUID(), startedAt: new Date().toISOString() });
       orm
         .insert(runs)
@@ -215,6 +296,9 @@ export function createRepo(db: Database): Repo {
           workflowVersion: run.workflowVersion,
           triggerPayload: toJson(run.triggerPayload),
           status: run.status,
+          kind: run.kind,
+          // Runs start un-sampled; testRun flips it via updateRun afterwards.
+          usedSample: 0,
           startedAt: run.startedAt,
           endedAt: run.endedAt ?? null,
         })
@@ -238,6 +322,8 @@ export function createRepo(db: Database): Repo {
           workflowVersion: merged.workflowVersion,
           triggerPayload: toJson(merged.triggerPayload),
           status: merged.status,
+          kind: merged.kind,
+          usedSample: merged.usedSample ? 1 : 0,
           startedAt: merged.startedAt,
           endedAt: merged.endedAt ?? null,
         })
@@ -296,14 +382,18 @@ export function createRepo(db: Database): Repo {
     },
 
     // Newest first (started_at DESC, rowid DESC breaks ties deterministically).
-    listRuns(o?: { workflowId?: string; limit?: number }): RunType[] {
+    // Test runs are hidden unless explicitly asked for (history shows live runs).
+    listRuns(o?: { workflowId?: string; limit?: number; includeTests?: boolean }): RunType[] {
       if (o?.limit !== undefined) {
         if (typeof o.limit !== 'number' || !Number.isInteger(o.limit) || o.limit < 0) {
           throw new Error(`Invalid limit: ${o.limit}`);
         }
         if (o.limit === 0) return [];
       }
-      const where = o?.workflowId !== undefined ? eq(runs.workflowId, o.workflowId) : undefined;
+      const conds = [];
+      if (o?.workflowId !== undefined) conds.push(eq(runs.workflowId, o.workflowId));
+      if (o?.includeTests !== true) conds.push(ne(runs.kind, 'test'));
+      const where = conds.length === 0 ? undefined : and(...conds);
       const order = [desc(runs.startedAt), sql`"rowid" DESC`] as const;
       if (o?.limit !== undefined) {
         return orm

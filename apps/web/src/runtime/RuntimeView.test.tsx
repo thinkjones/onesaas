@@ -45,6 +45,8 @@ function makeRun(id: string, fromName: string): Run {
     workflowVersion: 1,
     triggerPayload: { email: { fromName } },
     status: 'done',
+    kind: 'live',
+    usedSample: false,
     startedAt: '2026-10-28T10:42:00.000Z',
   };
 }

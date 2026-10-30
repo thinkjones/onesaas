@@ -22,8 +22,17 @@ export const runs = sqliteTable('runs', {
   workflowVersion: integer('workflow_version').notNull(),
   triggerPayload: text('trigger_payload'),
   status: text('status').notNull(),
+  kind: text('kind').notNull().default('live'),
+  usedSample: integer('used_sample').notNull().default(0),
   startedAt: text('started_at').notNull(),
   endedAt: text('ended_at'),
+});
+
+export const conversations = sqliteTable('conversations', {
+  workflowId: text('workflow_id').notNull().primaryKey(),
+  messages: text('messages').notNull(),
+  transcript: text('transcript').notNull().default('[]'),
+  updatedAt: text('updated_at').notNull(),
 });
 
 export const stepRuns = sqliteTable('step_runs', {

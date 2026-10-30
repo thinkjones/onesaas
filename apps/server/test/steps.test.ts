@@ -445,3 +445,52 @@ test('ai.extract config schema requires at least one field', () => {
     catalog['ai.extract']!.configSchema.parse({ instructions: 'x', fields: [] }),
   ).toThrow();
 });
+
+test('table.upsert preview fails like live for a bad keyField', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  const ctx = makeCtx(gateway);
+  const config = { table: 'customers', keyField: 'nickname' };
+  const input = { row: { name: 'Sarah', nickname: 'S' } };
+  await expect(executors['table.upsert']!(config, input, ctx)).rejects.toThrow(
+    'Unknown column: nickname for table customers',
+  );
+  await expect(executors['table.upsert']!.preview!(config, input, ctx)).rejects.toThrow(
+    'Unknown column: nickname for table customers',
+  );
+  // The failed preview still never wrote.
+  expect(ctx.tables.query('customers')).toEqual([]);
+});
+
+test('table.upsert preview fails like live for an invalid email key', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  const ctx = makeCtx(gateway);
+  const config = { table: 'customers', keyField: 'email' };
+  const input = { row: { name: 'Sarah', email: 'not-an-email' } };
+  await expect(executors['table.upsert']!(config, input, ctx)).rejects.toThrow(
+    'Invalid email for column email',
+  );
+  await expect(executors['table.upsert']!.preview!(config, input, ctx)).rejects.toThrow(
+    'Invalid email for column email',
+  );
+  expect(ctx.tables.query('customers')).toEqual([]);
+});
+
+test('table.upsert preview still reports would-create/would-update for a valid key', async () => {
+  const { gateway } = gatewayWithResponses(0, '{}');
+  const ctx = makeCtx(gateway);
+  const config = { table: 'customers', keyField: 'name' };
+  const input = { row: { name: 'Sarah', email: 'sarah@x.com' } };
+  const create = await executors['table.upsert']!.preview!(config, input, ctx);
+  expect(create.output).toEqual({ id: 0, created: true });
+  expect(create.why).toBe(
+    'In a real run I would save Sarah to customers because the name is new.',
+  );
+  const seeded = ctx.tables.insert('customers', { name: 'Sarah', email: 'sarah@x.com' });
+  const update = await executors['table.upsert']!.preview!(config, input, ctx);
+  expect(update.output).toEqual({ id: seeded.id, created: false });
+  expect(update.why).toBe(
+    'In a real run I would update Sarah in customers because we already know this name.',
+  );
+  // Previews read but never wrote: still exactly the seeded row.
+  expect(ctx.tables.query('customers')).toHaveLength(1);
+});
