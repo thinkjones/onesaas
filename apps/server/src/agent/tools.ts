@@ -79,6 +79,7 @@ function toAgentTool(impl: ToolImpl): AgentTool {
         return out;
       } catch (err) {
         const msg = errMsg(err);
+        console.error(`[builder-tools] ${impl.name} threw unexpectedly:`, err);
         ctx.emit({ type: 'activity', text: `Something went wrong: ${msg}` });
         return { result: `Problem: ${msg}` };
       }
@@ -286,12 +287,20 @@ const proposePlan: ToolImpl = {
         schema: planSchema,
         schemaName: 'plan',
       });
-      steps = refined.data.steps;
-      edges = refined.data.edges.map((e) => ({
-        from: e.from,
-        to: e.to,
-        ...(e.when ? { when: e.when } : {}),
-      }));
+      // The planner's shape-checked output is not trusted: re-validate it
+      // exactly like a direct proposal (dup keys, unknown types, dangling
+      // edges) so a bad refinement never becomes a corrupt ghost graph.
+      const revalidated = asProposedPlan({
+        steps: refined.data.steps,
+        edges: refined.data.edges.map((e) => ({
+          from: e.from,
+          to: e.to,
+          ...(e.when ? { when: e.when } : {}),
+        })),
+      });
+      if ('error' in revalidated) return problem(revalidated.error);
+      steps = revalidated.steps;
+      edges = revalidated.edges;
     }
     emitPlan(ctx, steps, edges);
     return {
@@ -677,7 +686,7 @@ const queryRuns: ToolImpl = {
     if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 0) {
       return problem(`Invalid limit: ${args?.limit}`);
     }
-    const runs = ctx.repo.listRuns({ includeTests: true });
+    const runs = ctx.repo.listRuns({ includeTests: true, workflowId: ctx.workflowId });
     const hits: string[] = [];
     for (const r of runs) {
       if (hits.length >= limit) break;

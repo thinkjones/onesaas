@@ -542,3 +542,128 @@ test('system prompt states the tool-call cap and the exact tangled message', () 
   });
   expect(prompt).toContain("I've got a bit tangled. Can you tell me which part to focus on?");
 });
+
+test('unexpected tool throw still returns Problem and is logged server-side', async () => {
+  const { ctx } = setup();
+  ctx.testRun = vi.fn().mockRejectedValueOnce(new Error('kaboom-unexpected'));
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const out = await tool('test_run').run({}, ctx);
+    expect(out.result.startsWith('Problem:')).toBe(true);
+    expect(out.result).toContain('kaboom-unexpected');
+    expect(errSpy).toHaveBeenCalled();
+  } finally {
+    errSpy.mockRestore();
+  }
+});
+
+test('propose_plan re-validates refined plans: dup keys, unknown types, dangling edges', async () => {
+  const cases: [string, unknown, string][] = [
+    [
+      'duplicate keys',
+      {
+        steps: [
+          { key: 'd', type: 'ai.write', title: 'One', summary: 'First.' },
+          { key: 'd', type: 'ai.write', title: 'Two', summary: 'Second.' },
+        ],
+        edges: [],
+      },
+      'Two planned steps share the key "d".',
+    ],
+    [
+      'unknown type',
+      {
+        steps: [{ key: 'x', type: 'nope.fake', title: 'Bogus', summary: 'Bogus.' }],
+        edges: [],
+      },
+      'I don\'t know how to do "nope.fake" yet.',
+    ],
+    [
+      'dangling edge',
+      {
+        steps: [{ key: 'a', type: 'ai.write', title: 'Only', summary: 'Only.' }],
+        edges: [{ from: 'a', to: 'ghost', when: null }],
+      },
+      'Unknown step key in plan edges: "ghost".',
+    ],
+  ];
+  for (const [name, refined, snippet] of cases) {
+    const { ctx, events, chatJson } = setup();
+    chatJson.mockResolvedValueOnce({ data: refined, model: 'muse-wonder-1.0' });
+    const out = await tool('propose_plan').run(
+      { steps: planSteps(7), edges: planEdges(7) },
+      ctx,
+    );
+    expect(out.result.startsWith('Problem:'), name).toBe(true);
+    expect(out.result, name).toContain(snippet);
+    expect(events.filter((e) => e.type === 'plan'), name).toHaveLength(0);
+  }
+});
+
+test('query_runs returns only runs for its own workflow', async () => {
+  const { ctx, repo } = setup();
+  const wfId = ctx.workflowId;
+  const withStep = repo.saveWorkflow({
+    ...repo.getWorkflow(wfId)!,
+    steps: [
+      {
+        id: 's1',
+        type: 'ai.write',
+        title: 'Write reply',
+        summary: 'Write.',
+        config: {},
+        inputs: {},
+        position: { x: 0, y: 0 },
+      },
+    ],
+    edges: [{ from: 'trigger', to: 's1' }],
+  });
+  const ownRun = repo.createRun({
+    workflowId: wfId,
+    workflowVersion: withStep.version,
+    triggerPayload: {},
+    status: 'done',
+  });
+  repo.upsertStepRun({
+    id: 'sr-own',
+    runId: ownRun.id,
+    stepId: 's1',
+    status: 'done',
+    output: { text: 'hi' },
+    why: 'Wrote a warm reply.',
+    startedAt: new Date().toISOString(),
+  });
+  const other = repo.createWorkflow({ name: 'Other chore', description: 'Other.' });
+  const otherRun = repo.createRun({
+    workflowId: other.id,
+    workflowVersion: other.version,
+    triggerPayload: {},
+    status: 'done',
+  });
+  repo.upsertStepRun({
+    id: 'sr-other',
+    runId: otherRun.id,
+    stepId: 'trigger',
+    status: 'done',
+    output: {},
+    why: 'Other workflow ran.',
+    startedAt: new Date().toISOString(),
+  });
+  const out = await tool('query_runs').run({}, ctx);
+  expect(out.result).toContain(ownRun.id);
+  expect(out.result).not.toContain(otherRun.id);
+});
+
+test('system prompt asks one question per call, max 3 per request', () => {
+  const { repo, tables } = setup();
+  const wf = repo.getWorkflow(ctxWorkflowId(repo))!;
+  const prompt = buildSystemPrompt({
+    business: { timezone: 'America/Chicago' },
+    workflow: wf,
+    problems: [],
+    tables: tables.listTables(),
+  });
+  expect(prompt).not.toContain('3 questions at a time');
+  expect(prompt).toContain('one question');
+  expect(prompt).toContain('at most 3 questions per request');
+});
