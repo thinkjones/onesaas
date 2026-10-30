@@ -63,6 +63,32 @@ export const queryExecutor: Executor = async (config, input, ctx) => {
   // so it lives here too. Keep the two in sync.
   const limit = (config.limit as number | undefined) ?? 20;
   const where = input.where as Record<string, unknown> | undefined;
+  // FAIL CLOSED on unknown where keys: the store ignores them (symmetric with
+  // writes), so a typo would silently return unfiltered rows as success.
+  // Operator-shaped values are rejected too: only exact matches are supported.
+  const def = ctx.tables.getTable(table);
+  if (def && where !== undefined && where !== null && typeof where === 'object') {
+    const names = new Set([
+      ...def.columns.map((c) => c.name),
+      'id',
+      'created_at',
+      'updated_at',
+    ]);
+    for (const [rawKey, value] of Object.entries(where)) {
+      let col: string;
+      try {
+        col = sanitiseName(rawKey);
+      } catch {
+        throw new Error(`Unknown column: ${rawKey} for table ${table}`);
+      }
+      if (!names.has(col)) {
+        throw new Error(`Unknown column: ${rawKey} for table ${table}`);
+      }
+      if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+        throw new Error(`Invalid where value for column ${rawKey}: operators are not supported`);
+      }
+    }
+  }
   const rows = ctx.tables.query(table, {
     ...(where !== undefined ? { where } : {}),
     limit,

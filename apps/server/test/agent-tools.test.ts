@@ -442,6 +442,26 @@ test('query_table returns rows as compact lines', async () => {
   expect(unknown.result.startsWith('Problem:')).toBe(true);
 });
 
+test('query_table with an unknown where key returns a Problem instead of every row', async () => {
+  const { ctx, tables } = setup();
+  tables.insert('customers', { name: 'Priya', email: 'priya@acme.co' });
+  const out = await tool('query_table').run(
+    { table: 'customers', where: { emial: 'priya@acme.co' } },
+    ctx,
+  );
+  expect(out.result).toBe('Problem: Unknown column: emial for table customers');
+});
+
+test('query_table with an operator-shaped where value returns a Problem', async () => {
+  const { ctx, tables } = setup();
+  tables.insert('customers', { name: 'Priya', email: 'priya@acme.co' });
+  const out = await tool('query_table').run(
+    { table: 'customers', where: { email: { $ne: 'sam@x.com' } } },
+    ctx,
+  );
+  expect(out.result.startsWith('Problem: Invalid where value for column email')).toBe(true);
+});
+
 test('query_runs finds runs whose story contains the text', async () => {
   const { ctx, repo } = setup();
   const wfId = ctx.workflowId;

@@ -5,7 +5,7 @@ import type { createEngine } from '../engine/engine.js';
 import { buildRunStory } from '../engine/story.js';
 import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, ToolSpec } from '../models/gateway.js';
-import type { TableStore } from '../tables/store.js';
+import { sanitiseName, type TableStore } from '../tables/store.js';
 import type { OpResult, WorkflowOps } from '../workflows/ops.js';
 import { checkWorkflow } from '../workflows/validate.js';
 
@@ -653,6 +653,32 @@ const queryTable: ToolImpl = {
     const table = args?.table as unknown;
     if (typeof table !== 'string' || table === '') return problem('Say which list to read.');
     try {
+      // FAIL CLOSED on unknown where keys, mirroring the table.query executor:
+      // the store ignores them, so a typo would silently return unfiltered rows.
+      const def = ctx.tables.getTable(table);
+      const where = args?.where as Record<string, unknown> | undefined;
+      if (def && where !== undefined && where !== null && typeof where === 'object') {
+        const names = new Set([
+          ...def.columns.map((c) => c.name),
+          'id',
+          'created_at',
+          'updated_at',
+        ]);
+        for (const [rawKey, value] of Object.entries(where)) {
+          let col: string;
+          try {
+            col = sanitiseName(rawKey);
+          } catch {
+            return problem(`Unknown column: ${rawKey} for table ${table}`);
+          }
+          if (!names.has(col)) {
+            return problem(`Unknown column: ${rawKey} for table ${table}`);
+          }
+          if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+            return problem(`Invalid where value for column ${rawKey}: operators are not supported`);
+          }
+        }
+      }
       const rows = ctx.tables.query(table, {
         ...(args?.where !== undefined ? { where: args.where } : {}),
         ...(args?.limit !== undefined ? { limit: args.limit } : {}),

@@ -386,6 +386,44 @@ test('re-connecting with a when replaces the edge instead of refusing', () => {
   ).toEqual([{ from: aId, to: bId, when: `${aId}.choice == 'no'` }]);
 });
 
+test('connect refuses an empty or whitespace-only when instead of stripping it', () => {
+  const { repo, ops } = setup();
+  const wf = ops.create({ name: 'Sort', description: 'A sort.' });
+  const a = ops.addStep(wf.id, {
+    type: 'ai.classify',
+    title: 'Sort',
+    summary: 'Sort.',
+    config: { question: 'Booking?' },
+    inputs: {},
+    after: 'trigger',
+  });
+  expect(a.ok).toBe(true);
+  if (!a.ok) return;
+  const aId = a.workflow.steps[0]!.id;
+  const b = ops.addStep(wf.id, {
+    type: 'ai.write',
+    title: 'Write',
+    summary: 'Write.',
+    config: { ...WRITE_CONFIG },
+    inputs: {},
+  });
+  expect(b.ok).toBe(true);
+  if (!b.ok) return;
+  const bId = b.workflow.steps.find((s) => s.title === 'Write')!.id;
+  expect(ops.connect(wf.id, { from: aId, to: bId, when: '' })).toEqual({
+    ok: false,
+    error: 'Condition cannot be empty.',
+  });
+  expect(ops.connect(wf.id, { from: aId, to: bId, when: '   ' })).toEqual({
+    ok: false,
+    error: 'Condition cannot be empty.',
+  });
+  // No edge was added by the refused connects.
+  expect(repo.getWorkflow(wf.id)!.edges).not.toContainEqual(
+    expect.objectContaining({ from: aId, to: bId }),
+  );
+});
+
 test('disconnect removes the edge; a missing edge is refused', () => {
   const { ops } = setup();
   const res = ops.disconnect('flow-1', { from: 'extract', to: 'save' });

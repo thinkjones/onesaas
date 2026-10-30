@@ -136,6 +136,26 @@ test('table.query applies the default limit of 20', async () => {
   expect((wide.output as { count: number }).count).toBe(21);
 });
 
+test('table.query with an unknown where key fails instead of returning every row', async () => {
+  const ctx = makeCtx();
+  await executors['table.insert']!({ table: 'bookings' }, { row: { ...BOB } }, ctx);
+  await expect(
+    executors['table.query']!({ table: 'bookings' }, { where: { statuus: 'confirmed' } }, ctx),
+  ).rejects.toThrow('Unknown column: statuus for table bookings');
+});
+
+test('table.query with an operator-shaped where value fails instead of matching nothing', async () => {
+  const ctx = makeCtx();
+  await executors['table.insert']!({ table: 'bookings' }, { row: { ...BOB } }, ctx);
+  await expect(
+    executors['table.query']!(
+      { table: 'bookings' },
+      { where: { status: { $ne: 'confirmed' } } },
+      ctx,
+    ),
+  ).rejects.toThrow('Invalid where value for column status');
+});
+
 test('table.insert and table.query catalog entries have the spec shapes', () => {
   expect(catalog['table.insert']!.kind).toBe('store');
   expect(catalog['table.query']!.kind).toBe('fetch');

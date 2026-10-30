@@ -227,6 +227,11 @@ export function createWorkflowOps(d: {
       if (!wf) return { ok: false, error: `Unknown workflow: ${id}` };
       if (!hasStep(wf, o.from)) return { ok: false, error: `Unknown step: ${o.from}` };
       if (!hasStep(wf, o.to)) return { ok: false, error: `Unknown step: ${o.to}` };
+      // An empty condition would be falsy-stripped below (and at runtime an
+      // empty expression is false-on-error): refuse it loudly instead.
+      if (o.when !== undefined && o.when.trim() === '') {
+        return { ok: false, error: 'Condition cannot be empty.' };
+      }
       const existing = wf.edges.some((e) => e.from === o.from && e.to === o.to);
       if (existing && o.when === undefined) {
         return {

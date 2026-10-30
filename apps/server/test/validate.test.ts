@@ -188,6 +188,110 @@ test('self-loop is a cycle', () => {
   ]);
 });
 
+function sortFlow(o: {
+  classifyConfig?: Record<string, unknown>;
+  when?: string;
+  classifyId?: string;
+}): WorkflowType {
+  const classifyId = o.classifyId ?? 'sort';
+  return Workflow.parse({
+    id: 'sort-flow',
+    name: 'Sort flow',
+    description: 'A sort.',
+    version: 1,
+    status: 'draft',
+    trigger: {
+      id: 'trigger',
+      type: 'trigger.manual',
+      title: 'Manual trigger',
+      summary: 'Runs when you start it by hand.',
+      config: {},
+      inputs: {},
+      position: { x: 0, y: 0 },
+    },
+    steps: [
+      {
+        id: classifyId,
+        type: 'ai.classify',
+        title: 'Sort',
+        summary: 'Sort.',
+        config: { question: 'Booking?', ...(o.classifyConfig ?? {}) },
+        inputs: {},
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: 'write',
+        type: 'ai.write',
+        title: 'Write reply',
+        summary: 'Write.',
+        config: { instructions: 'Write a short reply.', tone: 'friendly' },
+        inputs: {},
+        position: { x: 0, y: 0 },
+      },
+    ],
+    edges: [
+      { from: 'trigger', to: classifyId },
+      {
+        from: classifyId,
+        to: 'write',
+        ...(o.when !== undefined ? { when: o.when } : {}),
+      },
+    ],
+  });
+}
+
+test('a condition naming a removed sort step blocks activation on the target', () => {
+  const { tables } = setup();
+  // Classify was removed and re-added under a new id; the old when survives.
+  const wf = sortFlow({ when: 'sort-abc123.choice == \'yes\'', classifyId: 'sort-xyz789' });
+  expect(checkWorkflow(wf, tables)).toEqual([
+    { stepId: 'write', problem: 'The condition refers to a removed step ("sort-abc123").' },
+  ]);
+});
+
+test('a condition naming a step that does not sort blocks activation on the target', () => {
+  const { tables } = setup();
+  const wf = sortFlow({ when: 'write.choice == \'yes\'' });
+  expect(checkWorkflow(wf, tables)).toEqual([
+    {
+      stepId: 'write',
+      problem: 'The condition refers to "Write reply", which doesn\'t sort into options.',
+    },
+  ]);
+});
+
+test('a condition using a renamed-away option blocks activation on the target', () => {
+  const { tables } = setup();
+  const wf = sortFlow({
+    classifyConfig: { options: ['yeah', 'nah'] },
+    when: 'sort.choice == \'yes\'',
+  });
+  expect(checkWorkflow(wf, tables)).toEqual([
+    {
+      stepId: 'write',
+      problem: 'The condition uses "yes", which "Sort" no longer offers.',
+    },
+  ]);
+});
+
+test('a valid sort condition and general jexl pass validation', () => {
+  const { tables } = setup();
+  expect(checkWorkflow(sortFlow({ when: 'sort.choice == \'yes\'' }), tables)).toEqual([]);
+  expect(
+    checkWorkflow(
+      sortFlow({ when: 'freebusy.free == false' }),
+      tables,
+    ),
+  ).toEqual([]);
+  // Explicit custom options: a current option passes too.
+  expect(
+    checkWorkflow(
+      sortFlow({ classifyConfig: { options: ['yeah', 'nah'] }, when: 'sort.choice == \'nah\'' }),
+      tables,
+    ),
+  ).toEqual([]);
+});
+
 test('every catalog step has a one-sentence description; triggers have samples', () => {
   for (const def of Object.values(catalog)) {
     expect(typeof def.description).toBe('string');
