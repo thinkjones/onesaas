@@ -41,6 +41,17 @@ export function registerEmailTrigger(d: {
   const markSeen = db.prepare(
     'INSERT OR IGNORE INTO "seen_emails" ("thread_id", "seen_at") VALUES (?, ?)',
   );
+  const unsee = db.prepare('DELETE FROM "seen_emails" WHERE "thread_id" = ?');
+  // Transient failure (triage exception, start rejection) frees the thread so
+  // a reload retries it; only a definitive verdict keeps the dedupe row. The
+  // delete itself is best-effort — a failing store already skips fan-out.
+  const freeForRetry = (threadId: string): void => {
+    try {
+      unsee.run(threadId);
+    } catch {
+      // The store is failing; the row stays and the email is skipped.
+    }
+  };
 
   bridge.onTrigger((t) => {
     if (t.triggerType !== 'email') return;
@@ -102,15 +113,25 @@ export function registerEmailTrigger(d: {
           customer = triaged.data.isCustomer;
         } catch (err) {
           // A failed triage skips this workflow's run (other workflows still
-          // get their own triage). Surfaced on stderr, not swallowed silent.
+          // get their own triage). Surfaced on stderr, not swallowed silent,
+          // and the thread is freed: a transient outage must retry on reload.
+          // Only a definitive isCustomer:false verdict keeps the dedupe row.
           console.error('[email-trigger] triage failed:', err);
+          freeForRetry(threadId);
           continue;
         }
         if (!customer) continue;
       }
-      // Like gmailButton: start() rejections are infra failures (the engine
-      // already failed the run row), so they are swallowed, never unhandled.
-      await engine.start(wf.id, { email }).catch(() => {});
+      // Unlike gmailButton (whose run row always exists because start() got
+      // that far), engine.start can throw BEFORE any run row exists — Unknown
+      // workflow (deleted between list and start), Unknown step type — so a
+      // rejection is logged loud and the thread is freed for a reload retry.
+      try {
+        await engine.start(wf.id, { email });
+      } catch (err) {
+        console.error('[email-trigger] start failed:', err);
+        freeForRetry(threadId);
+      }
     }
   }
 }

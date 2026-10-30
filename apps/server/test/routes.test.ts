@@ -150,3 +150,23 @@ test('PUT /api/settings rejects empty and missing timezones', async () => {
     expect(res.status).toBe(400);
   }
 });
+
+test('PUT /api/settings rejects whitespace-only and non-IANA zones and persists nothing', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const put = (timezone: string) =>
+    app.request('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timezone }),
+    });
+  // Whitespace-only, unknown zones, and padded-but-real zones all 400: every
+  // one of these throws in Intl.DateTimeFormat and would poison AI steps.
+  for (const tz of ['   ', '\t', 'Mars/Olympus', 'America/New_York ', ' Europe/Paris']) {
+    expect((await put(tz)).status).toBe(400);
+  }
+  expect(await (await app.request('/api/settings')).json()).toEqual({ timezone: null });
+  // A valid zone still stores, and a later invalid PUT leaves it untouched.
+  expect((await put('Europe/Paris')).status).toBe(200);
+  expect((await put('Mars/Olympus')).status).toBe(400);
+  expect(await (await app.request('/api/settings')).json()).toEqual({ timezone: 'Europe/Paris' });
+});

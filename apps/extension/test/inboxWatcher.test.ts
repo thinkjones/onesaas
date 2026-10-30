@@ -51,6 +51,36 @@ test('re-rendering the same rows (tbody replaced) emits nothing new', async () =
   }
 });
 
+test('the observer survives tbody replacement (Gmail SPA navigation)', async () => {
+  const emit = vi.fn();
+  const stop = watchInbox(document, emit);
+  try {
+    expect(emit).toHaveBeenCalledTimes(2);
+    // Opening a thread and returning swaps the whole tbody element; an
+    // observer anchored to the old node would stay on the detached node and
+    // never see this arrival.
+    const table = document.querySelector('table')!;
+    const fresh = document.createElement('tbody');
+    fresh.innerHTML = `<tr class="zA zE" data-legacy-thread-id="inboxthread0020">
+      <td class="yX"><span class="yP" email="new@example.com">New Person</span></td>
+      <td class="y6"><span class="bog">Fresh arrival</span><span class="y2">after tbody swap</span></td>
+    </tr>`;
+    table.replaceChild(fresh, table.querySelector('tbody')!);
+    await flush();
+    await flush();
+    expect(emit).toHaveBeenCalledTimes(3);
+    expect(emit).toHaveBeenLastCalledWith({
+      threadId: 'inboxthread0020',
+      from: 'new@example.com',
+      fromName: 'New Person',
+      subject: 'Fresh arrival',
+      snippet: 'after tbody swap',
+    });
+  } finally {
+    stop();
+  }
+});
+
 test('read rows (no zE) are never emitted', () => {
   const emit = vi.fn();
   const stop = watchInbox(document, emit);

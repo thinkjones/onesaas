@@ -108,8 +108,18 @@ export function createApp(deps: AppDeps): Hono {
     }
     const parsed = settingsBody.safeParse(raw);
     if (!parsed.success) return c.json({ error: 'Invalid settings body' }, 400);
-    setTimezone(parsed.data.timezone);
-    return c.json({ timezone: parsed.data.timezone });
+    // The zone feeds Intl.DateTimeFormat in every AI step: a bad value throws
+    // on each run until overwritten, so reject (whitespace-only, non-IANA)
+    // with 400 and never persist invalid.
+    const tz = parsed.data.timezone;
+    if (tz.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    } catch {
+      return c.json({ error: 'Invalid settings body' }, 400);
+    }
+    setTimezone(tz);
+    return c.json({ timezone: tz });
   });
 
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the

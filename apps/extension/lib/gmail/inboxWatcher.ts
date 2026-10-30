@@ -67,11 +67,12 @@ export function watchInbox(
   scan();
 
   const observer = new MutationObserver(() => scan());
-  observer.observe(
-    doc.querySelector(SELECTORS.inboxList) ??
-      doc.querySelector(SELECTORS.mainRoot) ??
-      doc.body,
-    { childList: true, subtree: true },
-  );
+  // Observe the stable main pane, NOT the list tbody: opening a thread and
+  // returning replaces the tbody element, which would leave the observer on a
+  // detached node (same root as gmail.content.ts).
+  observer.observe(doc.querySelector(SELECTORS.mainRoot) ?? doc.body, {
+    childList: true,
+    subtree: true,
+  });
   return () => observer.disconnect();
 }

@@ -34,7 +34,7 @@ export const SELECTORS = {
   mainRoot: 'div[role="main"]',
   /** Unread inbox rows (read rows are tr.zA WITHOUT zE). */
   inboxRow: 'tr.zA.zE',
-  /** Inbox list container; the watcher observes this (falls back to mainRoot). */
+  /** Inbox list container (the watcher observes mainRoot, which survives list re-renders). */
   inboxList: 'div[role="main"] table tbody',
   /** Sender chip inside a list row: text is the name, `email` attr the address. */
   inboxSender: 'span.yP',

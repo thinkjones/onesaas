@@ -93,6 +93,14 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+function seenCount(db: Database, threadId: string): number {
+  return (
+    db.prepare('SELECT COUNT(*) AS n FROM "seen_emails" WHERE "thread_id" = ?').get(threadId) as {
+      n: number;
+    }
+  ).n;
+}
+
 test('the same threadId twice starts one run (seen_emails dedupe)', async () => {
   const email = makeEmail();
   h.fireTrigger(makeTrigger(email));
@@ -114,12 +122,38 @@ test('concurrent duplicates still start one run (INSERT OR IGNORE race safety)',
   expect(h.start).toHaveBeenCalledTimes(1);
 });
 
-test('triage returning isCustomer:false starts no run', async () => {
+test('triage returning isCustomer:false starts no run and keeps the dedupe row', async () => {
   const local = setup([makeWorkflow()], false);
-  local.fireTrigger(makeTrigger(makeEmail()));
+  local.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-not-customer' })));
   await vi.waitFor(() => expect(local.chatJson).toHaveBeenCalledTimes(1));
   await new Promise((r) => setTimeout(r, 50));
   expect(local.start).not.toHaveBeenCalled();
+  // A definitive verdict keeps the row: re-firing dedupes without re-triaging.
+  expect(seenCount(local.db, 'thread-not-customer')).toBe(1);
+  local.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-not-customer' })));
+  await new Promise((r) => setTimeout(r, 50));
+  expect(local.chatJson).toHaveBeenCalledTimes(1);
+  expect(local.start).not.toHaveBeenCalled();
+});
+
+test('a triage exception surfaces on stderr and frees the thread for retry', async () => {
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    h.chatJson.mockRejectedValueOnce(new Error('model down'));
+    h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-triage-bad' })));
+    await vi.waitFor(() => expect(h.chatJson).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(seenCount(h.db, 'thread-triage-bad')).toBe(0));
+    expect(errSpy).toHaveBeenCalled();
+    expect(h.start).not.toHaveBeenCalled();
+    // A later reload retries the same thread and starts the run.
+    h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-triage-bad' })));
+    await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(1));
+    expect(h.start).toHaveBeenCalledWith('flow-email', {
+      email: makeEmail({ threadId: 'thread-triage-bad' }),
+    });
+  } finally {
+    errSpy.mockRestore();
+  }
 });
 
 test('triage runs on role triage with the {isCustomer, why} schema', async () => {
@@ -216,12 +250,27 @@ test('a gmailButton trigger message is ignored', async () => {
   expect(h.chatJson).not.toHaveBeenCalled();
 });
 
-test('a rejected start does not break later emails', async () => {
-  h.start.mockRejectedValueOnce(new Error('infra down'));
-  h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-bad' })));
-  await new Promise((r) => setTimeout(r, 50));
-  h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-good' })));
-  await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(2));
+test('a rejected start logs the error, frees the thread for retry, and does not break later emails', async () => {
+  const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    h.start.mockRejectedValueOnce(new Error('infra down'));
+    h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-bad' })));
+    await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(1));
+    // Surfaced on stderr, not swallowed silent...
+    expect(errSpy).toHaveBeenCalled();
+    // ...and the dedupe row is removed so a reload retries the thread.
+    await vi.waitFor(() => expect(seenCount(h.db, 'thread-bad')).toBe(0));
+    h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-bad' })));
+    await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(2));
+    expect(h.start).toHaveBeenNthCalledWith(2, 'flow-email', {
+      email: makeEmail({ threadId: 'thread-bad' }),
+    });
+    // Later emails still flow.
+    h.fireTrigger(makeTrigger(makeEmail({ threadId: 'thread-good' })));
+    await vi.waitFor(() => expect(h.start).toHaveBeenCalledTimes(3));
+  } finally {
+    errSpy.mockRestore();
+  }
 });
 
 test('an old DB without seen_emails gains the table and the trigger works', async () => {
