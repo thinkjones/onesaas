@@ -1,4 +1,11 @@
 import { ServerToExtension } from '@dad/shared';
+import {
+  SITE_START_URL,
+  SITE_TAB_QUERY,
+  createTabManager,
+  type TabsLike,
+  type WorkerSite,
+} from './tabs.js';
 
 /**
  * Injectable seams so background.test.ts drives this module with hand mocks
@@ -37,8 +44,7 @@ export interface BrowserLike {
       remove(key: string): Promise<void>;
     };
   };
-  tabs: {
-    query(query: { url: string }): Promise<Array<{ id?: number }>>;
+  tabs: TabsLike & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sendMessage(tabId: number, message: any): Promise<unknown>;
   };
@@ -73,6 +79,31 @@ export const GMAIL_TAB_QUERY = 'https://mail.google.com/*';
 export const NO_GMAIL_TAB = 'I need Gmail open in Chrome to do this.';
 export const TAB_SILENT = "Gmail tab didn't answer.";
 export const NO_ANSWER = 'No answer from the app. Is it running?';
+
+/** Per-site "need it open" messages — SAME strings as the server's. */
+export const NO_TAB: Record<WorkerSite, string> = {
+  gmail: NO_GMAIL_TAB,
+  calendar: 'I need Google Calendar open in Chrome to do this.',
+  meta: 'I need Meta Business Suite open in Chrome to do this.',
+};
+
+/** Per-site "tab didn't answer" messages. */
+export const TAB_SILENT_FOR: Record<WorkerSite, string> = {
+  gmail: TAB_SILENT,
+  calendar: "Calendar tab didn't answer.",
+  meta: "Meta tab didn't answer.",
+};
+
+/**
+ * Codes the background ever posts. Tab replies carrying anything else are
+ * sent WITHOUT a code: the server's protocol parser would reject the whole
+ * result and the call would hang to its timeout.
+ */
+const VALID_CODES: readonly string[] = ['SELECTOR_MISSING', 'NOT_OPEN', 'TIMEOUT', 'HANDOFF'];
+
+function validCode(code: unknown): string | undefined {
+  return typeof code === 'string' && VALID_CODES.includes(code) ? code : undefined;
+}
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const PING_EVERY_MS = 20000;
@@ -112,6 +143,8 @@ export function createBackground(deps: {
   // instead of waiting for a push that already happened. An empty list is a
   // valid state and CLEARS stale buttons (e.g. workflows deleted server-side).
   let lastButtons: Array<{ workflowId: string; label: string }> = [];
+
+  const tabManager = createTabManager({ tabs: browser.tabs });
 
   const isOpen = () => socket !== null && socket.readyState === WebSocket.OPEN;
 
@@ -274,7 +307,7 @@ export function createBackground(deps: {
         break;
       }
       case 'cmd': {
-        await handleCmd(msg.id, msg.action, msg.input);
+        await handleCmd(msg.id, msg.site, msg.action, msg.input, msg.tab ?? 'active');
         break;
       }
       case 'pong': {
@@ -283,24 +316,121 @@ export function createBackground(deps: {
     }
   }
 
-  async function handleCmd(id: string, action: string, input: unknown): Promise<void> {
-    const ids = await gmailTabs();
-    if (ids.length === 0) {
-      send({ type: 'result', id, ok: false, error: NO_GMAIL_TAB });
+  /** Post a failure result, omitting `code` entirely when there is none. */
+  function fail(id: string, error: string, code?: string): void {
+    if (code === undefined) send({ type: 'result', id, ok: false, error });
+    else send({ type: 'result', id, ok: false, error, code });
+  }
+
+  function errMessage(err: unknown, fallback: string): string {
+    return err instanceof Error ? err.message : fallback;
+  }
+
+  /** Extract a postable code from a TabError (or anything carrying one). */
+  function errCode(err: unknown): string | undefined {
+    return validCode((err as { code?: unknown } | null | undefined)?.code);
+  }
+
+  /**
+   * Resolve a visible tab for `site`: focus the first open one, else open the
+   * site's start page and wait for it to load. Returns null when no tab could
+   * be produced; throws the tab layer's TabError (TIMEOUT) when an opened tab
+   * never finishes loading. Gmail keeps the exact M1 behavior (first tab, no
+   * focusing, never opens one) so its results stay byte-identical.
+   */
+  async function resolveActiveTab(site: WorkerSite): Promise<number | null> {
+    if (site === 'gmail') {
+      const ids = await gmailTabs();
+      return ids[0] ?? null;
+    }
+    let ids: number[];
+    try {
+      const found = await browser.tabs.query({ url: SITE_TAB_QUERY[site] });
+      ids = found.map((t) => t.id).filter((id): id is number => typeof id === 'number');
+    } catch {
+      return null;
+    }
+    if (ids.length > 0) {
+      try {
+        await browser.tabs.update(ids[0]!, { active: true });
+      } catch {
+        // Closed between query and focus; sendMessage reports it below.
+      }
+      return ids[0]!;
+    }
+    let created: { id?: number };
+    try {
+      created = await browser.tabs.create({ url: SITE_START_URL[site], active: true });
+    } catch {
+      return null;
+    }
+    if (typeof created.id !== 'number') return null;
+    await tabManager.waitForComplete(created.id);
+    return created.id;
+  }
+
+  async function handleCmd(
+    id: string,
+    site: WorkerSite,
+    action: string,
+    input: unknown,
+    tab: 'worker' | 'active',
+  ): Promise<void> {
+    // Background-handled action: never touches a content script.
+    if (action === 'screenshot') {
+      await handleScreenshot(id, site, input);
+      return;
+    }
+    // The gmail+active path is M1-frozen: background-generated errors stay
+    // codeless and byte-identical. Every other path carries codes; tab-reply
+    // codes are forwarded on ALL paths (codeless replies stay identical).
+    const legacy = site === 'gmail' && tab === 'active';
+    let tabId: number;
+    try {
+      const resolved =
+        tab === 'worker' ? await tabManager.getWorkerTab(site) : await resolveActiveTab(site);
+      if (resolved === null) {
+        fail(id, NO_TAB[site], legacy ? undefined : 'NOT_OPEN');
+        return;
+      }
+      tabId = resolved;
+    } catch (err) {
+      fail(id, errMessage(err, TAB_SILENT_FOR[site]), legacy ? undefined : errCode(err));
       return;
     }
     let reply: unknown;
     try {
-      reply = await browser.tabs.sendMessage(ids[0]!, { type: 'cmd', id, action, input });
+      reply = await browser.tabs.sendMessage(tabId, { type: 'cmd', id, action, input });
     } catch {
-      send({ type: 'result', id, ok: false, error: TAB_SILENT });
+      fail(id, TAB_SILENT_FOR[site], legacy ? undefined : 'TIMEOUT');
       return;
     }
     const r = (reply ?? {}) as Record<string, unknown>;
     if (r['ok'] === true) send({ type: 'result', id, ok: true, output: r['output'] });
     else if (r['ok'] === false)
-      send({ type: 'result', id, ok: false, error: String(r['error'] ?? TAB_SILENT) });
-    else send({ type: 'result', id, ok: false, error: TAB_SILENT });
+      fail(id, String(r['error'] ?? TAB_SILENT_FOR[site]), validCode(r['code']));
+    else fail(id, TAB_SILENT_FOR[site], legacy ? undefined : 'TIMEOUT');
+  }
+
+  /**
+   * Screenshot action (input `{ site, url? }`, handled in the background, not
+   * by a content script). Navigates the site's worker tab to `url` when given,
+   * captures it, and returns `{ dataUrl }`. Failures carry TIMEOUT (the tab
+   * restore already happened inside captureScreenshot).
+   */
+  async function handleScreenshot(id: string, cmdSite: WorkerSite, input: unknown): Promise<void> {
+    const inp = (input ?? {}) as Record<string, unknown>;
+    const asked = inp['site'];
+    const site: WorkerSite =
+      asked === 'gmail' || asked === 'calendar' || asked === 'meta' ? asked : cmdSite;
+    const rawUrl = inp['url'];
+    const url = typeof rawUrl === 'string' ? rawUrl : undefined;
+    try {
+      const { dataUrl } = await tabManager.captureScreenshot(site, url);
+      send({ type: 'result', id, ok: true, output: { dataUrl } });
+    } catch (err) {
+      fail(id, errMessage(err, 'Screenshot failed.'), errCode(err) ?? 'TIMEOUT');
+    }
   }
 
   async function pair(code: string): Promise<{ ok: true } | { ok: false; error: string }> {

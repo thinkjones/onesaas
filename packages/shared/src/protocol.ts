@@ -23,19 +23,35 @@ export type ReadyMessage = z.infer<typeof ReadyMessage>;
 export const ButtonsMessage = z.object({ type: z.literal('buttons'), items: z.array(WorkflowButton) });
 export type ButtonsMessage = z.infer<typeof ButtonsMessage>;
 
+export const CmdTab = z.enum(['worker', 'active']);
+export type CmdTab = z.infer<typeof CmdTab>;
+
 export const CmdMessage = z.object({
   type: z.literal('cmd'),
   id: z.string(),
   site: z.enum(['gmail', 'calendar', 'meta']),
   action: z.string(),
   input: z.unknown(),
+  // Optional so old senders still parse; missing means 'active'.
+  tab: CmdTab.optional(),
 });
 export type CmdMessage = z.infer<typeof CmdMessage>;
 
 export const ResultOkMessage = z.object({ type: z.literal('result'), id: z.string(), ok: z.literal(true), output: z.unknown() });
 export type ResultOkMessage = z.infer<typeof ResultOkMessage>;
 
-export const ResultErrMessage = z.object({ type: z.literal('result'), id: z.string(), ok: z.literal(false), error: z.string() });
+// Machine-readable failure reason. Optional so old senders still parse;
+// the human-readable `error` string is always present and unchanged.
+export const ResultErrorCode = z.enum(['SELECTOR_MISSING', 'NOT_OPEN', 'TIMEOUT', 'HANDOFF']);
+export type ResultErrorCode = z.infer<typeof ResultErrorCode>;
+
+export const ResultErrMessage = z.object({
+  type: z.literal('result'),
+  id: z.string(),
+  ok: z.literal(false),
+  error: z.string(),
+  code: ResultErrorCode.optional(),
+});
 export type ResultErrMessage = z.infer<typeof ResultErrMessage>;
 
 // The two result variants share `type: 'result'`, so they form their own

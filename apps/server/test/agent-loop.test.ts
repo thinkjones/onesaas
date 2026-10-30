@@ -29,6 +29,9 @@ function scriptedGateway(script: ScriptStep[]): { gateway: Gateway; calls: ChatT
     chatJson: async () => {
       throw new Error('chatJson not scripted');
     },
+    visionJson: async () => {
+      throw new Error('visionJson not scripted');
+    },
     chatTools: async (o: ChatToolsOptions): Promise<ChatToolsResult> => {
       calls.push(o);
       const raw = script[i];
@@ -317,6 +320,7 @@ test('a mid-turn noteManualChange lands in the live conversation and the next mo
     );
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       n += 1;
@@ -389,6 +393,7 @@ test('a direct second send while busy rejects with the busy error', async () => 
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -426,6 +431,7 @@ test('busy is per workflow: two workflows can think at once', async () => {
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -462,6 +468,7 @@ test('a second POST while busy returns 409', async () => {
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const gated: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
@@ -594,6 +601,7 @@ test("a gateway failure on the first call still persists Dad's message and ends 
   const s = setup([]);
   const boom: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: async (o: ChatToolsOptions) => {
       s.calls.push(o);
       throw new Error('model exploded');
@@ -632,6 +640,7 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
   let n = 0;
   const flaky: Gateway = {
     chatJson: s.gateway.chatJson,
+    visionJson: s.gateway.visionJson,
     chatTools: async (o: ChatToolsOptions) => {
       n += 1;
       s.calls.push(o);
