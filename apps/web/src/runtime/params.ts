@@ -3,15 +3,11 @@ import type { Run, Workflow } from '@dad/shared';
 export type WorkflowMode = 'design' | 'runtime';
 
 /**
- * ?mode= validation. Defaults to 'runtime'; 'design' falls back to 'runtime'
- * until M3 ships it (the switch renders Design disabled, so only a crafted
- * link can carry mode=design — showing the runtime view beats a dead page).
- * Unknown values (mode=garbage) also fall back to 'runtime'.
+ * ?mode= validation. Defaults to 'runtime'; unknown values (mode=garbage)
+ * also fall back to 'runtime'.
  */
 export function parseModeParam(raw: string | null): WorkflowMode {
-  // Until M3 every value — 'design', 'runtime', garbage, absent — lands on
-  // runtime; the branch stays explicit so M3 flips one line.
-  if (raw === 'design') return 'runtime'; // M3: return 'design'
+  if (raw === 'design') return 'design';
   return 'runtime';
 }
 

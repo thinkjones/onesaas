@@ -10,6 +10,7 @@ function run(id: string): Run {
     triggerPayload: {},
     status: 'done',
     kind: 'live',
+    usedSample: false,
     startedAt: '2026-10-28T10:42:00.000Z',
   };
 }
@@ -84,8 +85,8 @@ describe('parseModeParam', () => {
     expect(parseModeParam('runtime')).toBe('runtime');
   });
 
-  test('design falls back to runtime until M3 ships it', () => {
-    expect(parseModeParam('design')).toBe('runtime');
+  test('design selects the design branch', () => {
+    expect(parseModeParam('design')).toBe('design');
   });
 
   test('garbage falls back to runtime', () => {

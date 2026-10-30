@@ -69,7 +69,20 @@ function proposedTextOf(output: unknown): string {
  * the inspector closes (and ?step= clears) only around the canvas, via the
  * sheet's close.
  */
-export default function RuntimeView({ workflowId }: { workflowId: string }) {
+export interface FixStepInfo {
+  stepId: string;
+  title: string;
+  error: string;
+}
+
+export default function RuntimeView({
+  workflowId,
+  onFixStep,
+}: {
+  workflowId: string;
+  /** "Fix this step" handoff: WorkflowPage opens design mode on the step. */
+  onFixStep?: (info: FixStepInfo) => void;
+}) {
   const [params, setParams] = useSearchParams();
   const runsQuery = useRuns(workflowId);
   const runs = runsQuery.data;
@@ -186,17 +199,27 @@ export default function RuntimeView({ workflowId }: { workflowId: string }) {
         );
       }
       if (stepRun?.status === 'failed') {
+        const error = stepRun.error ?? 'Something went wrong.';
+        const failed =
+          stepId === detail.workflow.trigger.id
+            ? detail.workflow.trigger
+            : detail.workflow.steps.find((s) => s.id === stepId);
         return (
           <FailureCard
             runId={runId}
             stepId={stepId}
-            error={stepRun.error ?? 'Something went wrong.'}
+            error={error}
+            onFixStep={
+              onFixStep
+                ? () => onFixStep({ stepId, title: failed?.title ?? stepId, error })
+                : undefined
+            }
           />
         );
       }
       return undefined;
     },
-    [detail, runId, stepRuns],
+    [detail, runId, stepRuns, onFixStep],
   );
 
   if (runsQuery.isPending) return <p className="text-base">Loading runs…</p>;

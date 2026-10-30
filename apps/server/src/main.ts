@@ -116,7 +116,9 @@ export function createServer(opts?: { dbFile?: string }): {
     });
   }
 
-  // AppDeps grows with the shared ops + agent; app.ts casts on read per style.
-  const app = createApp({ bridge, pairing, repo, engine, tables, ops, agent, agentEvents });
+  // AppDeps grows with the shared ops + agent + test runner; app.ts casts on
+  // read per style. The test route reuses this SAME runner (never a second
+  // construction with divergent deps).
+  const app = createApp({ bridge, pairing, repo, engine, tables, ops, agent, agentEvents, testRun });
   return { app, db, tables, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun };
 }

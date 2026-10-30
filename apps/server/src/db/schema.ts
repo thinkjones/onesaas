@@ -23,6 +23,7 @@ export const runs = sqliteTable('runs', {
   triggerPayload: text('trigger_payload'),
   status: text('status').notNull(),
   kind: text('kind').notNull().default('live'),
+  usedSample: integer('used_sample').notNull().default(0),
   startedAt: text('started_at').notNull(),
   endedAt: text('ended_at'),
 });

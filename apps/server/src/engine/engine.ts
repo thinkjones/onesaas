@@ -403,6 +403,11 @@ export function createEngine(d: {
 
   async function resolveApproval(runId: string, stepId: string, d: ApprovalDecision): Promise<Run> {
     const loaded = repo.getRun(runId);
+    // Test runs are throwaway previews: they never wait on Dad (approval.ask
+    // auto-approves in test mode), so continuing one here is always a bug.
+    if (loaded && loaded.run.kind === 'test') {
+      throw new Error('A test run can\'t be approved. Press "Try it" again for a fresh run.');
+    }
     const sr = loaded?.steps.find((s) => s.stepId === stepId);
     // Covers double-resolve too: the second call sees done/skipped, not waiting.
     if (!sr || sr.status !== 'waiting') throw new Error("That step isn't waiting for you.");
@@ -466,6 +471,12 @@ export function createEngine(d: {
   // of a failed step is still `pending` and runs naturally in this pass.
   async function retryStep(runId: string, stepId: string): Promise<Run> {
     const loaded = repo.getRun(runId);
+    // A retry re-runs through the LIVE engine (testMode off): refusing here
+    // keeps a preview from ever resuming as a real run. Fresh previews come
+    // from "Try it", which starts a new test run.
+    if (loaded && loaded.run.kind === 'test') {
+      throw new Error('A test run can\'t be retried. Press "Try it" again for a fresh run.');
+    }
     const sr = loaded?.steps.find((s) => s.stepId === stepId);
     if (!sr || sr.status !== 'failed') {
       throw new Error('Only a step that needs a look can be retried.');
@@ -490,13 +501,17 @@ export function createEngine(d: {
   // steps are side-effect-free, so they reset to fresh `pending` and the run
   // continues. An unknown kind fails safe (treated as act). A running run
   // with no running steps (crash between waves) just continues; the end rule
-  // settles it. Runs are processed in listRuns order (newest-first); runs are
+  // settles it. Stranded TEST runs never resume (the boot engine is live, so
+  // continuing one would run a preview for real): they fail terminally
+  // instead. Runs are processed in listRuns order (newest-first); runs are
   // independent so the order is irrelevant. NOTE: listRuns loads every run;
   // fine for a single household's history, revisit with pagination if the
   // runs table ever grows unbounded. Boot-only contract: no live run shares
   // the repo while this runs, so no locking against concurrent writers.
   async function resumeAll(): Promise<void> {
-    const runs = repo.listRuns();
+    // includeTests: stranded test runs are invisible to the default listing
+    // but still need their terminal failed-mark below.
+    const runs = repo.listRuns({ includeTests: true });
     for (const r of runs) {
       if (r.status !== 'running' && r.status !== 'waiting') continue;
       if (r.status === 'waiting') continue;
@@ -516,8 +531,32 @@ export function createEngine(d: {
   async function resumeOneRunning(runId: string): Promise<void> {
     const loaded = repo.getRun(runId);
     const r = loaded?.run;
-    const wf = r ? repo.getWorkflow(r.workflowId, r.workflowVersion) : undefined;
-    if (!loaded || !r || !wf) return;
+    if (!loaded || !r) return;
+    // A crash-stranded test run must NOT resume: this engine runs live, so a
+    // continueRun here would execute a preview for real. Fail it terminally
+    // (running steps marked, run failed with endedAt) and launch nothing.
+    if (r.kind === 'test') {
+      for (const sr of loaded.steps) {
+        if (sr.status !== 'running') continue;
+        const failed: StepRun = {
+          id: sr.id,
+          runId: r.id,
+          stepId: sr.stepId,
+          status: 'failed',
+          input: sr.input,
+          error: 'This test run was interrupted before it finished.',
+          startedAt: sr.startedAt,
+        };
+        repo.upsertStepRun(failed);
+        emit({ type: 'step', stepRun: failed });
+      }
+      repo.updateRun(r.id, { status: 'failed', endedAt: new Date().toISOString() });
+      emit({ type: 'run', run: repo.getRun(r.id)!.run });
+      console.warn(`resumeAll: failing stranded test run ${r.id} without resuming it`);
+      return;
+    }
+    const wf = repo.getWorkflow(r.workflowId, r.workflowVersion);
+    if (!wf) return;
     const kindById = new Map<string, string>([
       [wf.trigger.id, catalog[wf.trigger.type]?.kind ?? ''],
     ]);

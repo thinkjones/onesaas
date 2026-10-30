@@ -13,6 +13,7 @@ import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import type { TestRunResult } from './engine/testRun.js';
 import type { TableStore } from './tables/store.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
@@ -52,6 +53,7 @@ export function createApp(deps: AppDeps): Hono {
     | undefined;
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
+  const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -239,6 +241,32 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(repo.listRuns(workflowId ? { workflowId } : {}));
   });
 
+  // The canvas "Try it" button: runs the SHARED test runner (bound in main.ts,
+  // the same instance the builder agent uses — never a second construction)
+  // and returns the run, its steps, the sample flag, and the story lines, so
+  // the design screen needs no follow-up fetch for its story strip. The story
+  // is cheap (pure function over the run's own pinned version, same idiom as
+  // GET /api/runs/:id below). Runner failures (e.g. a trigger with no sample)
+  // are 500s with the message, matching the server's error idiom.
+  app.post('/api/workflows/:id/test', async (c) => {
+    if (!repo || !testRun) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    if (!repo.getWorkflow(id)) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    try {
+      const { run, steps, usedSample } = await testRun(id);
+      const workflow = repo.getWorkflow(run.workflowId, run.workflowVersion);
+      if (!workflow) return c.json({ error: `Unknown workflow: ${run.workflowId}` }, 500);
+      return c.json({
+        run,
+        steps,
+        usedSample,
+        story: buildRunStory(workflow, steps, { usedSample }),
+      });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
   app.get('/api/runs/:id', (c) => {
     if (!repo) return c.json({ error: 'Server not configured' }, 500);
     const id = c.req.param('id');
@@ -248,7 +276,10 @@ export function createApp(deps: AppDeps): Hono {
     // definition the run actually executed.
     const workflow = repo.getWorkflow(got.run.workflowId, got.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${got.run.workflowId}` }, 500);
-    return c.json({ run: got.run, steps: got.steps, story: buildRunStory(workflow, got.steps), workflow });
+    // usedSample is read from the persisted run (M3 Task 6), so a refetch
+    // keeps the "sample email" prefix exactly as the test response had it.
+    const story = buildRunStory(workflow, got.steps, { usedSample: got.run.usedSample });
+    return c.json({ run: got.run, steps: got.steps, story, workflow });
   });
 
   // Strict: approve/skip take no text, edit requires it. A surplus field is a
@@ -295,7 +326,11 @@ export function createApp(deps: AppDeps): Hono {
     const full = repo.getRun(id)!;
     const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
-    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
+    return c.json({
+      run: full.run,
+      steps: full.steps,
+      story: buildRunStory(workflow, full.steps, { usedSample: full.run.usedSample }),
+    });
   });
 
   app.post('/api/runs/:id/steps/:stepId/retry', async (c) => {
@@ -315,7 +350,11 @@ export function createApp(deps: AppDeps): Hono {
     const full = repo.getRun(id)!;
     const workflow = repo.getWorkflow(full.run.workflowId, full.run.workflowVersion);
     if (!workflow) return c.json({ error: `Unknown workflow: ${full.run.workflowId}` }, 500);
-    return c.json({ run: full.run, steps: full.steps, story: buildRunStory(workflow, full.steps) });
+    return c.json({
+      run: full.run,
+      steps: full.steps,
+      story: buildRunStory(workflow, full.steps, { usedSample: full.run.usedSample }),
+    });
   });
 
   app.get('/api/events', (c) => {

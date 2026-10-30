@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS "runs" (
   "trigger_payload" TEXT,
   "status" TEXT NOT NULL,
   "kind" TEXT NOT NULL DEFAULT 'live',
+  "used_sample" INTEGER NOT NULL DEFAULT 0,
   "started_at" TEXT NOT NULL,
   "ended_at" TEXT
 );
@@ -59,7 +60,9 @@ export interface Repo {
   listWorkflows(): WorkflowType[];
   createWorkflow(o: { name: string; description: string }): WorkflowType;
   updateLatestInPlace(wf: WorkflowType): WorkflowType;
-  createRun(r: Omit<RunType, 'id' | 'startedAt' | 'kind'> & { kind?: RunType['kind'] }): RunType;
+  createRun(
+    r: Omit<RunType, 'id' | 'startedAt' | 'kind' | 'usedSample'> & { kind?: RunType['kind'] },
+  ): RunType;
   updateRun(id: string, patch: Partial<RunType>): void;
   upsertStepRun(sr: StepRunType): void;
   getRun(id: string): { run: RunType; steps: StepRunType[] } | undefined;
@@ -105,6 +108,7 @@ function rowToRun(row: typeof runs.$inferSelect): RunType {
     triggerPayload: fromJson(row.triggerPayload),
     status: row.status,
     kind: row.kind,
+    usedSample: row.usedSample === 1,
     startedAt: row.startedAt,
     ...(row.endedAt !== null ? { endedAt: row.endedAt } : {}),
   });
@@ -136,6 +140,11 @@ export function createRepo(db: Database): Repo {
   const runCols = db.prepare(`PRAGMA table_info("runs")`).all() as { name: string }[];
   if (!runCols.some((c) => c.name === 'kind')) {
     db.exec(`ALTER TABLE "runs" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'live'`);
+  }
+  // Same story for `used_sample` (M3 Task 6): old DBs predate the column, and
+  // every pre-existing run keeps usedSample false via the 0 default.
+  if (!runCols.some((c) => c.name === 'used_sample')) {
+    db.exec(`ALTER TABLE "runs" ADD COLUMN "used_sample" INTEGER NOT NULL DEFAULT 0`);
   }
   const orm = drizzle(db);
 
@@ -275,7 +284,9 @@ export function createRepo(db: Database): Repo {
       return latest.map((row) => parseWorkflowDef(row.def, row.id, row.version));
     },
 
-    createRun(r: Omit<RunType, 'id' | 'startedAt' | 'kind'> & { kind?: RunType['kind'] }): RunType {
+    createRun(
+      r: Omit<RunType, 'id' | 'startedAt' | 'kind' | 'usedSample'> & { kind?: RunType['kind'] },
+    ): RunType {
       const run = Run.parse({ ...r, id: randomUUID(), startedAt: new Date().toISOString() });
       orm
         .insert(runs)
@@ -286,6 +297,8 @@ export function createRepo(db: Database): Repo {
           triggerPayload: toJson(run.triggerPayload),
           status: run.status,
           kind: run.kind,
+          // Runs start un-sampled; testRun flips it via updateRun afterwards.
+          usedSample: 0,
           startedAt: run.startedAt,
           endedAt: run.endedAt ?? null,
         })
@@ -310,6 +323,7 @@ export function createRepo(db: Database): Repo {
           triggerPayload: toJson(merged.triggerPayload),
           status: merged.status,
           kind: merged.kind,
+          usedSample: merged.usedSample ? 1 : 0,
           startedAt: merged.startedAt,
           endedAt: merged.endedAt ?? null,
         })

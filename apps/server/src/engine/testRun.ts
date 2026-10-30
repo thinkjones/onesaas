@@ -97,6 +97,10 @@ export function createTestRunner(d: {
       usedSample = false;
     }
     const run = await engine.start(workflowId, triggerPayload, { kind: 'test' });
+    // Persisted (not just returned) so a later GET of the run detail keeps
+    // the "sample email" story line. Read back after the write so the
+    // returned run carries the stored value.
+    repo.updateRun(run.id, { usedSample });
     const full = repo.getRun(run.id);
     if (!full) throw new Error(`Test run vanished: ${run.id}`);
     return { run: full.run, steps: full.steps, usedSample };

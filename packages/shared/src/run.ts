@@ -22,6 +22,10 @@ export const Run = z.object({
   // instead of doing them. Default 'live' keeps every pre-existing
   // row and caller a live run (migration-safe at the parse layer).
   kind: RunKind.default('live'),
+  // True when a test run fell back to the catalog sample email instead of a
+  // live open email. Persisted (not just returned) so refetching the run
+  // keeps the "sample email" story line. Default false, like kind.
+  usedSample: z.boolean().default(false),
   startedAt: z.string(),
   endedAt: z.string().optional(),
 });

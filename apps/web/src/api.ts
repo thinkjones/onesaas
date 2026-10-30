@@ -181,6 +181,129 @@ export function useRetry(runId: string, stepId: string) {
   });
 }
 
+// --- Design mode (M3) ---
+
+/** Mirrors apps/server/src/workflows/validate.ts WorkflowProblem (same reason as EngineEvent). */
+export interface WorkflowProblem {
+  stepId: string;
+  problem: string;
+}
+
+/** GET /api/workflows/:id: the latest version plus its plain-English problems. */
+export interface WorkflowDetail extends Workflow {
+  problems: WorkflowProblem[];
+}
+
+export function getWorkflowDetail(id: string): Promise<WorkflowDetail> {
+  return getJson(`/api/workflows/${encodeURIComponent(id)}`);
+}
+
+export function useWorkflowDetail(id: string) {
+  return useQuery({ queryKey: ['workflow', id], queryFn: () => getWorkflowDetail(id) });
+}
+
+/** Every ops-route op except `create` (which has its own route). */
+export type WorkflowOpName =
+  | 'setTrigger'
+  | 'addStep'
+  | 'updateStep'
+  | 'removeStep'
+  | 'connect'
+  | 'disconnect'
+  | 'move'
+  | 'setStatus'
+  | 'rename';
+
+/** A refused op is still a 200: the body carries the readable error. */
+export type OpResult =
+  | { ok: true; workflow: Workflow; note: string }
+  | { ok: false; error: string };
+
+/** POST /api/workflows/:id/ops. Args are POSITIONAL — the id comes from the URL. */
+export function postOp(workflowId: string, op: WorkflowOpName, args: unknown[]): Promise<OpResult> {
+  return postJson(`/api/workflows/${encodeURIComponent(workflowId)}/ops`, { op, args });
+}
+
+export function useWorkflowOp(workflowId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (call: { op: WorkflowOpName; args: unknown[] }) =>
+      postOp(workflowId, call.op, call.args),
+    onSuccess: (res) => {
+      // Refused ops carry no new state; the call site toasts res.error.
+      if (!res.ok) return;
+      // Instant canvas paint from the returned workflow, keeping the old
+      // problems until the refetch below replaces them (ops don't return
+      // problems, so setting them directly would freeze stale badges).
+      client.setQueryData<WorkflowDetail>(['workflow', workflowId], (old) =>
+        old ? { ...res.workflow, problems: old.problems } : old,
+      );
+      void client.invalidateQueries({ queryKey: ['workflow', workflowId] });
+      void client.invalidateQueries({ queryKey: ['workflows'] });
+    },
+  });
+}
+
+/** POST /api/workflows/:id/test: the test run plus story lines for the strip. */
+export interface TestRunResponse {
+  run: Run;
+  steps: StepRun[];
+  usedSample: boolean;
+  story: string[];
+}
+
+export function postTestRun(workflowId: string): Promise<TestRunResponse> {
+  return postJson(`/api/workflows/${encodeURIComponent(workflowId)}/test`);
+}
+
+export function useTestRun(workflowId: string) {
+  return useMutation({ mutationFn: () => postTestRun(workflowId) });
+}
+
+/**
+ * Mirrors apps/server/src/agent/tools.ts AgentEvent (the web package cannot
+ * import server code, so the shape is redeclared here like EngineEvent).
+ */
+export type AgentEvent =
+  | { type: 'say'; text: string }
+  | { type: 'ask'; question: string; options: string[] }
+  | {
+      type: 'plan';
+      ghosts: { id: string; type: string; title: string; summary: string }[];
+      edges: { from: string; to: string; when?: string }[];
+    }
+  | { type: 'activity'; text: string }
+  | { type: 'built'; stepId: string }
+  | { type: 'test'; runId: string }
+  | { type: 'done' };
+
+/**
+ * Subscribes to one workflow's agent events over SSE. A dedicated EventSource
+ * (useLiveEvents ignores agent events): cheap enough for one design screen,
+ * skipped outside browsers like useEvents.
+ */
+export function useAgentEvents(workflowId: string, onEvent: (e: AgentEvent) => void): void {
+  const ref = useRef(onEvent);
+  useEffect(() => {
+    ref.current = onEvent;
+  }, [onEvent]);
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/events');
+    es.onmessage = (msg: MessageEvent) => {
+      const data = JSON.parse(msg.data) as {
+        type?: unknown;
+        workflowId?: unknown;
+        event?: AgentEvent;
+      };
+      if (data.type === 'agent' && data.workflowId === workflowId && data.event) {
+        ref.current(data.event);
+      }
+    };
+    return () => es.close();
+  }, [workflowId]);
+}
+
 // NOTE: run.endedAt is only meaningful on terminal runs — a failed→waiting
 // retry leaves a stale endedAt behind (known server wart). Never display
 // durations off endedAt for non-terminal runs.

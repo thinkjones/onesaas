@@ -13,6 +13,7 @@ const UPDATE: RunUpdate = {
     triggerPayload: {},
     status: 'running',
     kind: 'live',
+    usedSample: false,
     startedAt: '2026-10-28T10:42:00.000Z',
   },
   steps: [],
@@ -84,7 +85,7 @@ describe('FailureCard', () => {
     expect(await screen.findByText('This step was already resolved elsewhere.')).toBeDefined();
   });
 
-  test('"Fix this step" is disabled with a "Coming soon" tooltip until M3', () => {
+  test('"Fix this step" stays disabled without its workflow-screen wiring', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -95,5 +96,25 @@ describe('FailureCard', () => {
     const fix = screen.getByRole('button', { name: 'Fix this step' });
     expect(fix.hasAttribute('disabled')).toBe(true);
     expect(fix.getAttribute('title')).toBe('Coming soon');
+  });
+
+  test('"Fix this step" is enabled with its wiring and fires the handoff', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('unexpected fetch');
+      }),
+    );
+    const onFixStep = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <FailureCard runId="run-1" stepId="draft" error="boom" onFixStep={onFixStep} />
+      </QueryClientProvider>,
+    );
+    const fix = screen.getByRole('button', { name: 'Fix this step' });
+    expect(fix.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(fix);
+    expect(onFixStep).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,12 @@
 import '@xyflow/react/dist/style.css';
-import { catalog, type StepKind, type StepRun, type Workflow } from '@dad/shared';
+import {
+  catalog,
+  type Edge as WorkflowEdge,
+  type StepInstance,
+  type StepKind,
+  type StepRun,
+  type Workflow,
+} from '@dad/shared';
 import {
   ReactFlow,
   useEdgesState,
@@ -11,6 +18,7 @@ import {
 } from '@xyflow/react';
 import { MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import GhostNode, { GhostEdge, type GhostNodeData } from '../design/GhostNode.tsx';
 import FlowEdge from './FlowEdge.tsx';
 import { layoutWorkflow } from './layout.ts';
 import StepNode, { type StepNodeData } from './StepNode.tsx';
@@ -35,8 +43,12 @@ export interface WorkflowCanvasProps {
   mode: CanvasMode;
   /** Runtime overlay keyed by stepId. */
   stepRuns?: Record<string, StepRun>;
-  /** Design-mode plan preview (M3): accepted and rendered inertly. */
+  /** Design-mode plan preview: dashed ghost boxes from the agent's `plan` event. */
   ghosts?: GhostStep[];
+  /** Planned wires between ghost boxes (from the same `plan` event). */
+  ghostEdges?: WorkflowEdge[];
+  /** Real step ids that just finished building: they animate in (scale 0.9→1, 300ms). */
+  builtIds?: readonly string[];
   selectedStepId?: string;
   onSelectStep(stepId: string): void;
   /** Design mode only (M3 consumes; no-op-safe). */
@@ -46,10 +58,12 @@ export interface WorkflowCanvasProps {
 }
 
 type CanvasNode = Node<StepNodeData, 'step'>;
+type CanvasGhostNode = Node<GhostNodeData, 'ghost'>;
 type CanvasEdge = Edge<{ when?: string }, 'flow'>;
+type CanvasGhostEdge = Edge<{ when?: string }, 'ghost'>;
 
-const nodeTypes = { step: StepNode };
-const edgeTypes = { flow: FlowEdge };
+const nodeTypes = { step: StepNode, ghost: GhostNode };
+const edgeTypes = { flow: FlowEdge, ghost: GhostEdge };
 
 function kindOf(type: string): StepKind {
   return catalog[type]?.kind ?? 'enrich';
@@ -59,68 +73,98 @@ function kindOf(type: string): StepKind {
  * The workflow canvas shared by design and runtime modes. Runtime nodes are
  * not draggable/connectable and elements are not selectable; clicks still
  * report through onSelectStep so Task 5 can open the inspector.
+ *
+ * Design mode additionally renders the agent's planned ghosts (dashed, inert,
+ * laid out together with the real graph) and deletes selected boxes on
+ * Backspace (reported as `remove` ops; ghosts are unselectable so they can
+ * never be deleted).
  */
 export default function WorkflowCanvas({
   workflow,
   mode,
   stepRuns,
   ghosts,
+  ghostEdges,
+  builtIds,
   selectedStepId,
   onSelectStep,
   onChange,
   renderNodeExtra,
 }: WorkflowCanvasProps) {
-  const laid = useMemo(() => layoutWorkflow(workflow), [workflow]);
-
-  const initialNodes: CanvasNode[] = useMemo(() => {
-    const steps = [laid.trigger, ...laid.steps];
-    const nodes: CanvasNode[] = steps.map((s) => ({
-      id: s.id,
-      type: 'step',
-      position: s.position,
-      data: {
-        step: s,
-        kind: kindOf(s.type),
-        status: stepRuns?.[s.id]?.status,
-        extra: renderNodeExtra?.(s.id),
-      },
-      selected: s.id === selectedStepId,
+  // Ghosts join the layout as unpositioned steps, so dagre places them
+  // relative to the real graph (which keeps its positions) instead of in a
+  // disconnected pile. layoutWorkflow passes edges through untouched.
+  const laid = useMemo(() => {
+    if (!ghosts || ghosts.length === 0) return layoutWorkflow(workflow);
+    const ghostSteps: StepInstance[] = ghosts.map((g) => ({
+      ...g,
+      config: {},
+      inputs: {},
+      position: { x: 0, y: 0 },
     }));
-    // Ghosts sit apart from the laid-out graph, inert and faded (M3 owns
-    // their editing; this task only renders them).
-    const maxX = Math.max(0, ...steps.map((s) => s.position.x));
-    for (const [i, g] of (ghosts ?? []).entries()) {
-      const position = { x: maxX + 400, y: i * 180 };
+    return layoutWorkflow({
+      ...workflow,
+      steps: [...workflow.steps, ...ghostSteps],
+      edges: [...workflow.edges, ...(ghostEdges ?? [])],
+    });
+  }, [workflow, ghosts, ghostEdges]);
+
+  const initialNodes: (CanvasNode | CanvasGhostNode)[] = useMemo(() => {
+    const placed = new Map(
+      [laid.trigger, ...laid.steps].map((s) => [s.id, s] as const),
+    );
+    const nodes: (CanvasNode | CanvasGhostNode)[] = [workflow.trigger, ...workflow.steps].map(
+      (s): CanvasNode => ({
+        id: s.id,
+        type: 'step',
+        position: placed.get(s.id)?.position ?? s.position,
+        data: {
+          step: placed.get(s.id) ?? s,
+          kind: kindOf(s.type),
+          status: stepRuns?.[s.id]?.status,
+          extra: renderNodeExtra?.(s.id),
+          fresh: builtIds?.includes(s.id) ?? false,
+        },
+        selected: s.id === selectedStepId,
+      }),
+    );
+    for (const g of ghosts ?? []) {
       nodes.push({
         id: g.id,
-        type: 'step',
-        position,
-        data: {
-          step: { ...g, config: {}, inputs: {}, position },
-          kind: kindOf(g.type),
-          ghost: true,
-        },
+        type: 'ghost',
+        position: placed.get(g.id)?.position ?? { x: 0, y: 0 },
+        data: { title: g.title, summary: g.summary, kind: kindOf(g.type) },
         selectable: false,
         draggable: false,
         connectable: false,
       });
     }
     return nodes;
-  }, [laid, stepRuns, ghosts, selectedStepId, renderNodeExtra]);
+  }, [laid, workflow, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra]);
 
-  const initialEdges: CanvasEdge[] = useMemo(
-    () =>
-      laid.edges.map((e) => ({
-        id: `${e.from}->${e.to}`,
-        source: e.from,
-        target: e.to,
-        type: 'flow',
-        animated: stepRuns?.[e.to]?.status === 'running',
-        data: { when: e.when },
-        style: { stroke: 'hsl(var(--muted-foreground) / 0.5)', strokeWidth: 2 },
-      })),
-    [laid, stepRuns],
-  );
+  const initialEdges: (CanvasEdge | CanvasGhostEdge)[] = useMemo(() => {
+    const ghostIds = new Set((ghosts ?? []).map((g) => g.id));
+    return laid.edges.map((e) =>
+      ghostIds.has(e.from) || ghostIds.has(e.to)
+        ? {
+            id: `${e.from}->${e.to}`,
+            source: e.from,
+            target: e.to,
+            type: 'ghost',
+            data: { when: e.when },
+            selectable: false,
+          }
+        : {
+            id: `${e.from}->${e.to}`,
+            source: e.from,
+            target: e.to,
+            type: 'flow',
+            animated: stepRuns?.[e.to]?.status === 'running',
+            data: { when: e.when },
+            style: { stroke: 'hsl(var(--muted-foreground) / 0.5)', strokeWidth: 2 },
+          },
+    );
+  }, [laid, stepRuns, ghosts]);
 
   const [nodes, setNodes, onNodesChangeInner] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInner] = useEdgesState(initialEdges);
@@ -134,7 +178,7 @@ export default function WorkflowCanvas({
   const design = mode === 'design';
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasNode>[]) => {
+    (changes: NodeChange<CanvasNode | CanvasGhostNode>[]) => {
       onNodesChangeInner(changes);
       if (!design || !onChange) return;
       for (const c of changes) {
@@ -153,7 +197,7 @@ export default function WorkflowCanvas({
   );
 
   const handleEdgesChange = useCallback(
-    (changes: EdgeChange<CanvasEdge>[]) => {
+    (changes: EdgeChange<CanvasEdge | CanvasGhostEdge>[]) => {
       onEdgesChangeInner(changes);
       if (!design || !onChange) return;
       for (const c of changes) {
@@ -179,13 +223,14 @@ export default function WorkflowCanvas({
           }
         }}
         onNodeClick={(_, node) => {
-          if (!node.data?.ghost) onSelectStep(node.id);
+          if (node.type !== 'ghost') onSelectStep(node.id);
         }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         nodesDraggable={design}
         nodesConnectable={design}
         elementsSelectable={design}
+        deleteKeyCode={design ? 'Backspace' : null}
         fitView
       />
     </MotionConfig>
