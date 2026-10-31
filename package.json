@@ -15,7 +15,7 @@
     "build:desktop": "pnpm --filter @dad/web build && pnpm build:desktop-server",
     "build:desktop-server": "node scripts/build-desktop-server.mjs",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build -- --bundles app"
+    "tauri:build": "tauri build --bundles app"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
