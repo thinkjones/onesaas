@@ -81,6 +81,11 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   // falls back per call if Glimmer later fails. Other roles stay on meta.
   const glimmerBaseUrl = process.env['GLIMMER_BASE_URL'];
   const glimmerModel = process.env['GLIMMER_MODEL'];
+  // Exactly one set is a typo or half-written .env: the gateway below boots
+  // legacy-Spark, so say so instead of silently ignoring the lone variable.
+  if (Boolean(glimmerBaseUrl) !== Boolean(glimmerModel)) {
+    console.warn('Only one of GLIMMER_BASE_URL/GLIMMER_MODEL is set — triage stays on Spark');
+  }
   const gateway =
     glimmerBaseUrl && glimmerModel
       ? createGateway({
@@ -97,13 +102,20 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     // One line once the initial check settles, so the server log shows which
     // backend actually sorts the inbox (only in the configured branch: the
     // unconfigured path stays silent for tests and non-AI boots).
-    void gateway.ready().then((healthy) => {
-      console.log(
-        healthy
-          ? `[models] triage → Muse Glimmer (${glimmerModel})`
-          : `[models] triage → Muse Spark (${GLIMMER_DOWN_NOTE})`,
-      );
-    });
+    void gateway.ready().then(
+      (healthy) => {
+        console.log(
+          healthy
+            ? `[models] triage → Muse Glimmer (${glimmerModel})`
+            : `[models] triage → Muse Spark (${GLIMMER_DOWN_NOTE})`,
+        );
+      },
+      // ready() never rejects today, but without this the boot line would
+      // silently vanish on a rejection — log the Spark fallback instead.
+      () => {
+        console.log(`[models] triage → Muse Spark (${GLIMMER_DOWN_NOTE})`);
+      },
+    );
   }
   const image = createImageModels({ client: openai, fetch, apiKey: apiKey ?? 'unconfigured' });
 

@@ -276,6 +276,100 @@ test('legacy single-client gateway shows triage on spark with the note', async (
   }
 });
 
+test('glimmer-assigned vision/tools roles still run on meta defaults', async () => {
+  // main.ts never assigns vision/tools to glimmer, but the gateway must stay
+  // safe if it ever happens: visionJson/chatTools only speak meta.
+  const meta = fakeChatClient(async (params) => {
+    if ((params as Record<string, unknown>)['tools'] !== undefined) {
+      return {
+        choices: [{ message: { role: 'assistant', content: null, tool_calls: [] } }],
+        usage: { prompt_tokens: 10, completion_tokens: 20 },
+      };
+    }
+    return chatResponse('{"name":"hammer"}');
+  });
+  const glimmer = fakeChatClient(async () => chatResponse('{"name":"wrong"}'));
+  const { fetchFn } = modelsFetch([GLIMMER_MODEL]);
+  const gateway = createGateway({
+    providers: { meta: meta.client, glimmer: glimmer.client },
+    roles: {
+      vision: { provider: 'glimmer', model: 'glimmer-vision-test' },
+      builder: { provider: 'glimmer', model: 'glimmer-builder-test' },
+    },
+    glimmerHealth: { baseUrl: GLIMMER_BASE, model: GLIMMER_MODEL, fetchFn },
+  });
+  try {
+    // Glimmer is healthy here — routing still stays on meta.
+    expect(await gateway.ready()).toBe(true);
+    const item = z.object({ name: z.string() });
+    const seen = await gateway.visionJson({
+      role: 'vision',
+      prompt: 'what is this',
+      imageDataUrl: 'data:image/png;base64,xx',
+      schema: item,
+      schemaName: 'item',
+    });
+    expect(seen.model).toBe('muse-spark-1.3');
+    expect(seen.data).toEqual({ name: 'hammer' });
+    const built = await gateway.chatTools({
+      role: 'builder',
+      messages: [{ role: 'user', content: 'do it' }],
+      tools: [
+        { name: 'add_step', description: 'Add a step', parameters: { type: 'object', properties: {} } },
+      ],
+    });
+    expect(built.model).toBe('muse-spark-1.3');
+    expect(glimmer.calls).toHaveLength(0);
+    expect(meta.calls).toHaveLength(2);
+    for (const call of meta.calls) {
+      expect((call as Record<string, unknown>)['model']).toBe('muse-spark-1.3');
+    }
+  } finally {
+    gateway.stop();
+  }
+});
+
+test('glimmer health without a client (and vice versa) stays permanently down', async () => {
+  const { fetchFn } = modelsFetch([GLIMMER_MODEL]);
+  // Health configured but no glimmer client: straight to the Spark fallback.
+  const meta = fakeChatClient(async () => TRIAGE_OK);
+  const noClient = createGateway({
+    providers: { meta: meta.client },
+    roles: { triage: { provider: 'glimmer', model: GLIMMER_MODEL } },
+    glimmerHealth: { baseUrl: GLIMMER_BASE, model: GLIMMER_MODEL, fetchFn },
+  });
+  try {
+    expect(await noClient.ready()).toBe(false);
+    const result = await noClient.chatJson(triageCall());
+    expect(result.model).toBe('muse-spark-1.3');
+    expect(noClient.status().find((s) => s.role === 'triage')).toEqual({
+      role: 'triage',
+      provider: 'glimmer',
+      model: GLIMMER_MODEL,
+      healthy: false,
+      note: DOWN_NOTE,
+    });
+  } finally {
+    noClient.stop();
+  }
+  // Glimmer client but no health config: the same permanent fallback.
+  const meta2 = fakeChatClient(async () => TRIAGE_OK);
+  const glimmer2 = fakeChatClient(async () => TRIAGE_OK);
+  const noHealth = createGateway({
+    providers: { meta: meta2.client, glimmer: glimmer2.client },
+    roles: { triage: { provider: 'glimmer', model: GLIMMER_MODEL } },
+  });
+  try {
+    expect(await noHealth.ready()).toBe(false);
+    const result = await noHealth.chatJson(triageCall());
+    expect(result.model).toBe('muse-spark-1.3');
+    expect(glimmer2.calls).toHaveLength(0);
+    expect(meta2.calls).toHaveLength(1);
+  } finally {
+    noHealth.stop();
+  }
+});
+
 test('health re-checks every 60s until stop()', async () => {
   vi.useFakeTimers();
   const { gateway, fetchCalls } = healthyGateway();
@@ -415,6 +509,34 @@ test('server boots against a healthy glimmer stub and triages on it', async () =
     });
   } finally {
     gateway.stop();
+  }
+});
+
+test('half-configured glimmer warns and keeps triage on spark', () => {
+  const HALF_MSG = 'Only one of GLIMMER_BASE_URL/GLIMMER_MODEL is set — triage stays on Spark';
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const plain = createServer({ dbFile: ':memory:' });
+    plain.gateway.stop();
+    expect(warn).not.toHaveBeenCalledWith(HALF_MSG);
+    for (const vars of [{ GLIMMER_BASE_URL: GLIMMER_BASE }, { GLIMMER_MODEL: GLIMMER_MODEL }]) {
+      Object.assign(process.env, vars);
+      const { gateway } = createServer({ dbFile: ':memory:' });
+      try {
+        expect(warn).toHaveBeenCalledWith(HALF_MSG);
+        expect(gateway.status().find((s) => s.role === 'triage')).toMatchObject({
+          provider: 'meta',
+          model: 'muse-spark-1.3',
+        });
+      } finally {
+        gateway.stop();
+      }
+      warn.mockClear();
+      delete process.env['GLIMMER_BASE_URL'];
+      delete process.env['GLIMMER_MODEL'];
+    }
+  } finally {
+    warn.mockRestore();
   }
 });
 

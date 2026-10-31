@@ -261,11 +261,16 @@ const ROLE_LABELS: Record<ModelStatus['role'], string> = {
   vision: 'Reading web pages',
 };
 
+// Exact ids only: substring matching would mislabel future model families.
+// Keep in sync with the server's DEFAULT_ROLES in models/gateway.ts.
+const META_MODEL_NAMES: Record<string, string> = {
+  'muse-spark-1.3': 'Muse Spark',
+  'muse-wonder-1.0': 'Muse Wonder',
+};
+
 function modelDisplayName(row: ModelStatus): string {
   if (row.provider === 'glimmer') return 'Muse Glimmer';
-  if (row.model.includes('wonder')) return 'Muse Wonder';
-  if (row.model.includes('spark')) return 'Muse Spark';
-  return row.model;
+  return META_MODEL_NAMES[row.model] ?? row.model;
 }
 
 function ThinkingSection() {
@@ -295,7 +300,7 @@ function ThinkingSection() {
               .filter((row) => row.role !== 'triage')
               .map((row) => (
                 <p key={row.role}>
-                  {ROLE_LABELS[row.role]}: {modelDisplayName(row)}
+                  {ROLE_LABELS[row.role] ?? row.role}: {modelDisplayName(row)}
                 </p>
               ))}
           </div>

@@ -107,3 +107,30 @@ test('thinking shows a checking line while the status loads', async () => {
   renderSettings('hang');
   expect(await screen.findByText('Checking which model handles what…')).toBeDefined();
 });
+
+test('unknown model ids render raw instead of guessing a family', async () => {
+  renderSettings(
+    SPARK_ROWS.map((r) =>
+      r.role === 'builder'
+        ? { ...r, model: 'muse-spark-9.9-future' }
+        : r.role === 'planner'
+          ? { ...r, model: 'muse-wonder-next' }
+          : r,
+    ),
+  );
+  expect(await screen.findByText('Building chore reducers: muse-spark-9.9-future')).toBeDefined();
+  expect(await screen.findByText('Big plans: muse-wonder-next')).toBeDefined();
+});
+
+test('unknown future roles render the raw role id', async () => {
+  renderSettings([
+    ...SPARK_ROWS,
+    {
+      role: 'scheduler' as unknown as ModelStatus['role'],
+      provider: 'meta',
+      model: 'muse-spark-1.3',
+      healthy: true,
+    },
+  ]);
+  expect(await screen.findByText('scheduler: Muse Spark')).toBeDefined();
+});
