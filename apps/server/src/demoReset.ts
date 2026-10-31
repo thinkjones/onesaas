@@ -362,7 +362,7 @@ export async function runDemoResetCli(
     const tok = argv[i] as string;
     if (tok === '--data-dir') {
       const value = argv[i + 1];
-      if (!value || value.startsWith('--')) {
+      if (!value || value.startsWith('-')) {
         return usageError('--data-dir needs a directory argument');
       }
       dataDir = value;

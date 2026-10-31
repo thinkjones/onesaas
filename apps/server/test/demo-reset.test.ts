@@ -326,6 +326,32 @@ describe('runDemoResetCli argv validation', () => {
     },
   );
 
+  // A flag-like --data-dir value must not be swallowed: `--data-dir -h`
+  // is a usage error (exit 1), never a help request or a wipe into a junk
+  // `-h` dir; `--data-dir -x` likewise fails loudly per the unknown-short-
+  // flag guarantee.
+  test.each([[['-h']], [['-x']]])(
+    '--data-dir %s exits 1 with usage and creates nothing',
+    async (flagValue) => {
+      const dataDir = makeDataDir();
+      const { moodId } = await seedLivedIn(dataDir);
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await expect(
+          runDemoResetCli(['--data-dir', ...flagValue], { checkLive: false }),
+        ).resolves.toBe(1);
+        expect(err.mock.calls.join('\n')).toMatch(/--data-dir needs a directory argument/);
+        expect(err.mock.calls.join('\n')).toMatch(/Usage:/);
+      } finally {
+        err.mockRestore();
+      }
+      await expectLivedInIntact(dataDir, moodId);
+      for (const v of flagValue) {
+        expect(existsSync(join(process.cwd(), v))).toBe(false);
+      }
+    },
+  );
+
   test.each([
     [['--save-profile', '--keep-profile']],
     [['--save-profile', '--with-flow1']],
