@@ -8,7 +8,8 @@
     "test": "vitest run",
     "typecheck": "pnpm -r --parallel typecheck",
     "e2e": "pnpm --filter @dad/e2e test",
-    "e2e:video": "pnpm --filter @dad/e2e test:video"
+    "e2e:video": "pnpm --filter @dad/e2e test:video",
+    "demo:reset": "tsx scripts/demo-reset.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

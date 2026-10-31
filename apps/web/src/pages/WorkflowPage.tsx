@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import AgentPanel from '../agent/AgentPanel.tsx';
 import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
+import { TELL_ME_MORE_EVENT } from '../explain/useAltClickExplain.ts';
 import EmptyState from '../design/EmptyState.tsx';
 import UploadDrop from '../design/UploadDrop.tsx';
 import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
@@ -45,7 +46,9 @@ export interface WorkflowPageProps {
  * state (`agentPrompt`), is captured once per mount as the opening send, and
  * is consumed after the first send — both the page-held prompt AND the
  * history entry (replaced without `agentPrompt`) — so collapse/reopen,
- * refresh, and back-nav can never fire a duplicate turn.
+ * refresh, and back-nav can never fire a duplicate turn. A NEW agentPrompt
+ * arriving while mounted (a bad-id tell-me-more routed here by the fallback)
+ * is picked up as the next opening send the same way.
  */
 export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
@@ -78,6 +81,22 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     const state = location.state as { agentPrompt?: unknown } | null;
     return typeof state?.agentPrompt === 'string' ? state.agentPrompt : undefined;
   });
+  // A routed-while-mounted prompt (see above) lands without a remount, so
+  // the initializer never re-runs — sync new arrivals into the opening send
+  // via the previous-render pattern (HomePage's prefill does the same; an
+  // effect would be set-state-in-effect). Consume-once still holds: the send
+  // clears both this state and the history entry, so a delivered prompt
+  // never re-applies.
+  const [appliedAgentPrompt, setAppliedAgentPrompt] = useState(initialPrompt);
+  const locationPromptState = location.state as { agentPrompt?: unknown } | null;
+  const locationAgentPrompt =
+    typeof locationPromptState?.agentPrompt === 'string'
+      ? locationPromptState.agentPrompt
+      : undefined;
+  if (locationAgentPrompt !== appliedAgentPrompt) {
+    setAppliedAgentPrompt(locationAgentPrompt);
+    if (locationAgentPrompt !== undefined) setInitialPrompt(locationAgentPrompt);
+  }
 
   // Follow the agent when it starts a second reducer: the `switched`
   // event names the new reducer, and the web navigates there (design mode,
@@ -122,6 +141,35 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   const handleRequestRuntime = useCallback(() => handleModeChange('runtime'), [handleModeChange]);
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
+
+  // Explain's "Tell me more" (step boxes, runs, inspector…): open the
+  // helper and send "Tell me more about <label>" through the panel's
+  // sendRequest seam. Before the early returns with every other hook. The
+  // handler claims the event only while the reducer resolves (pending counts:
+  // the send fires once the page loads); settled without data (not-found,
+  // fetch error) it leaves the event for TellMeMoreFallback, which routes to
+  // a live panel instead of swallowing it into invisible state here. The
+  // claim is scoped to the claiming workflowId: a pending bad id ALSO gets
+  // routed by the fallback (the id is not yet known-bad), and the same
+  // component survives that navigation — without the scope check the target
+  // would fire both the stale sendRequest AND the routed initialPrompt.
+  const [tellMeMore, setTellMeMore] = useState<
+    { text: string; nonce: number; workflowId: string | undefined } | undefined
+  >();
+  // Monotonic per mount: Date.now() could collapse two rapid requests.
+  const tellMeMoreNonce = useRef(0);
+  useEffect(() => {
+    const onTellMeMore = (e: Event): void => {
+      const message = (e as CustomEvent<{ message?: unknown }>).detail?.message;
+      if (typeof message !== 'string' || message.trim().length === 0) return;
+      if (!workflowQuery.isPending && !workflowQuery.data) return;
+      setPanelCollapsed(false);
+      tellMeMoreNonce.current += 1;
+      setTellMeMore({ text: message.trim(), nonce: tellMeMoreNonce.current, workflowId });
+    };
+    window.addEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
+    return () => window.removeEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
+  }, [workflowId, workflowQuery.data, workflowQuery.isPending]);
 
   // Consume-once for the opening prompt (mirrors the prefill seam, but the
   // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
@@ -204,6 +252,11 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
               onPrefillConsumed={handlePrefillConsumed}
               initialPrompt={initialPrompt}
               onInitialSent={handleInitialSent}
+              sendRequest={
+                tellMeMore !== undefined && tellMeMore.workflowId === workflowId
+                  ? { text: tellMeMore.text, nonce: tellMeMore.nonce }
+                  : undefined
+              }
               onCollapse={() => setPanelCollapsed(true)}
             />
           </div>

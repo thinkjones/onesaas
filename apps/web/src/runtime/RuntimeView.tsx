@@ -3,8 +3,9 @@ import type { Run, StepRun } from '@dad/shared';
 import { History, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
-import { getRun, useRun, useRuns } from '../api.ts';
+import { getRun, useRun, useRuns, useSettings } from '../api.ts';
 import WorkflowCanvas from '../canvas/WorkflowCanvas.tsx';
+import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import EmptyState from '../design/EmptyState.tsx';
 import ApprovalCard from './ApprovalCard.tsx';
 import FailureCard from './FailureCard.tsx';
@@ -86,6 +87,8 @@ export default function RuntimeView({
   const [params, setParams] = useSearchParams();
   const runsQuery = useRuns(workflowId);
   const runs = runsQuery.data;
+  // Runtime mode is silent and unadorned: the backdrop stays mounted but faded out.
+  const { settings } = useSettings();
 
   const rawRunParam = params.get('run');
   const runId = resolveRunId(rawRunParam, runs);
@@ -287,7 +290,8 @@ export default function RuntimeView({
       lastLineByRunId={lastLineByRunId}
     >
       <RunStory story={detail.story} />
-      <div className="min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+      <div className="relative isolate min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+        <MoodBackdrop visible={false} fileIds={settings?.moodFileIds ?? []} />
         <WorkflowCanvas
           workflow={detail.workflow}
           mode="runtime"
@@ -304,6 +308,12 @@ export default function RuntimeView({
         title={selectedStep?.title ?? selectedStepId ?? ''}
         open={selectedStepId !== undefined}
         onClose={handleCloseInspector}
+        explainTarget={
+          selectedStepId === undefined
+            ? undefined
+            : { kind: 'step', id: selectedStepId, context: detail.workflow.id }
+        }
+        explainLabel={selectedStep?.title}
         code={
           selectedStep?.type === 'code.transform' &&
           typeof selectedStep.config['code'] === 'string'

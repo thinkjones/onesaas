@@ -5,6 +5,8 @@ import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import AppCard from '../design/AppCard.tsx';
 import StatusBadge from '../design/StatusBadge.tsx';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { stepVisuals } from './stepVisuals.ts';
 
 export interface StepNodeData extends Record<string, unknown> {
@@ -16,6 +18,11 @@ export interface StepNodeData extends Record<string, unknown> {
   extra?: ReactNode;
   /** A step that just finished building animates in bigger (0.9→1, 300ms). */
   fresh?: boolean;
+  /**
+   * The owning workflow id (set by WorkflowCanvas). Without it the `?`
+   * button and alt-click stay off — the server scopes steps by workflow.
+   */
+  workflowId?: string;
 }
 
 // Handle chrome matches the card language: token-derived inline styles beat
@@ -33,8 +40,10 @@ const HANDLE_STYLE = {
  * reducedMotion="user" for prefers-reduced-motion.
  */
 export default function StepNode({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
-  const { step, kind, status, extra, fresh } = data;
+  const { step, kind, status, extra, fresh, workflowId } = data;
   const { icon: Icon, tint } = stepVisuals[kind];
+  const explainTarget =
+    workflowId === undefined ? null : { kind: 'step' as const, id: step.id, context: workflowId };
   return (
     <>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
@@ -47,6 +56,7 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
         <AppCard
           data-step-id={id}
           data-status={status}
+          data-explain={explainTarget ? dataExplainValue(explainTarget, step.title) : undefined}
           className={cn('w-[280px] p-4', selected && 'ring-2 ring-ring')}
         >
           <div className="flex items-center gap-2.5">
@@ -57,6 +67,7 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
             <p className="min-w-0 flex-1 truncate text-base font-semibold" title={step.title}>
               {step.title}
             </p>
+            {explainTarget && <Explain target={explainTarget} label={step.title} />}
           </div>
           <p className="mt-2 text-base break-words text-muted-foreground">{step.summary}</p>
           {step.type === 'trigger.email' && (

@@ -9,6 +9,7 @@ import {
   PENDING_BUILT_TIMEOUT_MS,
   getRun,
   useAgentEvents,
+  useSettings,
   useTestRun,
   useWorkflowDetail,
   useWorkflowOp,
@@ -19,7 +20,13 @@ import {
   type WorkflowOpName,
 } from '../api.ts';
 import WorkflowCanvas, { type CanvasOp, type GhostStep } from '../canvas/WorkflowCanvas.tsx';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
+import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import { resolveStepId } from '../runtime/params.ts';
+import { sound } from '../sound/sound.ts';
+import SoundControl from '../sound/SoundControl.tsx';
+import { useSound } from '../sound/useSound.ts';
 import AppButton from './AppButton.tsx';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
@@ -76,6 +83,11 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
   const op = useWorkflowOp(workflowId);
   const { mutateAsync } = op;
   const testRun = useTestRun(workflowId);
+  // Ambient loops while the design screen is mounted; unmounting (e.g.
+  // switching to runtime mode) stops them.
+  useSound(true);
+  // The generated mood set for the backdrop (defaults until a set lands).
+  const { settings } = useSettings();
 
   const [ghosts, setGhosts] = useState<GhostStep[]>([]);
   const [ghostEdges, setGhostEdges] = useState<Edge[]>([]);
@@ -152,13 +164,15 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
           .then(surfaceIfFailed, surfaceIfFailed);
       } else if (e.type === 'test') {
         getRun(e.runId).then(
-          (runDetail) =>
+          (runDetail) => {
             setTestResult({
               run: runDetail.run,
               steps: runDetail.steps,
               usedSample: runDetail.run.usedSample,
               story: runDetail.story,
-            }),
+            });
+            sound.chime('done');
+          },
           () => toast.error("Couldn't load the test results."),
         );
       }
@@ -206,6 +220,7 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     for (const id of resolved) {
       if (!builtFired.current.has(id)) {
         builtFired.current.add(id);
+        sound.chime('step');
         onBuilt?.({ stepId: id, title: stepsById.get(id)!.title });
       }
     }
@@ -405,7 +420,10 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
 
   const handleTryIt = useCallback(() => {
     testRun.mutate(undefined, {
-      onSuccess: (res) => setTestResult(res),
+      onSuccess: (res) => {
+        setTestResult(res);
+        sound.chime('done');
+      },
       onError: (err) => toastOpError(err),
     });
   }, [testRun]);
@@ -465,9 +483,15 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         {problemCount === 0 ? (
-          <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
-            Turn on
-          </AppButton>
+          <span
+            data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
+            className="inline-flex items-center gap-1"
+          >
+            <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
+              Turn on
+            </AppButton>
+            <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
+          </span>
         ) : (
           <p className="text-base">
             {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
@@ -476,11 +500,16 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
           {testRun.isPending ? 'Trying…' : 'Try it'}
         </AppButton>
+        <SoundControl />
       </div>
       {testResult && <TestResults story={testResult.story} />}
-      <div className="flex gap-4">
+      {/* Wraps instead of crushing: at narrow widths the canvas keeps a
+          usable minimum and the inspector drops below it (no change at
+          desktop widths, where palette + canvas + inspector fit one line). */}
+      <div className="flex flex-wrap gap-4">
         <StepPalette onAddStep={(type) => void handleAddStep(type)} disabled={op.isPending} />
-        <div className="min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+        <div className="relative isolate min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
+          <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
           <WorkflowCanvas
             workflow={detail}
             mode="design"

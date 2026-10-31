@@ -1,3 +1,10 @@
+/* Self-hosted variable fonts (M5 Task 1), loaded in main.tsx. */
+:root {
+  --font-sans:
+    'Inter Variable', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Nunito Variable', 'Inter Variable', system-ui, sans-serif;
+}
+
 /* Morning theme tokens (M2 Task 3 — plan-exact HSL triplets). */
 :root[data-theme='morning'] {
   --background: 40 33% 97%;

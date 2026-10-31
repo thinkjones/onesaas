@@ -1,0 +1,61 @@
+/* Evening + Workshop theme tokens (M5 Task 1 — plan-exact HSL triplets).
+   Morning lives in styles/tokens.css. ThemeProvider sets data-theme. */
+
+:root[data-theme='evening'] {
+  --background: 30 12% 11%;
+  --foreground: 40 25% 92%;
+  --card: 30 10% 15%;
+  --primary: 28 85% 60%;
+  --primary-foreground: 30 12% 11%;
+  --muted: 30 8% 22%;
+  --accent: 160 35% 55%;
+  --destructive: 4 70% 55%;
+  --warning: 38 92% 55%;
+  --success: 145 50% 45%;
+  --radius: 0.875rem;
+
+  /* shadcn companions, derived from the Evening palette like Morning's. */
+  --card-foreground: 40 25% 92%;
+  --popover: 30 10% 15%;
+  --popover-foreground: 40 25% 92%;
+  --secondary: 30 8% 22%;
+  --secondary-foreground: 40 25% 92%;
+  --muted-foreground: 35 12% 65%;
+  --accent-foreground: 30 12% 11%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 30 8% 26%;
+  --input: 30 8% 30%;
+  --ring: 28 85% 60%;
+}
+
+:root[data-theme='workshop'] {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 5%;
+  --card: 0 0% 100%;
+  --primary: 220 90% 40%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 0 0% 92%;
+  --accent: 220 90% 40%;
+  --destructive: 4 80% 40%;
+  --warning: 38 95% 42%;
+  --success: 145 60% 30%;
+  --radius: 0.5rem;
+
+  /* shadcn companions, high-contrast like the rest of Workshop. */
+  --card-foreground: 0 0% 5%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 5%;
+  --secondary: 0 0% 92%;
+  --secondary-foreground: 0 0% 5%;
+  --muted-foreground: 0 0% 30%;
+  --accent-foreground: 0 0% 100%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 40%;
+  --input: 0 0% 40%;
+  --ring: 220 90% 40%;
+}
+
+/* Workshop borders are 2px everywhere for maximum definition. */
+html[data-theme='workshop'] .border {
+  border-width: 2px;
+}

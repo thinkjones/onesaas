@@ -1,7 +1,8 @@
-import { Mic, PanelRightClose } from 'lucide-react';
+import { PanelRightClose } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
+import MicButton from '../voice/MicButton.tsx';
 import Message from './Message.tsx';
 import { useAgent } from './useAgent.ts';
 
@@ -14,15 +15,21 @@ export interface AgentPanelProps {
   initialPrompt?: string;
   /** Fired after the opening send so the page can consume `initialPrompt`. */
   onInitialSent?(): void;
+  /**
+   * An external send request (Explain's "Tell me more"): each new nonce
+   * sends its text once. Follows the prefill seam's ref-guard idiom so
+   * StrictMode and re-renders never double-send.
+   */
+  sendRequest?: { text: string; nonce: number };
   /** The page collapses the panel (state lives in the page, per mount). */
   onCollapse?(): void;
 }
 
 /**
  * The helper chat: transcript (Dad right, agent left, activity as small grey
- * lines, asks as chips) with a textarea + Send below and a placeholder mic
- * button (M5 wires voice). Only the LATEST ask renders clickable chips —
- * older ones stay visible but disabled, and everything locks while busy.
+ * lines, asks as chips) with a textarea + Send below and a push-to-talk mic
+ * button. Only the LATEST ask renders clickable chips — older ones stay
+ * visible but disabled, and everything locks while busy.
  */
 export default function AgentPanel({
   workflowId,
@@ -30,6 +37,7 @@ export default function AgentPanel({
   onPrefillConsumed,
   initialPrompt,
   onInitialSent,
+  sendRequest,
   onCollapse,
 }: AgentPanelProps) {
   const { transcript, busy, sendError, historyPending, historyError, send } = useAgent(workflowId);
@@ -60,6 +68,16 @@ export default function AgentPanel({
     void send(initialPrompt!.trim());
     onInitialSent?.();
   }, [initialPrompt, onInitialSent, send]);
+
+  // External sends (Explain's "Tell me more"): the nonce ref-guard sends
+  // each request exactly once, like the opening send above.
+  const lastSentNonce = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (sendRequest === undefined || sendRequest.nonce === lastSentNonce.current) return;
+    if (sendRequest.text.trim().length === 0) return;
+    lastSentNonce.current = sendRequest.nonce;
+    void send(sendRequest.text.trim());
+  }, [sendRequest, send]);
 
   // Scroll-follow: keep the newest row (or error) in view. An instant jump,
   // never smooth animation, so reduced-motion needs no special case.
@@ -147,15 +165,7 @@ export default function AgentPanel({
           }}
         />
         <div className="flex items-center justify-between gap-2">
-          <AppButton
-            variant="outline"
-            size="icon"
-            disabled
-            title="Voice coming soon"
-            aria-label="Voice coming soon"
-          >
-            <Mic />
-          </AppButton>
+          <MicButton onSend={submitChip} />
           <AppButton onClick={submitInput} disabled={busy || input.trim().length === 0}>
             Send
           </AppButton>

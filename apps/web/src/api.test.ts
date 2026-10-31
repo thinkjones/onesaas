@@ -46,22 +46,29 @@ describe('API error surface', () => {
 });
 
 describe('settings', () => {
-  test('getSettings returns the stored timezone', async () => {
-    stubFetch({ ok: true, status: 200, text: JSON.stringify({ timezone: 'America/New_York' }) });
-    await expect(getSettings()).resolves.toEqual({ timezone: 'America/New_York' });
+  const doc = {
+    timezone: 'America/New_York',
+    theme: 'morning',
+    textSize: 'normal',
+    sound: { on: true, volume: 0.25 },
+    onboarded: false,
+    moodFileIds: [],
+  };
+
+  test('getSettings returns the settings document', async () => {
+    stubFetch({ ok: true, status: 200, text: JSON.stringify(doc) });
+    await expect(getSettings()).resolves.toEqual(doc);
   });
 
-  test('putSettings PUTs the timezone as JSON', async () => {
+  test('putSettings PUTs the patch as JSON', async () => {
     const fetch = vi.fn(async () => ({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ timezone: 'America/New_York' }),
-      json: async () => ({ timezone: 'America/New_York' }),
+      text: async () => JSON.stringify(doc),
+      json: async () => doc,
     }));
     vi.stubGlobal('fetch', fetch);
-    await expect(putSettings('America/New_York')).resolves.toEqual({
-      timezone: 'America/New_York',
-    });
+    await expect(putSettings({ timezone: 'America/New_York' })).resolves.toEqual(doc);
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0]! as unknown as [string, RequestInit];
     expect(url).toBe('/api/settings');
@@ -76,13 +83,13 @@ describe('settings', () => {
     });
   }
 
-  function stubSettingsApi(stored: string | null) {
+  function stubSettingsApi(stored: string) {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push({ url, init });
-        const body = init?.method === 'PUT' ? {} : { timezone: stored };
+        const body = init?.method === 'PUT' ? doc : { ...doc, timezone: stored };
         return {
           ok: true,
           status: 200,
@@ -95,7 +102,7 @@ describe('settings', () => {
   }
 
   test('useTimezoneSync posts the browser zone when none is stored', async () => {
-    const calls = stubSettingsApi(null);
+    const calls = stubSettingsApi('');
     render(probe());
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[0]).toMatchObject({ url: '/api/settings' });

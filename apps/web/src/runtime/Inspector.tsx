@@ -1,7 +1,10 @@
 import type { StepRun } from '@dad/shared';
 import { useState } from 'react';
+import type { ExplainTarget } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import StatusBadge from '../design/StatusBadge.tsx';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { ScrollArea } from '../components/ui/scroll-area.tsx';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '../components/ui/sheet.tsx';
 import { formatCost, formatDateTime, formatDuration } from './format.ts';
@@ -112,6 +115,12 @@ export interface InspectorProps {
    * monospace block under the explanation. Undefined for every other step.
    */
   code?: string;
+  /**
+   * Explain-anything target + label (set by RuntimeView). Without both, the
+   * `?` button and alt-click stay off.
+   */
+  explainTarget?: ExplainTarget;
+  explainLabel?: string;
 }
 
 /**
@@ -126,7 +135,20 @@ export interface InspectorProps {
  * engine.resolveApproval) — shown as "Proposed (skipped)" with the proposal
  * nested below, so Dad sees what he skipped instead of a bare `proposed` key.
  */
-export default function Inspector({ stepRun, title, open, onClose, code }: InspectorProps) {
+export default function Inspector({
+  stepRun,
+  title,
+  open,
+  onClose,
+  code,
+  explainTarget,
+  explainLabel,
+}: InspectorProps) {
+  // Both or neither: without the pair the `?` button and alt-click stay off.
+  const explain =
+    explainTarget !== undefined && explainLabel !== undefined
+      ? { target: explainTarget, label: explainLabel }
+      : undefined;
   const [showDetails, setShowDetails] = useState(false);
 
   const skippedProposal =
@@ -147,8 +169,16 @@ export default function Inspector({ stepRun, title, open, onClose, code }: Inspe
       }}
     >
       <SheetContent side="right" className="sm:max-w-md" aria-label={`Details for ${title}`}>
-        <SheetHeader className="text-left">
-          <SheetTitle className="text-xl">{title}</SheetTitle>
+        <SheetHeader
+          className="text-left"
+          data-explain={
+            explain ? dataExplainValue(explain.target, explain.label) : undefined
+          }
+        >
+          <div className="flex items-center gap-1">
+            <SheetTitle className="flex-1 text-xl">{title}</SheetTitle>
+            {explain && <Explain target={explain.target} label={explain.label} />}
+          </div>
           <div>
             <StatusBadge status={stepRun?.status ?? 'pending'} />
           </div>

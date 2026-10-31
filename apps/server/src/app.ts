@@ -8,15 +8,21 @@ import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
 import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
-import { TIMEZONE_KEY, type Pairing, type PairingStore } from './bridge/pairing.js';
+import { type Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import { createExplainer, ExplainBody, ExplainError } from './explain/explain.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
+import type { Gateway, ModelStatus } from './models/gateway.js';
+import type { ImageModels } from './models/image.js';
+import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
+import type { SettingsStore } from './settings/store.js';
 import type { TableStore } from './tables/store.js';
 import type { ViewStore } from './views/store.js';
+import { createVoiceHandlers, type VoiceProxyOptions } from './voice/proxy.js';
 import { createWorkflowOps, type OpResult, type WorkflowOps } from './workflows/ops.js';
 import { checkWorkflow } from './workflows/validate.js';
 
@@ -56,10 +62,13 @@ export function createApp(deps: AppDeps): Hono {
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
   const testRun = deps.testRun as ((workflowId: string) => Promise<TestRunResult>) | undefined;
-  const settings = deps.settings as PairingStore | undefined;
+  const appSettings = deps.appSettings as SettingsStore | undefined;
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
   const files = deps.files as FileStore | undefined;
   const views = deps.views as ViewStore | undefined;
+  const gateway = deps.gateway as Gateway | undefined;
+  const voice = deps.voice as VoiceProxyOptions | undefined;
+  const image = deps.image as ImageModels | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -74,6 +83,17 @@ export function createApp(deps: AppDeps): Hono {
   injectors.set(app, injectWebSocket);
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // Model status (M5 Task 7): one row per role for Settings → Thinking. Real
+  // gateways always carry status(); hand-made fakes in direct createApp calls
+  // may not, and read as unconfigured rather than throwing.
+  app.get('/api/models/status', (c) => {
+    const withStatus = gateway as (Gateway & { status?: () => ModelStatus[] }) | undefined;
+    if (typeof withStatus?.status !== 'function') {
+      return c.json({ error: 'Server not configured' }, 500);
+    }
+    return c.json(withStatus.status());
+  });
 
   app.post('/api/pairing/start', (c) => {
     if (!pairing) return c.json({ error: 'Bridge not configured' }, 500);
@@ -93,37 +113,89 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ revoked: true });
   });
 
-  // Business timezone (IANA name). The web app GETs on first load and PUTs
-  // the browser zone when none is stored; AI steps read it via StepContext.
+  // The full settings document (M5). The web app GETs on first load and PUTs
+  // the browser zone when none is stored; AI steps read the zone via StepContext.
   app.get('/api/settings', (c) => {
-    if (!settings) return c.json({ error: 'Server not configured' }, 500);
-    return c.json({ timezone: settings.get(TIMEZONE_KEY) ?? null });
+    if (!appSettings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(appSettings.get());
   });
 
-  const settingsBody = z.object({ timezone: z.string().min(1) }).strict();
+  // PUT takes a PARTIAL patch ({ theme: 'evening' }); every key is optional
+  // but validated when present. An empty object is a valid no-op.
+  const settingsPatchBody = z
+    .object({
+      businessName: z.string().optional(),
+      businessWhat: z.string().optional(),
+      timezone: z.string().optional(),
+      theme: z.enum(['morning', 'evening', 'workshop']).optional(),
+      textSize: z.enum(['normal', 'large', 'xlarge']).optional(),
+      sound: z.object({ on: z.boolean(), volume: z.number().min(0).max(1) }).strict().optional(),
+      onboarded: z.boolean().optional(),
+      moodFileIds: z.array(z.string()).optional(),
+    })
+    .strict();
 
   app.put('/api/settings', async (c) => {
-    if (!settings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
+    if (!appSettings || !setTimezone) return c.json({ error: 'Server not configured' }, 500);
     let raw: unknown;
     try {
       raw = await c.req.json();
     } catch {
       return c.json({ error: 'Invalid settings body' }, 400);
     }
-    const parsed = settingsBody.safeParse(raw);
+    const parsed = settingsPatchBody.safeParse(raw);
     if (!parsed.success) return c.json({ error: 'Invalid settings body' }, 400);
+    const { timezone, ...rest } = parsed.data;
     // The zone feeds Intl.DateTimeFormat in every AI step: a bad value throws
-    // on each run until overwritten, so reject (whitespace-only, non-IANA)
-    // with 400 and never persist invalid.
-    const tz = parsed.data.timezone;
-    if (tz.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
-    try {
-      new Intl.DateTimeFormat(undefined, { timeZone: tz });
-    } catch {
-      return c.json({ error: 'Invalid settings body' }, 400);
+    // on each run until overwritten, so reject (empty, whitespace-only,
+    // non-IANA) with 400 and never persist invalid.
+    if (timezone !== undefined) {
+      if (timezone.trim() === '') return c.json({ error: 'Invalid settings body' }, 400);
+      try {
+        new Intl.DateTimeFormat(undefined, { timeZone: timezone });
+      } catch {
+        return c.json({ error: 'Invalid settings body' }, 400);
+      }
     }
-    setTimezone(tz);
-    return c.json({ timezone: tz });
+    // Nothing is written until every field validates, so a bad patch leaves
+    // the stored settings untouched.
+    if (Object.keys(rest).length > 0) appSettings.update(rest);
+    // Timezone goes through setTimezone so live AI steps see it immediately.
+    if (timezone !== undefined) setTimezone(timezone);
+    return c.json(appSettings.get());
+  });
+
+  // Mood backgrounds (M5 Task 4). POST draws Dad's business in the
+  // background (202 immediately) and emits { type: 'mood', fileIds } on
+  // /api/events when done; GET reports the stored set plus whether a run is
+  // in flight. A POST while a run is in flight is a no-op 202 (no duplicate
+  // spend). The business description comes from the saved settings (Task 5's
+  // Next saves first), falling back to the default-business scenes.
+  let moodGenerating = false;
+  app.get('/api/mood', (c) => {
+    if (!appSettings) return c.json({ error: 'Server not configured' }, 500);
+    return c.json({ fileIds: appSettings.get().moodFileIds, generating: moodGenerating });
+  });
+
+  app.post('/api/mood/generate', (c) => {
+    if (!appSettings || !image || !files) {
+      return c.json({ error: 'Server not configured' }, 500);
+    }
+    if (moodGenerating) return c.json({}, 202);
+    moodGenerating = true;
+    const stored = appSettings.get().businessWhat?.trim();
+    const businessWhat = stored ? stored : DEFAULT_MOOD_BUSINESS_WHAT;
+    generateMoodSet({ image, files, settings: appSettings }, { businessWhat })
+      .then((fileIds) => {
+        engine?.events.emit('event', { type: 'mood', fileIds });
+      })
+      .catch((err) => {
+        console.error('[mood] generation failed:', err);
+      })
+      .finally(() => {
+        moodGenerating = false;
+      });
+    return c.json({}, 202);
   });
 
   // Task 11 contract. Missing repo/engine deps are a distinct 500 from the
@@ -255,6 +327,29 @@ export function createApp(deps: AppDeps): Hono {
       return c.json(views.compute(view));
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  // "Explain anything" (M5 Task 6): one explainer per app, so its
+  // in-memory cache lives as long as the server does.
+  const explainer =
+    repo && tables && gateway ? createExplainer({ repo, tables, gateway }) : undefined;
+
+  app.post('/api/explain', async (c) => {
+    if (!explainer) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid explain body' }, 400);
+    }
+    const parsed = ExplainBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid explain body' }, 400);
+    try {
+      return c.json(await explainer.explain(parsed.data));
+    } catch (err) {
+      if (err instanceof ExplainError) return c.json({ error: err.message }, err.status);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });
 
@@ -578,6 +673,21 @@ export function createApp(deps: AppDeps): Hono {
       }
     });
   });
+
+  // Push-to-talk (M5 Task 3): the browser streams PCM here and the proxy
+  // bridges it to Muse Voice Transcribe realtime, holding MODEL_API_KEY on
+  // the server side. Without a key the socket errors and closes.
+  app.get(
+    '/api/voice',
+    upgradeWebSocket(() =>
+      createVoiceHandlers({
+        apiKey: voice?.apiKey,
+        upstreamUrl: voice?.upstreamUrl,
+        connectTimeoutMs: voice?.connectTimeoutMs,
+        finalWaitTimeoutMs: voice?.finalWaitTimeoutMs,
+      }),
+    ),
+  );
 
   app.get(
     '/ext',

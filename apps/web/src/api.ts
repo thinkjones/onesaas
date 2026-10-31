@@ -9,7 +9,9 @@ import type { ListSummary, ViewData, ViewDef } from './lists/types.ts';
 export type EngineEvent =
   | { type: 'run'; run: Run }
   | { type: 'step'; stepRun: StepRun }
-  | { type: 'notify'; text: string };
+  | { type: 'notify'; text: string }
+  // M5 Task 4: a background mood-image run finished — the stored set changed.
+  | { type: 'mood'; fileIds: string[] };
 
 /** GET /api/runs/:id shape. `workflow` is the run's OWN pinned version. */
 export interface RunDetail {
@@ -148,14 +150,89 @@ export async function revokePairing(): Promise<{ revoked: boolean }> {
   return (await res.json()) as { revoked: boolean };
 }
 
-/** GET /api/settings: the stored business timezone, or null when unset. */
-export function getSettings(): Promise<{ timezone: string | null }> {
+/**
+ * Mirrors apps/server/src/settings/store.ts Settings (the web package cannot
+ * import server code, so the shape is redeclared here like EngineEvent).
+ */
+export interface Settings {
+  businessName?: string;
+  businessWhat?: string;
+  /** IANA zone; '' until the first-load sync stores the browser zone. */
+  timezone: string;
+  theme: 'morning' | 'evening' | 'workshop';
+  textSize: 'normal' | 'large' | 'xlarge';
+  sound: { on: boolean; volume: number };
+  onboarded: boolean;
+  moodFileIds: string[];
+}
+
+/** PUT /api/settings takes a partial patch; sound is always sent whole. */
+export type SettingsPatch = Partial<Omit<Settings, 'sound'>> & { sound?: Settings['sound'] };
+
+/** GET /api/settings: the full settings document. */
+export function getSettings(): Promise<Settings> {
   return getJson('/api/settings');
 }
 
-/** PUT /api/settings: store the business timezone (IANA name). */
-export function putSettings(timezone: string): Promise<{ timezone: string }> {
-  return putJson('/api/settings', { timezone });
+/**
+ * POST /api/mood/generate: draw the business in the background (202, the set
+ * lands via the `mood` event). Best-effort by design — a failure leaves the
+ * bundled defaults in place and must never block onboarding.
+ */
+export async function requestMoodGeneration(): Promise<void> {
+  try {
+    await postJson('/api/mood/generate');
+  } catch {
+    console.debug('[mood] background generation request failed');
+  }
+}
+
+/** PUT /api/settings: merge a patch into the settings document. */
+export function putSettings(patch: SettingsPatch): Promise<Settings> {
+  return putJson('/api/settings', patch);
+}
+
+/**
+ * The settings document plus an optimistic `update(patch)`: the UI (theme,
+ * text size) applies instantly and rolls back with a toast if the PUT fails.
+ * `updateAsync` is the same mutation awaitable (onboarding awaits it so the
+ * save lands before the mood POST reads the profile). Shares the ['settings']
+ * query with useBusinessTimezone below.
+ */
+export function useSettings(): {
+  settings: Settings | undefined;
+  update: (patch: SettingsPatch) => void;
+  updateAsync: (patch: SettingsPatch) => Promise<Settings>;
+} {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: ['settings'], queryFn: getSettings });
+  const mutation = useMutation({
+    mutationFn: (patch: SettingsPatch) => putSettings(patch),
+    onMutate: async (patch) => {
+      await client.cancelQueries({ queryKey: ['settings'] });
+      const previous = client.getQueryData<Settings>(['settings']);
+      if (previous) {
+        client.setQueryData<Settings>(['settings'], {
+          ...previous,
+          ...patch,
+          sound: patch.sound ?? previous.sound,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _patch, context) => {
+      if (context?.previous) client.setQueryData(['settings'], context.previous);
+      toast('Could not save that change.');
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ['settings'] });
+    },
+  });
+  return {
+    settings: query.data,
+    update: (patch) => mutation.mutate(patch),
+    updateAsync: (patch) => mutation.mutateAsync(patch),
+  };
 }
 
 // --- Lists + views (M4 Task 8) ---
@@ -237,6 +314,32 @@ export function useDeleteView() {
 
 export function useBusinessTimezone() {
   return useQuery({ queryKey: ['settings'], queryFn: getSettings });
+}
+
+/**
+ * Mirrors apps/server/src/models/gateway.ts ModelStatus (the web package
+ * cannot import server code, so the shape is redeclared here like
+ * EngineEvent). One row per model role: where it runs and whether it is up.
+ */
+export type ModelRole = 'builder' | 'planner' | 'triage' | 'vision';
+
+export interface ModelStatus {
+  role: ModelRole;
+  provider: 'meta' | 'glimmer';
+  model: string;
+  healthy: boolean;
+  note?: string;
+}
+
+/** GET /api/models/status: the per-role rows for Settings → Thinking. */
+export function getModelStatus(): Promise<ModelStatus[]> {
+  return getJson('/api/models/status');
+}
+
+export function useModelStatus() {
+  // The server re-checks Glimmer every 60 s; poll on the same cadence so
+  // Settings picks up a revive (or outage) without a reload.
+  return useQuery({ queryKey: ['model-status'], queryFn: getModelStatus, refetchInterval: 60_000 });
 }
 
 /** Subscribes to the SSE stream; closes the connection on unmount. */
@@ -414,6 +517,14 @@ export type AgentEvent =
  */
 export const PENDING_BUILT_TIMEOUT_MS = 20_000;
 
+/**
+ * How long the onboarding reframe screen waits for the generated mood set
+ * before settling on the bundled defaults. The swap still happens if the set
+ * lands later — the timeout only ends the "Drawing your business…" shimmer.
+ * This is real behavior (a live setTimeout), not a test artifact.
+ */
+export const MOOD_DRAW_TIMEOUT_MS = 20_000;
+
 /** POST /api/workflows {name, description}: a blank reducer (steps come later). */
 export function createWorkflow(body: { name: string; description: string }): Promise<Workflow> {
   return postJson('/api/workflows', body);
@@ -454,6 +565,22 @@ export function getAgentTranscript(workflowId: string): Promise<AgentTranscriptE
  */
 export function sendAgentMessage(workflowId: string, text: string): Promise<void> {
   return postJson(`/api/workflows/${encodeURIComponent(workflowId)}/agent`, { text });
+}
+
+/**
+ * Mirrors the server's ExplainBody (apps/server/src/explain/explain.ts).
+ * `context` scopes the id: the workflow id for a step, the table for a
+ * column. Runs, tables and UI controls need no context.
+ */
+export interface ExplainTarget {
+  kind: 'step' | 'run' | 'table' | 'column' | 'ui';
+  id?: string;
+  context?: string;
+}
+
+/** POST /api/explain: a 2–3 sentence plain-English explanation. */
+export function postExplain(target: ExplainTarget): Promise<{ text: string }> {
+  return postJson('/api/explain', target);
 }
 
 /**
@@ -504,7 +631,7 @@ export function useTimezoneSync(): void {
       try {
         const { timezone } = await getSettings();
         if (cancelled || timezone) return;
-        await putSettings(Intl.DateTimeFormat().resolvedOptions().timeZone);
+        await putSettings({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
       } catch {
         // Best-effort only (see above).
       }
@@ -540,6 +667,9 @@ export function useLiveEvents(): void {
         // by prefix instead of per workflow.
         void client.invalidateQueries({ queryKey: ['run', e.stepRun.runId] });
         void client.invalidateQueries({ queryKey: ['runs'] });
+      } else if (e.type === 'mood') {
+        // A mood run landed: refetch settings so the backdrop live-updates.
+        void client.invalidateQueries({ queryKey: ['settings'] });
       } else if (e.type === 'notify') {
         // A notify step's in-app toast. Agent envelopes also arrive on this
         // stream but carry no EngineEvent type, so they fall through silently.
