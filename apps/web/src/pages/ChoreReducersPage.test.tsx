@@ -82,6 +82,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('ChoreReducersPage click through', () => {
+  test('clicking a reducer name opens its details page', async () => {
+    const { location } = renderList();
+    fireEvent.click(await screen.findByRole('link', { name: 'Test flow' }));
+    await waitFor(() => {
+      expect(location().pathname).toBe('/reducers/flow-1');
+    });
+  });
+});
+
 describe('ChoreReducersPage new reducer', () => {
   test('"New chore reducer" creates a blank reducer and opens it in design mode', async () => {
     const { posts, location } = renderList();

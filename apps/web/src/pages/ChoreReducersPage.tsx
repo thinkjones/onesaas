@@ -1,7 +1,7 @@
 import type { Workflow } from '@dad/shared';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useCreateWorkflow, useRuns, useWorkflows } from '../api.ts';
 import { Badge } from '../components/ui/badge.tsx';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
@@ -29,7 +29,9 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{workflow.name}</CardTitle>
+        <CardTitle>
+          <Link to={`/reducers/${workflow.id}`}>{workflow.name}</Link>
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
