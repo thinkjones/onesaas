@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ApiError, approveStep, getRun, getSettings, putSettings, useTimezoneSync } from './api.ts';
+import { ApiError, apiUrl, approveStep, getRun, getSettings, isTauri, putSettings, useTimezoneSync } from './api.ts';
 
 function stubFetch(res: { ok: boolean; status: number; text?: string }) {
   vi.stubGlobal(
@@ -121,5 +121,23 @@ describe('settings', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ url: '/api/settings' });
+  });
+});
+
+describe('desktop shell URLs', () => {
+  test('apiUrl prefixes loopback under Tauri, passthrough otherwise', () => {
+    expect(isTauri()).toBe(false);
+    expect(apiUrl('/api/settings')).toBe('/api/settings');
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+    expect(isTauri()).toBe(true);
+    expect(apiUrl('/api/settings')).toBe('http://127.0.0.1:8787/api/settings');
+  });
+
+  test('fetches go absolute under Tauri', async () => {
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await getSettings();
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8787/api/settings');
   });
 });
