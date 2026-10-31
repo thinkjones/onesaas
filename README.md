@@ -16,6 +16,12 @@ pnpm dev
 - Web: `http://localhost:5173`
 - Extension: loaded into a dev Chrome via WXT
 
+### Loading the extension unpacked
+
+1. Build it: `pnpm --filter @dad/extension build` (outputs to `apps/extension/.output/chrome-mv3`).
+2. Open `chrome://extensions` and enable Developer mode.
+3. Click Load unpacked and select `apps/extension/.output/chrome-mv3`.
+
 ## Layout
 
 - `apps/server` — Node + Hono API: model gateway, table store, workflow engine, WebSocket bridge

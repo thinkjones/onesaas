@@ -8,7 +8,7 @@ interface PairingStatus {
   connected: boolean;
 }
 
-export default function Pairing() {
+export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatus) => void }) {
   const [status, setStatus] = useState<PairingStatus | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +38,12 @@ export default function Pairing() {
       cancelled = true;
     };
   }, []);
+
+  // Lets embedders (onboarding) mirror the paired flag off this same status
+  // instead of polling the endpoint a second time. Rendering is untouched.
+  useEffect(() => {
+    if (status !== null) onStatus?.(status);
+  }, [status, onStatus]);
 
   async function connect() {
     setError(null);

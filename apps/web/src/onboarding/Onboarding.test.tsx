@@ -36,7 +36,11 @@ interface FetchLog {
   moodPosts: number;
 }
 
-function stubFetch(doc: Settings, log: FetchLog): void {
+function stubFetch(
+  doc: Settings,
+  log: FetchLog,
+  pairing = { paired: false, connected: false },
+): void {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -53,15 +57,20 @@ function stubFetch(doc: Settings, log: FetchLog): void {
         return { ok: true, json: async () => ({}) } as Response;
       }
       if (url === '/api/pairing/status') {
-        return { ok: true, json: async () => ({ paired: false, connected: false }) } as Response;
+        return { ok: true, json: async () => pairing } as Response;
       }
       throw new Error(`unexpected fetch: ${url} ${init?.method}`);
     }),
   );
 }
 
-function renderOnboarding(doc: Settings, log: FetchLog, path = '/welcome') {
-  stubFetch(doc, log);
+function renderOnboarding(
+  doc: Settings,
+  log: FetchLog,
+  path = '/welcome',
+  pairing = { paired: false, connected: false },
+) {
+  stubFetch(doc, log, pairing);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -279,6 +288,40 @@ test('"Skip for now" on screen 4 sets onboarded:true and navigates to /', async 
   fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
   expect(await screen.findByText('Home')).not.toBeNull();
   expect(log.puts).toContainEqual({ onboarded: true });
+  unmount();
+});
+
+test('screen 4 shows a big checkmark once the extension is paired', async () => {
+  const log: FetchLog = { puts: [], moodPosts: 0 };
+  const { unmount } = renderOnboarding(settingsDoc(), log, '/welcome', {
+    paired: true,
+    connected: true,
+  });
+  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
+  await screen.findByLabelText("What's your business called?");
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText(SCREEN3_COPY);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+  expect(await screen.findByRole('img', { name: 'Chrome extension paired' })).not.toBeNull();
+  unmount();
+});
+
+test('screen 4 links to the unpacked-extension install instructions', async () => {
+  const log: FetchLog = { puts: [], moodPosts: 0 };
+  const { unmount } = renderOnboarding(settingsDoc(), log);
+  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
+  await screen.findByLabelText("What's your business called?");
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText(SCREEN3_COPY);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+  const link = await screen.findByRole('link', { name: 'Install the extension' });
+  expect(link.getAttribute('href')).toBe(
+    'https://github.com/thinkjones/meta-ai-hackathon-my-dads-ai-agent#loading-the-extension-unpacked',
+  );
+  // Unpaired: the big checkmark stays hidden.
+  expect(screen.queryByRole('img', { name: 'Chrome extension paired' })).toBeNull();
   unmount();
 });
 
