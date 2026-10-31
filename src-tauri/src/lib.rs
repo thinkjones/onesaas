@@ -60,3 +60,26 @@ pub fn run() {
             }
         });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidecar_points_at_bundled_server_and_app_data() {
+        let res = PathBuf::from("/R");
+        let data = PathBuf::from("/D");
+        assert_eq!(
+            sidecar_args(&res),
+            vec!["/R/resources/app/dist/server.mjs".to_string()]
+        );
+        assert_eq!(
+            sidecar_env(&data),
+            vec![
+                ("PORT".to_string(), "8787".to_string()),
+                ("DB_FILE".to_string(), "/D/agent.db".to_string()),
+                ("FILES_DIR".to_string(), "/D/files".to_string()),
+            ]
+        );
+    }
+}
