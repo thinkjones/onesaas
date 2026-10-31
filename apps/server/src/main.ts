@@ -27,6 +27,7 @@ import { createWorkflowOps } from './workflows/ops.js';
 
 // Warn-once: createServer() runs per test, so an unflagged warn would spam stderr.
 let warnedMissingKey = false;
+let warnedHalfGlimmer = false;
 
 /**
  * Composition root: opens the DB, builds tables/repo/settings/pairing/bridge,
@@ -83,7 +84,9 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   const glimmerModel = process.env['GLIMMER_MODEL'];
   // Exactly one set is a typo or half-written .env: the gateway below boots
   // legacy-Spark, so say so instead of silently ignoring the lone variable.
-  if (Boolean(glimmerBaseUrl) !== Boolean(glimmerModel)) {
+  const halfGlimmer = Boolean(glimmerBaseUrl) !== Boolean(glimmerModel);
+  if (halfGlimmer && !warnedHalfGlimmer) {
+    warnedHalfGlimmer = true;
     console.warn('Only one of GLIMMER_BASE_URL/GLIMMER_MODEL is set — triage stays on Spark');
   }
   const gateway =

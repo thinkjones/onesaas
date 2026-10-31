@@ -512,22 +512,35 @@ test('server boots against a healthy glimmer stub and triages on it', async () =
   }
 });
 
-test('half-configured glimmer warns and keeps triage on spark', () => {
+test('half-configured glimmer warns and keeps triage on spark', async () => {
   const HALF_MSG = 'Only one of GLIMMER_BASE_URL/GLIMMER_MODEL is set — triage stays on Spark';
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  // The missing-key warning shares the spy, so count only half-config warns.
+  const halfWarns = () => warn.mock.calls.filter((call) => call[0] === HALF_MSG).length;
   try {
     const plain = createServer({ dbFile: ':memory:' });
     plain.gateway.stop();
     expect(warn).not.toHaveBeenCalledWith(HALF_MSG);
     for (const vars of [{ GLIMMER_BASE_URL: GLIMMER_BASE }, { GLIMMER_MODEL: GLIMMER_MODEL }]) {
+      // The half-config warning is warn-once per module (like the missing-key
+      // warning), so each direction needs a fresh main.ts.
+      vi.resetModules();
+      const { createServer: freshCreateServer } = await import('../src/main.js');
       Object.assign(process.env, vars);
-      const { gateway } = createServer({ dbFile: ':memory:' });
+      const { gateway } = freshCreateServer({ dbFile: ':memory:' });
       try {
         expect(warn).toHaveBeenCalledWith(HALF_MSG);
         expect(gateway.status().find((s) => s.role === 'triage')).toMatchObject({
           provider: 'meta',
           model: 'muse-spark-1.3',
         });
+        // Warn-once: a second boot with the same half config stays silent.
+        const again = freshCreateServer({ dbFile: ':memory:' });
+        try {
+          expect(halfWarns()).toBe(1);
+        } finally {
+          again.gateway.stop();
+        }
       } finally {
         gateway.stop();
       }
