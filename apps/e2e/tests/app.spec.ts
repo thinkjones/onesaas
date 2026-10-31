@@ -12,8 +12,8 @@ test('API health is reachable directly and through the web proxy', async ({ requ
   expect(await proxied.json()).toBeInstanceOf(Array);
 });
 
-test('home shows the one-sentence start box', async ({ page }) => {
-  await page.goto('/');
+test('automate shows the one-sentence start box', async ({ page }) => {
+  await page.goto('/automate');
   await expect(
     page.getByRole('heading', { name: 'What do you want to achieve today?' }),
   ).toBeVisible();

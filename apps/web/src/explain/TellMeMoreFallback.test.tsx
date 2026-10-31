@@ -124,13 +124,13 @@ function renderShell(
               element={<Explain target={{ kind: 'ui', id: 'nav-settings' }} label="Settings" />}
             />
             <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
-            {/* Home carries a NavRail-style Explain (AppShell-level in production). */}
+            {/* Automate carries a NavRail-style Explain (AppShell-level in production). */}
             <Route
-              path="/"
+              path="/automate"
               element={
                 <>
                   <HomePage />
-                  <Explain target={{ kind: 'ui', id: 'nav-home' }} label="Home" />
+                  <Explain target={{ kind: 'ui', id: 'nav-automate' }} label="Automate" />
                 </>
               }
             />
@@ -180,13 +180,13 @@ describe('TellMeMoreFallback', () => {
     });
   });
 
-  test('with no reducers yet, "Tell me more" lands Home with the message in the box', async () => {
+  test('with no reducers yet, "Tell me more" lands Automate with the message in the box', async () => {
     const { location } = renderShell('/settings', []);
     fireEvent.click(screen.getByRole('button', { name: 'Explain Settings' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
     await waitFor(() => {
-      expect(location().pathname).toBe('/');
+      expect(location().pathname).toBe('/automate');
     });
     expect(location().state).toEqual({ homePrefill: 'Tell me more about Settings' });
     const box = (await screen.findByRole('textbox', {
@@ -195,9 +195,9 @@ describe('TellMeMoreFallback', () => {
     expect(box.value).toBe('Tell me more about Settings');
   });
 
-  test('already Home with no reducers, "Tell me more" still fills the box (no remount)', async () => {
-    renderShell('/', []);
-    fireEvent.click(screen.getByRole('button', { name: 'Explain Home' }));
+  test('already on Automate with no reducers, "Tell me more" still fills the box (no remount)', async () => {
+    renderShell('/automate', []);
+    fireEvent.click(screen.getByRole('button', { name: 'Explain Automate' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
     // Same-path re-navigation: the prefill lands without a remount…
@@ -205,7 +205,7 @@ describe('TellMeMoreFallback', () => {
       name: 'What do you want to achieve today?',
     })) as HTMLTextAreaElement;
     await waitFor(() => {
-      expect(box.value).toBe('Tell me more about Home');
+      expect(box.value).toBe('Tell me more about Automate');
     });
     // …and typing afterwards is never clobbered by a re-applied prefill.
     fireEvent.change(box, { target: { value: 'Dad typing' } });
@@ -228,13 +228,13 @@ describe('TellMeMoreFallback', () => {
     expect(agentPosts).toEqual([{ text: 'Tell me more about Turn on' }]);
   });
 
-  test('when the reducers list fails to load, "Tell me more" lands Home with the message in the box', async () => {
+  test('when the reducers list fails to load, "Tell me more" lands Automate with the message in the box', async () => {
     const { location } = renderShell('/lists', [], { failWorkflows: true });
     fireEvent.click(screen.getByRole('button', { name: 'Explain Email' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
     await waitFor(() => {
-      expect(location().pathname).toBe('/');
+      expect(location().pathname).toBe('/automate');
     });
     expect(location().state).toEqual({ homePrefill: 'Tell me more about Email' });
     const box = (await screen.findByRole('textbox', {

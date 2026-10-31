@@ -1,0 +1,117 @@
+import type { Run, Workflow } from '@dad/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import InboxPage from './InboxPage.tsx';
+
+function workflow(id: string, name: string): Workflow {
+  return {
+    id,
+    name,
+    description: `${name}.`,
+    version: 1,
+    status: 'on',
+    trigger: { id: 't', type: 'trigger.manual', title: 'Manual', summary: '', config: {}, inputs: {}, position: { x: 0, y: 0 } },
+    steps: [],
+    edges: [],
+  };
+}
+
+function run(id: string, workflowId: string, startedAt: string, status: Run['status']): Run {
+  return {
+    id,
+    workflowId,
+    workflowVersion: 1,
+    triggerPayload: { email: { fromName: 'Sarah Lee', subject: 'Kitchen tap quote' } },
+    status,
+    kind: 'live',
+    usedSample: false,
+    startedAt,
+  };
+}
+
+function LocationProbe({ onLocation }: { onLocation: (pathname: string, search: string) => void }) {
+  const location = useLocation();
+  onLocation(location.pathname, location.search);
+  return null;
+}
+
+function renderInbox(runs: Run[]) {
+  const fetch = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    const json = async () => {
+      if (url === '/api/workflows') return [workflow('wf-1', 'Leads'), workflow('wf-2', 'Bookings')];
+      if (url === '/api/runs') return runs;
+      if (url === '/api/runs/run-new')
+        return { story: ['Saved Sarah Lee to customers', 'Drafted a reply for approval'] };
+      if (url === '/api/runs/run-old') return { story: [] };
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    return { ok: true, status: 200, json } as Response;
+  });
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let pathname = '/';
+  let search = '';
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<InboxPage />} />
+          <Route
+            path="/reducers/:workflowId"
+            element={
+              <LocationProbe
+                onLocation={(p, s) => {
+                  pathname = p;
+                  search = s;
+                }}
+              />
+            }
+          />
+          <Route path="/automate" element={<p>Automate</p>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { location: () => ({ pathname, search }) };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('InboxPage', () => {
+  test('lists runs newest-first with time, reducer, story line and status', async () => {
+    renderInbox([
+      run('run-old', 'wf-2', '2026-10-20T09:00:00.000Z', 'done'),
+      run('run-new', 'wf-1', '2026-10-30T10:42:00.000Z', 'waiting'),
+    ]);
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined();
+    const rows = await screen.findAllByRole('link');
+    expect(rows.map((r) => r.textContent)).toHaveLength(2);
+    // Newest first, with the story's last line; older row falls back to the sender.
+    expect(rows[0]!.textContent).toContain('Leads');
+    expect(rows[0]!.textContent).toContain('Drafted a reply for approval');
+    expect(rows[1]!.textContent).toContain('Bookings');
+    expect(rows[1]!.textContent).toContain('Sarah Lee');
+  });
+
+  test('clicking a row opens that run', async () => {
+    const { location } = renderInbox([run('run-new', 'wf-1', '2026-10-30T10:42:00.000Z', 'done')]);
+    fireEvent.click((await screen.findAllByRole('link'))[0]!);
+    await waitFor(() => {
+      expect(location().pathname).toBe('/reducers/wf-1');
+    });
+    expect(location().search).toBe('?run=run-new');
+  });
+
+  test('empty inbox points to Automate', async () => {
+    renderInbox([]);
+    const link = await screen.findByRole('link', { name: /automate/i });
+    fireEvent.click(link);
+    expect(await screen.findByText('Automate')).toBeDefined();
+  });
+});

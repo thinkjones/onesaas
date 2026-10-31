@@ -3,9 +3,9 @@ import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 
 const LINKS = [
-  { to: '/', label: 'Home', end: true, explainId: 'nav-home' },
-  { to: '/reducers', label: 'Chore reducers', end: false, explainId: 'nav-reducers' },
-  { to: '/lists', label: 'Lists', end: true, explainId: 'nav-lists' },
+  { to: '/', label: 'Inbox', end: true, explainId: 'nav-inbox' },
+  { to: '/automate', label: 'Automate', end: true, explainId: 'nav-automate' },
+  { to: '/lists', label: 'Data', end: true, explainId: 'nav-data' },
   { to: '/settings', label: 'Settings', end: true, explainId: 'nav-settings' },
 ];
 

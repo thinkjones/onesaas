@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { useSettings } from './api.ts';
+import InboxPage from './inbox/InboxPage.tsx';
 import Onboarding from './onboarding/Onboarding.tsx';
 import ChoreReducersPage from './pages/ChoreReducersPage.tsx';
 import DesignPreviewPage from './pages/DesignPreviewPage.tsx';
@@ -43,7 +44,8 @@ export default function AppRoutes() {
           </OnboardingGate>
         }
       >
-        <Route index element={<HomePage />} />
+        <Route index element={<InboxPage />} />
+        <Route path="automate" element={<HomePage />} />
         <Route path="reducers" element={<ChoreReducersPage />} />
         <Route path="reducers/:workflowId" element={<WorkflowPage />} />
         <Route path="lists" element={<ListsPage />} />
