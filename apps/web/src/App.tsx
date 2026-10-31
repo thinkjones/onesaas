@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router';
 import { useLiveEvents, useSettings, useTimezoneSync } from './api.ts';
 import { Toaster } from './components/ui/sonner.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
+import { AltClickExplainRoot } from './explain/Explain.tsx';
 import AppRoutes from './routes.tsx';
 import ThemeProvider from './theme/ThemeProvider.tsx';
 
@@ -44,6 +45,7 @@ function App() {
             <AppRoutes />
           </BrowserRouter>
         </SettingsTheme>
+        <AltClickExplainRoot />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

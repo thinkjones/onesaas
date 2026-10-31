@@ -139,6 +139,7 @@ export default function WorkflowCanvas({
           status: stepRuns?.[s.id]?.status,
           extra: renderNodeExtra?.(s.id),
           fresh: builtIds?.includes(s.id) ?? false,
+          workflowId: workflow.id,
         },
         selected: s.id === selectedStepId,
       }),

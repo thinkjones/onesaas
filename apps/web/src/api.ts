@@ -542,6 +542,22 @@ export function sendAgentMessage(workflowId: string, text: string): Promise<void
 }
 
 /**
+ * Mirrors the server's ExplainBody (apps/server/src/explain/explain.ts).
+ * `context` scopes the id: the workflow id for a step, the table for a
+ * column. Runs, tables and UI controls need no context.
+ */
+export interface ExplainTarget {
+  kind: 'step' | 'run' | 'table' | 'column' | 'ui';
+  id?: string;
+  context?: string;
+}
+
+/** POST /api/explain: a 2–3 sentence plain-English explanation. */
+export function postExplain(target: ExplainTarget): Promise<{ text: string }> {
+  return postJson('/api/explain', target);
+}
+
+/**
  * Subscribes to one workflow's agent events over SSE. A dedicated EventSource
  * (useLiveEvents ignores agent events): cheap enough for one design screen,
  * skipped outside browsers like useEvents.

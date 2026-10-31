@@ -15,6 +15,12 @@ export interface AgentPanelProps {
   initialPrompt?: string;
   /** Fired after the opening send so the page can consume `initialPrompt`. */
   onInitialSent?(): void;
+  /**
+   * An external send request (Explain's "Tell me more"): each new nonce
+   * sends its text once. Follows the prefill seam's ref-guard idiom so
+   * StrictMode and re-renders never double-send.
+   */
+  sendRequest?: { text: string; nonce: number };
   /** The page collapses the panel (state lives in the page, per mount). */
   onCollapse?(): void;
 }
@@ -31,6 +37,7 @@ export default function AgentPanel({
   onPrefillConsumed,
   initialPrompt,
   onInitialSent,
+  sendRequest,
   onCollapse,
 }: AgentPanelProps) {
   const { transcript, busy, sendError, historyPending, historyError, send } = useAgent(workflowId);
@@ -61,6 +68,16 @@ export default function AgentPanel({
     void send(initialPrompt!.trim());
     onInitialSent?.();
   }, [initialPrompt, onInitialSent, send]);
+
+  // External sends (Explain's "Tell me more"): the nonce ref-guard sends
+  // each request exactly once, like the opening send above.
+  const lastSentNonce = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (sendRequest === undefined || sendRequest.nonce === lastSentNonce.current) return;
+    if (sendRequest.text.trim().length === 0) return;
+    lastSentNonce.current = sendRequest.nonce;
+    void send(sendRequest.text.trim());
+  }, [sendRequest, send]);
 
   // Scroll-follow: keep the newest row (or error) in view. An instant jump,
   // never smooth animation, so reduced-motion needs no special case.

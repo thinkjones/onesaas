@@ -13,8 +13,10 @@ import type { Repo } from './db/repo.js';
 import type { createEngine } from './engine/engine.js';
 import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
+import { createExplainer, ExplainBody, ExplainError } from './explain/explain.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
+import type { Gateway } from './models/gateway.js';
 import type { ImageModels } from './models/image.js';
 import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
 import type { SettingsStore } from './settings/store.js';
@@ -64,6 +66,7 @@ export function createApp(deps: AppDeps): Hono {
   const setTimezone = deps.setTimezone as ((tz: string) => void) | undefined;
   const files = deps.files as FileStore | undefined;
   const views = deps.views as ViewStore | undefined;
+  const gateway = deps.gateway as Gateway | undefined;
   const voice = deps.voice as VoiceProxyOptions | undefined;
   const image = deps.image as ImageModels | undefined;
 
@@ -313,6 +316,29 @@ export function createApp(deps: AppDeps): Hono {
       return c.json(views.compute(view));
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  // "Explain anything" (M5 Task 6): one explainer per app, so its
+  // in-memory cache lives as long as the server does.
+  const explainer =
+    repo && tables && gateway ? createExplainer({ repo, tables, gateway }) : undefined;
+
+  app.post('/api/explain', async (c) => {
+    if (!explainer) return c.json({ error: 'Server not configured' }, 500);
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid explain body' }, 400);
+    }
+    const parsed = ExplainBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid explain body' }, 400);
+    try {
+      return c.json(await explainer.explain(parsed.data));
+    } catch (err) {
+      if (err instanceof ExplainError) return c.json({ error: err.message }, err.status);
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });
 

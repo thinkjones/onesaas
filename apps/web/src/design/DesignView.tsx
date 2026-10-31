@@ -20,6 +20,8 @@ import {
   type WorkflowOpName,
 } from '../api.ts';
 import WorkflowCanvas, { type CanvasOp, type GhostStep } from '../canvas/WorkflowCanvas.tsx';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import { resolveStepId } from '../runtime/params.ts';
 import { sound } from '../sound/sound.ts';
@@ -481,9 +483,15 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         {problemCount === 0 ? (
-          <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
-            Turn on
-          </AppButton>
+          <span
+            data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
+            className="inline-flex items-center gap-1"
+          >
+            <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
+              Turn on
+            </AppButton>
+            <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
+          </span>
         ) : (
           <p className="text-base">
             {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on

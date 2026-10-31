@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import AgentPanel from '../agent/AgentPanel.tsx';
 import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
+import { TELL_ME_MORE_EVENT } from '../explain/useAltClickExplain.ts';
 import EmptyState from '../design/EmptyState.tsx';
 import UploadDrop from '../design/UploadDrop.tsx';
 import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
@@ -123,6 +124,21 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
 
+  // Explain's "Tell me more" (step boxes, runs, inspector…): open the
+  // helper and send "Tell me more about <label>" through the panel's
+  // sendRequest seam. Before the early returns with every other hook.
+  const [tellMeMore, setTellMeMore] = useState<{ text: string; nonce: number } | undefined>();
+  useEffect(() => {
+    const onTellMeMore = (e: Event): void => {
+      const message = (e as CustomEvent<{ message?: unknown }>).detail?.message;
+      if (typeof message !== 'string' || message.trim().length === 0) return;
+      setPanelCollapsed(false);
+      setTellMeMore({ text: message.trim(), nonce: Date.now() });
+    };
+    window.addEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
+    return () => window.removeEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
+  }, []);
+
   // Consume-once for the opening prompt (mirrors the prefill seam, but the
   // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
   // it). history.state ALSO survives refresh/back-nav — and a page-level ref
@@ -204,6 +220,7 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
               onPrefillConsumed={handlePrefillConsumed}
               initialPrompt={initialPrompt}
               onInitialSent={handleInitialSent}
+              sendRequest={tellMeMore}
               onCollapse={() => setPanelCollapsed(true)}
             />
           </div>

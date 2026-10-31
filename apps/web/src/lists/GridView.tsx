@@ -7,6 +7,8 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { CellValue } from './cells.tsx';
 import type { ListTable } from './types.ts';
 
@@ -44,22 +46,34 @@ export default function GridView({
       <thead>
         {grid.getHeaderGroups().map((group) => (
           <tr key={group.id}>
-            {group.headers.map((header) => (
-              <th key={header.id} className="border-b p-2 text-left font-semibold">
-                <button
-                  type="button"
-                  onClick={header.column.getToggleSortingHandler()}
-                  aria-label={`Sort by ${String(header.column.columnDef.header)}`}
+            {group.headers.map((header) => {
+              const col = table.columns.find((c) => c.name === header.column.id);
+              const target = { kind: 'column' as const, id: header.column.id, context: table.name };
+              const label = col?.label ?? String(header.column.columnDef.header);
+              return (
+                <th
+                  key={header.id}
+                  data-explain={dataExplainValue(target, label)}
+                  className="border-b p-2 text-left font-semibold"
                 >
-                  {flexRender(header.column.columnDef.header, header.getContext())}
-                  {header.column.getIsSorted() === 'asc'
-                    ? ' ▲'
-                    : header.column.getIsSorted() === 'desc'
-                      ? ' ▼'
-                      : ''}
-                </button>
-              </th>
-            ))}
+                  <span className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={header.column.getToggleSortingHandler()}
+                      aria-label={`Sort by ${String(header.column.columnDef.header)}`}
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getIsSorted() === 'asc'
+                        ? ' ▲'
+                        : header.column.getIsSorted() === 'desc'
+                          ? ' ▼'
+                          : ''}
+                    </button>
+                    <Explain target={target} label={label} />
+                  </span>
+                </th>
+              );
+            })}
           </tr>
         ))}
       </thead>

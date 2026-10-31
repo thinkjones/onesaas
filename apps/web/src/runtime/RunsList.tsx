@@ -1,6 +1,8 @@
 import type { Run } from '@dad/shared';
 import { cn } from 'cn';
 import StatusBadge from '../design/StatusBadge.tsx';
+import Explain from '../explain/Explain.tsx';
+import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { formatRunListTime, runDisplayName } from './format.ts';
 
 export interface RunsListProps {
@@ -31,6 +33,8 @@ export default function RunsList({
       {runs.map((run) => {
         const selected = run.id === selectedRunId;
         const lastLine = lastLineByRunId?.[run.id];
+        const label = `the ${formatRunListTime(run.startedAt)} run`;
+        const target = { kind: 'run' as const, id: run.id };
         return (
           <div
             key={run.id}
@@ -44,16 +48,20 @@ export default function RunsList({
                 onSelect(run.id);
               }
             }}
+            data-explain={dataExplainValue(target, label)}
             className={cn(
               'min-h-10 cursor-pointer rounded-[var(--radius)] border border-border bg-card p-3 shadow-sm',
               selected && 'ring-2 ring-ring',
             )}
           >
-            <p className="text-base font-medium">
-              <span>{formatRunListTime(run.startedAt)}</span>
-              {' · '}
-              <span>{runDisplayName(run.triggerPayload)}</span>
-            </p>
+            <div className="flex items-center gap-1">
+              <p className="min-w-0 flex-1 text-base font-medium">
+                <span>{formatRunListTime(run.startedAt)}</span>
+                {' · '}
+                <span>{runDisplayName(run.triggerPayload)}</span>
+              </p>
+              <Explain target={target} label={label} />
+            </div>
             <div className="mt-1.5">
               <StatusBadge status={run.status} />
             </div>

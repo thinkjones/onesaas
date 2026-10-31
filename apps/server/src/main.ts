@@ -161,6 +161,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     engine,
     tables,
     views,
+    gateway,
     ops,
     agent,
     agentEvents,

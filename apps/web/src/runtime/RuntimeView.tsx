@@ -308,6 +308,12 @@ export default function RuntimeView({
         title={selectedStep?.title ?? selectedStepId ?? ''}
         open={selectedStepId !== undefined}
         onClose={handleCloseInspector}
+        explainTarget={
+          selectedStepId === undefined
+            ? undefined
+            : { kind: 'step', id: selectedStepId, context: detail.workflow.id }
+        }
+        explainLabel={selectedStep?.title}
         code={
           selectedStep?.type === 'code.transform' &&
           typeof selectedStep.config['code'] === 'string'

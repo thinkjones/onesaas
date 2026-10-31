@@ -10,6 +10,8 @@ export interface MicButtonProps {
   onSend(text: string): void;
   /** Test seam; the live hook otherwise. */
   useVoiceFn?: () => UseVoiceResult;
+  /** Button diameter in px; the agent panel default is 64, home uses 72. */
+  sizePx?: number;
 }
 
 /**
@@ -18,7 +20,7 @@ export interface MicButtonProps {
  * pulsing ring and the live partial transcript. A non-empty final goes to
  * `onSend`; an empty one shows a hint instead.
  */
-export default function MicButton({ onSend, useVoiceFn = useVoice }: MicButtonProps) {
+export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx }: MicButtonProps) {
   const voice = useVoiceFn();
   const [hint, setHint] = useState<string | null>(null);
 
@@ -96,6 +98,7 @@ export default function MicButton({ onSend, useVoiceFn = useVoice }: MicButtonPr
         onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerCancel}
         onClick={handleClick}
+        style={sizePx === undefined ? undefined : { width: sizePx, height: sizePx }}
         className="relative flex h-16 w-16 items-center justify-center rounded-full border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
       >
         {listening && (
