@@ -144,7 +144,11 @@ export default function Inspector({
   explainTarget,
   explainLabel,
 }: InspectorProps) {
-  const explainable = explainTarget !== undefined && explainLabel !== undefined;
+  // Both or neither: without the pair the `?` button and alt-click stay off.
+  const explain =
+    explainTarget !== undefined && explainLabel !== undefined
+      ? { target: explainTarget, label: explainLabel }
+      : undefined;
   const [showDetails, setShowDetails] = useState(false);
 
   const skippedProposal =
@@ -168,12 +172,12 @@ export default function Inspector({
         <SheetHeader
           className="text-left"
           data-explain={
-            explainable ? dataExplainValue(explainTarget!, explainLabel!) : undefined
+            explain ? dataExplainValue(explain.target, explain.label) : undefined
           }
         >
           <div className="flex items-center gap-1">
             <SheetTitle className="flex-1 text-xl">{title}</SheetTitle>
-            {explainable && <Explain target={explainTarget!} label={explainLabel!} />}
+            {explain && <Explain target={explain.target} label={explain.label} />}
           </div>
           <div>
             <StatusBadge status={stepRun?.status ?? 'pending'} />

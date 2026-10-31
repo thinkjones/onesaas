@@ -53,14 +53,21 @@ function LocationProbe({
   return null;
 }
 
-function renderShell(initialPath: string, workflows: Workflow[]) {
+function renderShell(
+  initialPath: string,
+  workflows: Workflow[],
+  opts?: { failWorkflows?: boolean },
+) {
   const agentPosts: unknown[] = [];
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
     const ok = (body: unknown, status = 200) =>
       ({ ok: true, status, json: async () => body }) as Response;
-    if (url === '/api/workflows' && method === 'GET') return ok(workflows);
+    if (url === '/api/workflows' && method === 'GET') {
+      if (opts?.failWorkflows) throw new Error('network down');
+      return ok(workflows);
+    }
     const detail = workflows.find((w) => url === `/api/workflows/${w.id}` && method === 'GET');
     if (detail) return ok({ ...detail, problems: [] });
     const agentGet = workflows.find(
@@ -203,6 +210,37 @@ describe('TellMeMoreFallback', () => {
     // …and typing afterwards is never clobbered by a re-applied prefill.
     fireEvent.change(box, { target: { value: 'Dad typing' } });
     expect(box.value).toBe('Dad typing');
+  });
+
+  test('on a bad reducer id, "Tell me more" routes to the most-recent reducer instead of dying', async () => {
+    const { agentPosts, location } = renderShell('/reducers/badId', [OLDER]);
+    // The page settled on not-found (its listener leaves the event alone)…
+    expect(await screen.findByText('Chore reducer not found')).toBeDefined();
+    window.dispatchEvent(
+      new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
+    );
+    // …so the fallback routes to the live panel and the message sends.
+    await waitFor(() => {
+      expect(location().pathname).toBe('/reducers/wf-1');
+    });
+    expect(location().search).toBe('?mode=design');
+    await screen.findByText('Tell me more about Turn on');
+    expect(agentPosts).toEqual([{ text: 'Tell me more about Turn on' }]);
+  });
+
+  test('when the reducers list fails to load, "Tell me more" lands Home with the message in the box', async () => {
+    const { location } = renderShell('/lists', [], { failWorkflows: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Explain Email' }));
+    expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
+    await waitFor(() => {
+      expect(location().pathname).toBe('/');
+    });
+    expect(location().state).toEqual({ homePrefill: 'Tell me more about Email' });
+    const box = (await screen.findByRole('textbox', {
+      name: 'What do you want to achieve today?',
+    })) as HTMLTextAreaElement;
+    expect(box.value).toBe('Tell me more about Email');
   });
 
   test('on a workflow page the fallback stays out of the way (no navigation, one direct send)', async () => {

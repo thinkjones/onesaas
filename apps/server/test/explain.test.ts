@@ -243,4 +243,141 @@ describe('POST /api/explain', () => {
     expect(res.status).toBe(400);
     expect(s.chatJson).not.toHaveBeenCalled();
   });
+
+  test('a new run with a fresh why invalidates the step cache', async () => {
+    const s = setup();
+    db = s.db;
+    const body = { kind: 'step', id: 'write', context: 'wf-1' };
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    const run = s.repo.createRun({
+      workflowId: 'wf-1',
+      workflowVersion: 1,
+      triggerPayload: {},
+      status: 'done',
+    });
+    s.repo.upsertStepRun({
+      id: 'sr-2',
+      runId: run.id,
+      stepId: 'write',
+      status: 'done',
+      output: { text: 'Hello again' },
+      why: 'Wrote a warmer reply to Tom.',
+      startedAt: new Date(Date.now() + 1000).toISOString(),
+    });
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(2);
+    const opts = s.chatJson.mock.calls[1]![0] as { user: unknown };
+    expect(String(opts.user)).toContain('Wrote a warmer reply to Tom.');
+  });
+
+  test('a workflow version bump invalidates the step cache', async () => {
+    const s = setup();
+    db = s.db;
+    const body = { kind: 'step', id: 'write', context: 'wf-1' };
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    const wf = s.repo.getWorkflow('wf-1')!;
+    s.repo.saveWorkflow({ ...wf, name: 'Email helper v2' });
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(2);
+  });
+
+  test('a run status change invalidates the run cache', async () => {
+    const s = setup();
+    db = s.db;
+    const body = { kind: 'run', id: s.runId };
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    s.repo.updateRun(s.runId, { status: 'failed' });
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(2);
+  });
+
+  test('an in-place row edit invalidates the table cache', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-30T10:00:00.000Z'));
+      const s = setup();
+      db = s.db;
+      const body = { kind: 'table', id: 'customers' };
+      expect((await postExplain(s.app, body)).status).toBe(200);
+      expect(s.chatJson).toHaveBeenCalledTimes(1);
+      // Same row count, new content: the upsert bumps updated_at.
+      vi.setSystemTime(new Date('2026-10-30T10:00:05.000Z'));
+      s.tables.upsert('customers', { name: 'Sarah Jones', email: 'sarah@acme.co' }, 'email');
+      expect((await postExplain(s.app, body)).status).toBe(200);
+      expect(s.chatJson).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a step that never ran explains from its settings alone', async () => {
+    const s = setup();
+    db = s.db;
+    const wf = s.repo.getWorkflow('wf-1')!;
+    s.repo.saveWorkflow({
+      ...wf,
+      steps: [
+        ...wf.steps,
+        {
+          id: 'read',
+          type: 'ai.extract',
+          title: 'Read details',
+          summary: 'Reads details out of text.',
+          config: { instructions: 'Read it.' },
+          inputs: {},
+          position: { x: 0, y: 0 },
+        },
+      ],
+    });
+    const res = await postExplain(s.app, { kind: 'step', id: 'read', context: 'wf-1' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: EXPLAIN_TEXT });
+    const opts = s.chatJson.mock.calls[0]![0] as { user: unknown };
+    const user = String(opts.user);
+    expect(user).toContain('Read details');
+    expect(user).toContain('It has not run yet.');
+  });
+
+  test("the trigger explains as a step (its own title and summary)", async () => {
+    const s = setup();
+    db = s.db;
+    const res = await postExplain(s.app, { kind: 'step', id: 'trigger', context: 'wf-1' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: EXPLAIN_TEXT });
+    const opts = s.chatJson.mock.calls[0]![0] as { user: unknown };
+    const user = String(opts.user);
+    expect(user).toContain('New email');
+    expect(user).toContain('Runs when a new customer email arrives.');
+  });
+
+  test('a missing id or context is a 400 and never reaches the gateway', async () => {
+    const s = setup();
+    db = s.db;
+    const bodies: unknown[] = [
+      { kind: 'step' },
+      { kind: 'step', id: 'write' },
+      { kind: 'run' },
+      { kind: 'table' },
+      { kind: 'column' },
+      { kind: 'column', id: 'email' },
+      { kind: 'ui' },
+    ];
+    for (const body of bodies) {
+      expect((await postExplain(s.app, body)).status).toBe(400);
+    }
+    expect(s.chatJson).not.toHaveBeenCalled();
+  });
+
+  test('an unknown run or UI control is a 404 and never reaches the gateway', async () => {
+    const s = setup();
+    db = s.db;
+    expect((await postExplain(s.app, { kind: 'run', id: 'nope' })).status).toBe(404);
+    expect((await postExplain(s.app, { kind: 'ui', id: 'nope' })).status).toBe(404);
+    expect(s.chatJson).not.toHaveBeenCalled();
+  });
 });

@@ -2,7 +2,7 @@ import type { Run, Workflow } from '@dad/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { getRuns, useWorkflows, useWorkflowOp } from '../api.ts';
+import { ApiError, getRuns, useWorkflows, useWorkflowOp } from '../api.ts';
 import { Badge } from '../components/ui/badge.tsx';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
@@ -15,6 +15,15 @@ import { formatRunListTime } from '../runtime/format.ts';
 
 function oldestWaitingFirst(a: Run, b: Run): number {
   return a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
+}
+
+/** Surfaces the parsed server message; network failures get a plain-words fallback. Mirrors DesignView's: a component file may only export components, so the helper is local here too. */
+function toastOpError(error: unknown): void {
+  toast.error(
+    error instanceof ApiError && error.message
+      ? error.message
+      : "Couldn't reach the server. Try again.",
+  );
 }
 
 function ReducerCard({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
@@ -44,6 +53,7 @@ function ReducerCard({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
                   onSuccess: (res) => {
                     if (!res.ok) toast.error(res.error);
                   },
+                  onError: (err) => toastOpError(err),
                 },
               );
             }}

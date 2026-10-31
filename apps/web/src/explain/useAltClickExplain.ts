@@ -25,13 +25,11 @@ export function dispatchTellMeMore(label: string): void {
   );
 }
 
-/** Where the popover opened, and what it explains. */
-export interface AltClickAt extends ExplainTarget {
-  label: string;
-  x: number;
-  y: number;
-}
-
+/**
+ * Where the popover opened, and what it explains. The wire body (`target`)
+ * stays a BARE ExplainTarget — the server's ExplainBody is `.strict()`, so
+ * view fields (label, x, y) must never ride along on the POST.
+ */
 export interface AltClickOpen {
   target: ExplainTarget;
   label: string;
@@ -39,13 +37,23 @@ export interface AltClickOpen {
   y: number;
 }
 
+/** A parsed data-explain value: the wire target plus its human label. */
+export interface ParsedDataExplain {
+  target: ExplainTarget;
+  label: string;
+}
+
 /** Builds the data-explain attribute value for a target + human label. */
 export function dataExplainValue(target: ExplainTarget, label: string): string {
   return JSON.stringify({ ...target, label });
 }
 
-/** Parses a data-explain value; null when absent or malformed. */
-export function parseDataExplain(raw: string | null): AltClickAt | null {
+/**
+ * Parses a data-explain value; null when absent or malformed. Returns the
+ * wire target SEPARATE from the label, so the over-wide attribute object
+ * can't typecheck as a request body (the server rejects surplus keys).
+ */
+export function parseDataExplain(raw: string | null): ParsedDataExplain | null {
   if (raw === null || raw === '') return null;
   let value: unknown;
   try {
@@ -67,14 +75,12 @@ export function parseDataExplain(raw: string | null): AltClickAt | null {
   if (typeof v['label'] !== 'string' || v['label'] === '') return null;
   if (v['id'] !== undefined && typeof v['id'] !== 'string') return null;
   if (v['context'] !== undefined && typeof v['context'] !== 'string') return null;
-  return {
+  const target: ExplainTarget = {
     kind: v['kind'],
     ...(typeof v['id'] === 'string' ? { id: v['id'] } : {}),
     ...(typeof v['context'] === 'string' ? { context: v['context'] } : {}),
-    label: v['label'],
-    x: 0,
-    y: 0,
   };
+  return { target, label: v['label'] };
 }
 
 /**
@@ -93,7 +99,7 @@ export function useAltClickExplain(): { at: AltClickOpen | null; close(): void }
       if (!parsed) return;
       e.preventDefault();
       e.stopPropagation();
-      setAt({ target: parsed, label: parsed.label, x: e.clientX, y: e.clientY });
+      setAt({ target: parsed.target, label: parsed.label, x: e.clientX, y: e.clientY });
     };
     window.addEventListener('click', onClick, true);
     return () => window.removeEventListener('click', onClick, true);

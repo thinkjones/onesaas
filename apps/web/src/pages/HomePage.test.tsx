@@ -1,8 +1,9 @@
 import type { Run, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Toaster, toast } from 'sonner';
+import { beforeEach, afterEach, describe, expect, test, vi } from 'vitest';
 import type { ListSummary } from '../lists/types.ts';
 import HomePage from './HomePage.tsx';
 
@@ -75,7 +76,22 @@ function LocationProbe({
   return null;
 }
 
-function renderHome(data?: StubData) {
+/** Same-path re-navigation with a new homePrefill, like TellMeMoreFallback fires. */
+function PrefillProbe() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button type="button" onClick={() => navigate('/', { state: { homePrefill: 'First prefill' } })}>
+        Send first prefill
+      </button>
+      <button type="button" onClick={() => navigate('/', { state: { homePrefill: 'Second prefill' } })}>
+        Send second prefill
+      </button>
+    </>
+  );
+}
+
+function renderHome(data?: StubData, opts?: { prefillProbe?: boolean }) {
   const posts: unknown[] = [];
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -130,8 +146,12 @@ function renderHome(data?: StubData) {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
+        <Toaster />
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route
+            path="/"
+            element={opts?.prefillProbe ? (<><HomePage /><PrefillProbe /></>) : (<HomePage />)}
+          />
           <Route
             path="/reducers/:workflowId"
             element={
@@ -154,6 +174,12 @@ function renderHome(data?: StubData) {
 function sentenceBox(): HTMLElement {
   return screen.getByRole('textbox', { name: 'What do you want to achieve today?' });
 }
+
+beforeEach(() => {
+  // Sonner's toast store is module-global: a previous test's still-alive
+  // toast would re-render in the next test's fresh Toaster.
+  toast.dismiss();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -210,6 +236,32 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Build it' }));
     expect(await screen.findByText("Couldn't create a chore reducer. Try again.")).toBeDefined();
     expect(location().pathname).toBe('/');
+  });
+
+  test('a toggle whose save fails shows a plain-words error instead of failing silently', async () => {
+    // The ops route is unstubbed, so the save rejects like a network failure.
+    renderHome({ workflows: [mkWorkflow()] });
+    fireEvent.click(await screen.findByRole('switch', { name: 'Email helper enabled' }));
+    expect(await screen.findByText("Couldn't reach the server. Try again.")).toBeDefined();
+  });
+
+  test('a fresh prefill replaces an untouched prefill', async () => {
+    renderHome({}, { prefillProbe: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Send first prefill' }));
+    expect((sentenceBox() as HTMLTextAreaElement).value).toBe('First prefill');
+    fireEvent.click(screen.getByRole('button', { name: 'Send second prefill' }));
+    expect((sentenceBox() as HTMLTextAreaElement).value).toBe('Second prefill');
+    // Let the background queries settle so nothing leaks past the test.
+    await screen.findByText(EMPTY_GLANCE);
+  });
+
+  test("a prefill arriving after Dad typed doesn't clobber the box", async () => {
+    renderHome({}, { prefillProbe: true });
+    fireEvent.change(sentenceBox(), { target: { value: 'Dad typing' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send first prefill' }));
+    expect((sentenceBox() as HTMLTextAreaElement).value).toBe('Dad typing');
+    // Let the background queries settle so nothing leaks past the test.
+    await screen.findByText(EMPTY_GLANCE);
   });
 
   test('a reducer card shows "N waiting for you" linking to the oldest waiting run', async () => {

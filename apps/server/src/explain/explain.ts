@@ -66,11 +66,23 @@ function requireId(id: string | undefined, what: string): string {
   return id;
 }
 
+/** Newest row updated_at ('' when empty): in-place edits keep the row count, so the count alone would serve stale prose. ISO strings compare lexicographically. */
+function latestUpdate(rows: Record<string, unknown>[]): string {
+  let latest = '';
+  for (const row of rows) {
+    const u = row['updated_at'];
+    if (typeof u === 'string' && u > latest) latest = u;
+  }
+  return latest;
+}
+
 /**
  * One explainer per app instance; the cache is the instance's in-memory Map.
- * Keys carry a freshness component so edits invalidate naturally: the
- * workflow version for steps, the run status for runs, the row count for
- * tables and columns.
+ * Keys carry a freshness component per prompt input: version + latest run id
+ * for steps (the prompt quotes the latest run's why), the run status for
+ * runs, the row count + newest updated_at for tables and columns (labels and
+ * columns are immutable — the store has no rename — so count + edits cover
+ * every prompt input).
  */
 export function createExplainer(deps: ExplainerDeps): {
   explain(req: ExplainRequest): Promise<{ text: string }>;
@@ -99,13 +111,18 @@ export function createExplainer(deps: ExplainerDeps): {
     const node = wf.trigger.id === stepId ? wf.trigger : wf.steps.find((s) => s.id === stepId);
     if (!node) throw new ExplainError(`Unknown step: ${stepId}`, 404);
     // The most recent live run's record for this step (listRuns is newest
-    // first); a step that never ran explains from its settings alone.
+    // first); a step that never ran explains from its settings alone. The
+    // scan is bounded (Dad-scale: past 100 runs the step explains from
+    // settings alone) and the winning run id joins the cache key, so a new
+    // run with a fresh why invalidates.
     let lastWhy: string | undefined;
-    for (const run of deps.repo.listRuns({ workflowId })) {
+    let lastRunId = '';
+    for (const run of deps.repo.listRuns({ workflowId, limit: 100 })) {
       const full = deps.repo.getRun(run.id);
       const match = full?.steps.find((s) => s.stepId === stepId);
       if (match?.why) {
         lastWhy = match.why;
+        lastRunId = run.id;
         break;
       }
     }
@@ -113,7 +130,7 @@ export function createExplainer(deps: ExplainerDeps): {
       `Step "${node.title}" (${node.type}): ${node.summary}\n` +
       `Settings: ${JSON.stringify(node.config)}\n` +
       `Last run: ${lastWhy ?? 'It has not run yet.'}`;
-    return viaGateway(`step|${workflowId}|${stepId}|v${wf.version}`, user);
+    return viaGateway(`step|${workflowId}|${stepId}|v${wf.version}|r${lastRunId}`, user);
   }
 
   async function explainRun(id: string | undefined) {
@@ -133,10 +150,11 @@ export function createExplainer(deps: ExplainerDeps): {
     const name = requireId(id, 'list');
     const t = deps.tables.getTable(name);
     if (!t) throw new ExplainError(`Unknown table: ${name}`, 404);
-    const count = deps.tables.query(name).length;
+    const rows = deps.tables.query(name);
+    const count = rows.length;
     const cols = t.columns.map((c) => `${c.label} (${c.type})`).join(', ');
     const user = `List "${t.label}" with ${count} row${count === 1 ? '' : 's'} and columns ${cols}.`;
-    return viaGateway(`table|${name}|n${count}`, user);
+    return viaGateway(`table|${name}|n${count}|u${latestUpdate(rows)}`, user);
   }
 
   async function explainColumn(id: string | undefined, context: string | undefined) {
@@ -146,11 +164,12 @@ export function createExplainer(deps: ExplainerDeps): {
     if (!t) throw new ExplainError(`Unknown table: ${table}`, 404);
     const col = t.columns.find((c) => c.name === column);
     if (!col) throw new ExplainError(`Unknown column: ${column}`, 404);
-    const count = deps.tables.query(table).length;
+    const rows = deps.tables.query(table);
+    const count = rows.length;
     const user =
       `Column "${col.label}" (${col.type}) in list "${t.label}", ` +
       `which holds ${count} row${count === 1 ? '' : 's'}.`;
-    return viaGateway(`column|${table}|${column}|n${count}`, user);
+    return viaGateway(`column|${table}|${column}|n${count}|u${latestUpdate(rows)}`, user);
   }
 
   return {

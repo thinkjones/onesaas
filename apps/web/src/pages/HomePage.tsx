@@ -27,8 +27,10 @@ export default function HomePage() {
   // Box text (not an auto-send), so the state needs no consuming. Applied
   // via the previous-render pattern (not an initializer): a same-path
   // re-navigation — already Home when it fires — re-renders without
-  // remounting, and the prefill must land then too. Re-applying only on a
-  // CHANGED value never clobbers Dad's typing.
+  // remounting, and the prefill must land then too. A prefill lands only on a
+  // CHANGED value into an untouched box (empty, or still showing the previous
+  // prefill): neither re-renders nor a new prefill arriving mid-sentence
+  // clobbers Dad's typing.
   const [sentence, setSentence] = useState('');
   const [appliedPrefill, setAppliedPrefill] = useState<string | undefined>(undefined);
   const locationState = location.state as { homePrefill?: unknown } | null;
@@ -36,7 +38,12 @@ export default function HomePage() {
     typeof locationState?.homePrefill === 'string' ? locationState.homePrefill : undefined;
   if (homePrefill !== appliedPrefill) {
     setAppliedPrefill(homePrefill);
-    if (homePrefill !== undefined) setSentence(homePrefill);
+    if (
+      homePrefill !== undefined &&
+      (sentence === '' || sentence === appliedPrefill)
+    ) {
+      setSentence(homePrefill);
+    }
   }
   const [error, setError] = useState<string | null>(null);
 

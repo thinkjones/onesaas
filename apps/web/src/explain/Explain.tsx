@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { postExplain, type ExplainTarget } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import {
@@ -21,6 +21,30 @@ export interface ExplainPopoverProps {
   /** Test/placement seam; default dispatches TELL_ME_MORE_EVENT. */
   onTellMeMore?: (message: string) => void;
   onClose(): void;
+}
+
+/**
+ * Click-outside-to-close: pointerdown outside the ref calls onClose while
+ * active. (Out of scope, left for demo polish: viewport collision and focus
+ * management.)
+ */
+function useDismissOnOutside<T extends HTMLElement>(
+  ref: RefObject<T | null>,
+  onClose: () => void,
+  active: boolean,
+): void {
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const onDown = (e: PointerEvent): void => {
+      if (!ref.current?.contains(e.target as Node | null)) close.current();
+    };
+    window.addEventListener('pointerdown', onDown);
+    return () => window.removeEventListener('pointerdown', onDown);
+  }, [active, ref]);
 }
 
 /**
@@ -93,6 +117,10 @@ export interface ExplainProps {
  */
 export default function Explain({ target, label, onTellMeMore }: ExplainProps) {
   const [open, setOpen] = useState(false);
+  // The boundary wraps the button AND the popover: pointerdown fires before
+  // click, so a popover-only boundary would close-then-toggle (reopen) on ?.
+  const root = useRef<HTMLSpanElement | null>(null);
+  useDismissOnOutside(root, () => setOpen(false), open);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -102,7 +130,7 @@ export default function Explain({ target, label, onTellMeMore }: ExplainProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open ]);
   return (
-    <span className="relative inline-flex shrink-0">
+    <span ref={root} className="relative inline-flex shrink-0">
       <button
         type="button"
         aria-label={`Explain ${label}`}
@@ -138,6 +166,8 @@ export default function Explain({ target, label, onTellMeMore }: ExplainProps) {
 /** The floating alt-click popover; mounted once in App. */
 export function AltClickExplainRoot({ onTellMeMore }: { onTellMeMore?: (message: string) => void }) {
   const { at, close } = useAltClickExplain();
+  const root = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutside(root, close, at !== null);
   useEffect(() => {
     if (!at) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -148,7 +178,7 @@ export function AltClickExplainRoot({ onTellMeMore }: { onTellMeMore?: (message:
   }, [at, close]);
   if (!at) return null;
   return (
-    <div className="fixed z-[100]" style={{ left: at.x, top: at.y }}>
+    <div ref={root} className="fixed z-[100]" style={{ left: at.x, top: at.y }}>
       <ExplainPopover
         key={`${at.x}:${at.y}:${JSON.stringify(at.target)}`}
         target={at.target}

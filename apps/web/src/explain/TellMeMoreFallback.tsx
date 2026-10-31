@@ -14,8 +14,11 @@ import { TELL_ME_MORE_EVENT } from './useAltClickExplain.ts';
  * `agentPrompt` — the proven HomePage → WorkflowPage opening-send path, so
  * the panel opens and the message sends.
  *
- * - On a workflow page (`/reducers/:id`) it stays out of the way:
+ * - On a workflow page for a KNOWN reducer id it stays out of the way:
  *   WorkflowPage's own listener uncollapses the panel and sends directly.
+ *   A bad id (`/reducers/nope`, settled without data) is NOT deferred to:
+ *   WorkflowPage leaves the event alone there, so the fallback routes it to
+ *   a live panel instead of a dead click.
  * - With no reducers yet there is no panel to send to, so it routes Home
  *   with the message prefilled in the box (`homePrefill` state) instead of
  *   silently creating a reducer Dad never asked for. Never a dead click:
@@ -34,9 +37,6 @@ export default function TellMeMoreFallback() {
     const onTellMeMore = (e: Event): void => {
       const message = (e as CustomEvent<{ message?: unknown }>).detail?.message;
       if (typeof message !== 'string' || message.trim().length === 0) return;
-      // A workflow page (id segment present — bare `/reducers` and a bare
-      // trailing slash match no workflow route, so the fallback acts there).
-      if (/^\/reducers\/[^/]+/.test(pathname)) return;
       const text = message.trim();
       void (async () => {
         let wfs = client.getQueryData<Workflow[]>(['workflows']);
@@ -47,6 +47,12 @@ export default function TellMeMoreFallback() {
             wfs = undefined;
           }
         }
+        // A workflow page for a known id sends directly (WorkflowPage claims
+        // the event); anything else — off-workflow pages, a bad id, an
+        // unknowable id after a failed fetch — routes below. Bare `/reducers`
+        // and a trailing slash match no workflow route, so those act too.
+        const pageId = /^\/reducers\/([^/]+)/.exec(pathname)?.[1];
+        if (pageId !== undefined && wfs?.some((w) => w.id === pageId)) return;
         // GET /api/workflows lists newest first (repo.listWorkflows), so the
         // head is the most-recent reducer.
         const target = wfs?.[0];
