@@ -1,6 +1,6 @@
 import type { Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '../components/ui/tooltip.tsx';
@@ -256,5 +256,85 @@ describe('TellMeMoreFallback', () => {
     await screen.findByText('Tell me more about Write reply');
     expect(agentPosts).toEqual([{ text: 'Tell me more about Write reply' }]);
     expect(location().pathname).toBe('/reducers/wf-1');
+  });
+
+  test('tell-me-more while a bad id is still pending sends exactly once (no double-send)', async () => {
+    // The workflows list stays pending until the test releases it, so the
+    // bad-id page is stuck on loading when the event fires.
+    let resolveWorkflows!: (res: Response) => void;
+    const workflowsGate = new Promise<Response>((resolve) => {
+      resolveWorkflows = resolve;
+    });
+    const agentPosts: unknown[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const ok = (body: unknown, status = 200) =>
+        ({ ok: true, status, json: async () => body }) as Response;
+      if (url === '/api/workflows' && method === 'GET') return workflowsGate;
+      if (url === '/api/workflows/wf-1' && method === 'GET') return ok({ ...OLDER, problems: [] });
+      if (url === '/api/workflows/wf-1/agent' && method === 'GET') return ok([]);
+      if (url === '/api/workflows/wf-1/agent' && method === 'POST') {
+        agentPosts.push(JSON.parse(String(init?.body)) as unknown);
+        return ok({}, 202);
+      }
+      if (url === '/api/runs' || url.startsWith('/api/runs?')) return ok([]);
+      if (url === '/api/views') return ok([]);
+      if (url === '/api/lists') return ok([]);
+      if (url === '/api/settings')
+        return ok({
+          timezone: 'America/New_York',
+          theme: 'morning',
+          textSize: 'normal',
+          sound: { on: false, volume: 0.5 },
+          onboarded: true,
+          moodFileIds: [],
+        });
+      throw new Error(`unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let pathname = '/reducers/badId';
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={['/reducers/badId']}>
+            <TellMeMoreFallback />
+            <LocationProbe
+              onLocation={(p) => {
+                pathname = p;
+              }}
+            />
+            <Routes>
+              <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+            </Routes>
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    // Pending: the page shows loading and claims the event (pending counts)…
+    expect(await screen.findByText('Loading chore reducer…')).toBeDefined();
+    window.dispatchEvent(
+      new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
+    );
+    // …then the list resolves without the bad id, so the fallback routes to
+    // the live panel with the message as the opening prompt. The stale
+    // pending claim is scoped to the bad id and must NOT also send.
+    await act(async () => {
+      resolveWorkflows({ ok: true, status: 200, json: async () => [OLDER] } as Response);
+      await workflowsGate;
+    });
+    await waitFor(() => {
+      expect(pathname).toBe('/reducers/wf-1');
+    });
+    // Wait for the first send through the real panel, then let any duplicate
+    // POST land and assert exactly one total.
+    await waitFor(() => {
+      expect(agentPosts.length).toBeGreaterThanOrEqual(1);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(agentPosts).toEqual([{ text: 'Tell me more about Turn on' }]);
   });
 });

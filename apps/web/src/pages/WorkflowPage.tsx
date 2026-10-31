@@ -148,8 +148,14 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   // handler claims the event only while the reducer resolves (pending counts:
   // the send fires once the page loads); settled without data (not-found,
   // fetch error) it leaves the event for TellMeMoreFallback, which routes to
-  // a live panel instead of swallowing it into invisible state here.
-  const [tellMeMore, setTellMeMore] = useState<{ text: string; nonce: number } | undefined>();
+  // a live panel instead of swallowing it into invisible state here. The
+  // claim is scoped to the claiming workflowId: a pending bad id ALSO gets
+  // routed by the fallback (the id is not yet known-bad), and the same
+  // component survives that navigation — without the scope check the target
+  // would fire both the stale sendRequest AND the routed initialPrompt.
+  const [tellMeMore, setTellMeMore] = useState<
+    { text: string; nonce: number; workflowId: string | undefined } | undefined
+  >();
   // Monotonic per mount: Date.now() could collapse two rapid requests.
   const tellMeMoreNonce = useRef(0);
   useEffect(() => {
@@ -159,11 +165,11 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
       if (!workflowQuery.isPending && !workflowQuery.data) return;
       setPanelCollapsed(false);
       tellMeMoreNonce.current += 1;
-      setTellMeMore({ text: message.trim(), nonce: tellMeMoreNonce.current });
+      setTellMeMore({ text: message.trim(), nonce: tellMeMoreNonce.current, workflowId });
     };
     window.addEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
     return () => window.removeEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
-  }, [workflowQuery.data, workflowQuery.isPending]);
+  }, [workflowId, workflowQuery.data, workflowQuery.isPending]);
 
   // Consume-once for the opening prompt (mirrors the prefill seam, but the
   // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
@@ -246,7 +252,11 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
               onPrefillConsumed={handlePrefillConsumed}
               initialPrompt={initialPrompt}
               onInitialSent={handleInitialSent}
-              sendRequest={tellMeMore}
+              sendRequest={
+                tellMeMore !== undefined && tellMeMore.workflowId === workflowId
+                  ? { text: tellMeMore.text, nonce: tellMeMore.nonce }
+                  : undefined
+              }
               onCollapse={() => setPanelCollapsed(true)}
             />
           </div>
