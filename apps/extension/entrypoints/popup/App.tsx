@@ -12,12 +12,30 @@ interface PairReply {
 
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
+const APP_URL = 'http://localhost:5173';
 
-// Pairing popup. Untested by design: a jsdom + React popup harness is
-// disproportionate for M1 (all protocol logic it drives lives in the tested
-// background core); Task 11 exercises it against the real server.
+// The signed-in address of the Chrome profile this popup runs in — which is
+// the profile the pairing belongs to. Null when Chrome isn't signed in (or
+// the lookup fails); needs the `identity` manifest permission.
+async function profileEmail(): Promise<string | null> {
+  try {
+    const identity = (
+      browser as unknown as {
+        identity?: { getProfileUserInfo?: () => Promise<{ email?: string }> };
+      }
+    ).identity;
+    const info = await identity?.getProfileUserInfo?.();
+    return info?.email && info.email !== '' ? info.email : null;
+  } catch {
+    return null;
+  }
+}
+
+// Pairing popup (Bug #5): status, Chrome profile, what/why info, a link to
+// manage the app, and unpair/re-pair. Covered by test/popup.test.ts.
 function App() {
   const [status, setStatus] = useState<Status | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -39,6 +57,8 @@ function App() {
         // retries, so don't clobber the view with an error.
       });
     }, 2000);
+    // The profile can't change while the popup is open; fetch once.
+    void profileEmail().then((e) => setEmail(e));
     return () => clearInterval(timer);
   }, []);
 
@@ -98,7 +118,7 @@ function App() {
   };
 
   const box: React.CSSProperties = {
-    width: 240,
+    width: 280,
     padding: 16,
     fontFamily: 'system-ui, sans-serif',
     fontSize: 14,
@@ -112,6 +132,22 @@ function App() {
     cursor: 'pointer',
   };
 
+  const info = (
+    <p style={{ color: '#555' }}>
+      This extension connects the app to Gmail in this Chrome profile. It reads the email you
+      have open, watches for new mail, and adds the “Save as lead &amp; reply” button. It only
+      works while Gmail is open here.
+    </p>
+  );
+
+  const manageLink = (
+    <p>
+      <a href={APP_URL} target="_blank" rel="noreferrer">
+        Open the app to manage →
+      </a>
+    </p>
+  );
+
   if (status === null) {
     return <div style={box}>{error ? <p style={{ color: '#b00020' }}>{error}</p> : <p>Loading…</p>}</div>;
   }
@@ -120,6 +156,9 @@ function App() {
     const valid = /^\d{6}$/.test(code);
     return (
       <div style={box}>
+        <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
+        {info}
+        {manageLink}
         <p style={{ marginTop: 0 }}>Enter the 6-digit code from the app:</p>
         <input
           value={code}
@@ -139,10 +178,14 @@ function App() {
 
   return (
     <div style={box}>
-      <p style={{ marginTop: 0 }}>{status.connected ? 'Connected ✓' : 'Not connected'}</p>
-      <a href="http://localhost:5173" target="_blank" rel="noreferrer">
-        Open the app
-      </a>
+      <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
+      <p style={{ margin: '0 0 4px' }}>Paired ✓</p>
+      <p style={{ margin: '0 0 4px' }}>
+        {status.connected ? 'Connected ✓' : 'Not connected — is the app running?'}
+      </p>
+      <p style={{ margin: '0 0 8px' }}>Chrome profile: {email ?? 'not signed in'}</p>
+      {info}
+      {manageLink}
       <button onClick={() => void pairAgain()} disabled={busy} style={buttonStyle}>
         Pair again
       </button>
