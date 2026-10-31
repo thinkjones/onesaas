@@ -30,7 +30,12 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
     <Card>
       <CardHeader>
         <CardTitle>
-          <Link to={`/reducers/${workflow.id}`}>{workflow.name}</Link>
+          <Link
+            to={`/reducers/${workflow.id}`}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            {workflow.name}
+          </Link>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">

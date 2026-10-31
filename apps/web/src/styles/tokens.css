@@ -5,31 +5,43 @@
   --font-display: 'Nunito Variable', 'Inter Variable', system-ui, sans-serif;
 }
 
-/* Morning theme tokens (M2 Task 3 — plan-exact HSL triplets). */
+/* Morning theme tokens. Values ported from the me-personal-crm Craft system
+   (Bug #2) — cool sky-tinted surfaces, blue accent — mapped onto our shadcn
+   token names. Fonts stay Inter/Nunito per the M5 spec. */
 :root[data-theme='morning'] {
-  --background: 40 33% 97%;
-  --foreground: 25 20% 15%;
-  --card: 40 30% 99%;
-  --primary: 22 80% 52%;
+  --background: 210 20% 98.5%;
+  --foreground: 220 10% 12%;
+  --card: 0 0% 100%;
+  --primary: 213 88% 53%;
   --primary-foreground: 0 0% 100%;
-  --muted: 35 20% 92%;
-  --accent: 160 35% 40%;
-  --destructive: 4 70% 50%;
-  --warning: 38 92% 50%;
-  --success: 145 50% 38%;
+  --muted: 214 22% 95%;
+  --accent: 214 20% 92%;
+  --destructive: 4 72% 48%;
+  --warning: 32 90% 38%;
+  --success: 145 55% 32%;
   --radius: 0.875rem;
+
+  /* Floating-shell surfaces (CRM look): window backdrop, sidebar panel. */
+  --window: 214 14% 91%;
+  --sidebar: 210 20% 97.5%;
+  --canvas: linear-gradient(
+    180deg,
+    hsl(203 60% 93%) 0%,
+    hsl(206 45% 96.5%) 240px,
+    hsl(var(--background)) 520px
+  );
 
   /* shadcn companions, derived from the Morning palette (not in the plan, but
      required by the shadcn components Task 3 installs). */
-  --card-foreground: 25 20% 15%;
-  --popover: 40 30% 99%;
-  --popover-foreground: 25 20% 15%;
-  --secondary: 35 20% 92%;
-  --secondary-foreground: 25 20% 15%;
-  --muted-foreground: 25 12% 42%;
-  --accent-foreground: 0 0% 100%;
+  --card-foreground: 220 10% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 10% 12%;
+  --secondary: 214 22% 95%;
+  --secondary-foreground: 220 10% 12%;
+  --muted-foreground: 218 8% 45%;
+  --accent-foreground: 220 10% 12%;
   --destructive-foreground: 0 0% 100%;
-  --border: 35 18% 86%;
-  --input: 35 18% 82%;
-  --ring: 22 80% 52%;
+  --border: 214 18% 89%;
+  --input: 214 25% 95%;
+  --ring: 213 88% 53%;
 }

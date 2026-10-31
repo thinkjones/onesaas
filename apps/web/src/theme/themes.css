@@ -1,31 +1,44 @@
-/* Evening + Workshop theme tokens (M5 Task 1 — plan-exact HSL triplets).
-   Morning lives in styles/tokens.css. ThemeProvider sets data-theme. */
+/* Evening + Workshop theme tokens. Evening values ported from the
+   me-personal-crm Craft dark system (Bug #2), mapped onto our shadcn token
+   names. Morning lives in styles/tokens.css. Workshop is untouched (its
+   high-contrast accessibility palette has no CRM equivalent).
+   ThemeProvider sets data-theme. */
 
 :root[data-theme='evening'] {
-  --background: 30 12% 11%;
-  --foreground: 40 25% 92%;
-  --card: 30 10% 15%;
-  --primary: 28 85% 60%;
-  --primary-foreground: 30 12% 11%;
-  --muted: 30 8% 22%;
-  --accent: 160 35% 55%;
-  --destructive: 4 70% 55%;
-  --warning: 38 92% 55%;
-  --success: 145 50% 45%;
+  --background: 220 13% 10%;
+  --foreground: 214 20% 93%;
+  --card: 220 11% 16%;
+  --primary: 213 92% 63%;
+  --primary-foreground: 220 30% 8%;
+  --muted: 220 12% 13.5%;
+  --accent: 220 10% 21%;
+  --destructive: 4 80% 67%;
+  --warning: 38 92% 62%;
+  --success: 145 48% 60%;
   --radius: 0.875rem;
 
+  /* Floating-shell surfaces (CRM look): window backdrop, sidebar panel. */
+  --window: 220 14% 6%;
+  --sidebar: 220 12% 12%;
+  --canvas: linear-gradient(
+    180deg,
+    hsl(212 30% 15%) 0%,
+    hsl(215 20% 12%) 240px,
+    hsl(var(--background)) 520px
+  );
+
   /* shadcn companions, derived from the Evening palette like Morning's. */
-  --card-foreground: 40 25% 92%;
-  --popover: 30 10% 15%;
-  --popover-foreground: 40 25% 92%;
-  --secondary: 30 8% 22%;
-  --secondary-foreground: 40 25% 92%;
-  --muted-foreground: 35 12% 65%;
-  --accent-foreground: 30 12% 11%;
+  --card-foreground: 214 20% 93%;
+  --popover: 220 11% 16%;
+  --popover-foreground: 214 20% 93%;
+  --secondary: 220 12% 13.5%;
+  --secondary-foreground: 214 20% 93%;
+  --muted-foreground: 216 9% 64%;
+  --accent-foreground: 214 20% 93%;
   --destructive-foreground: 0 0% 100%;
-  --border: 30 8% 26%;
-  --input: 30 8% 30%;
-  --ring: 28 85% 60%;
+  --border: 220 9% 21%;
+  --input: 220 10% 19%;
+  --ring: 213 92% 63%;
 }
 
 :root[data-theme='workshop'] {
@@ -40,6 +53,11 @@
   --warning: 38 95% 42%;
   --success: 145 60% 30%;
   --radius: 0.5rem;
+
+  /* Floating-shell surfaces: flat high-contrast equivalents (Bug #2). */
+  --window: 0 0% 88%;
+  --sidebar: 0 0% 100%;
+  --canvas: hsl(0 0% 100%);
 
   /* shadcn companions, high-contrast like the rest of Workshop. */
   --card-foreground: 0 0% 5%;
