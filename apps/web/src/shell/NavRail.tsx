@@ -27,8 +27,8 @@ export default function NavRail() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex min-h-10 flex-1 items-center rounded-md px-3 text-base ${
-                  isActive ? 'bg-muted font-semibold' : 'hover:bg-muted/60'
+                `flex min-h-10 flex-1 items-center rounded-full px-3 text-base ${
+                  isActive ? 'bg-accent font-medium' : 'hover:bg-accent/60'
                 }`
               }
             >

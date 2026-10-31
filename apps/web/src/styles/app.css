@@ -27,6 +27,10 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-window: hsl(var(--window));
+  /* Bare `border` utilities use the theme border color, not currentColor. */
+  --default-border-color: hsl(var(--border));
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -41,11 +45,22 @@
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
   }
+  /* Tight display tracking, like the CRM reference (Bug #2). */
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.01em;
+  }
 }
 
 @layer utilities {
   /* Nunito for headings, the home prompt and onboarding (M5). */
   .font-display {
     font-family: var(--font-display);
+  }
+  /* Sky canvas gradient behind the main panel (Bug #2, CRM look). */
+  .bg-canvas {
+    background: var(--canvas);
   }
 }
