@@ -150,6 +150,84 @@ describe('POST /api/explain', () => {
     expect(String(opts.user)).toContain('Wrote a warm reply to Sarah.');
   });
 
+  test("kind 'table' passes the label, row count and columns to the gateway", async () => {
+    const s = setup();
+    db = s.db;
+    const res = await postExplain(s.app, { kind: 'table', id: 'customers' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: EXPLAIN_TEXT });
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    const opts = s.chatJson.mock.calls[0]![0] as { role: unknown; user: unknown };
+    expect(opts.role).toBe('builder');
+    const user = String(opts.user);
+    expect(user).toContain('Customers');
+    expect(user).toContain('1 row');
+    expect(user).toContain('Name (text)');
+    expect(user).toContain('Email (email)');
+  });
+
+  test('table explanations are cached per row count: a repeat hits, a new row misses', async () => {
+    const s = setup();
+    db = s.db;
+    const body = { kind: 'table', id: 'customers' };
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    s.tables.insert('customers', { name: 'Tom Ray', email: 'tom@acme.co' });
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(2);
+    const opts = s.chatJson.mock.calls[1]![0] as { user: unknown };
+    expect(String(opts.user)).toContain('2 rows');
+  });
+
+  test('an unknown table is a 404 and never reaches the gateway', async () => {
+    const s = setup();
+    db = s.db;
+    const res = await postExplain(s.app, { kind: 'table', id: 'nope' });
+    expect(res.status).toBe(404);
+    expect(s.chatJson).not.toHaveBeenCalled();
+  });
+
+  test("kind 'column' passes the column, its list and the row count to the gateway", async () => {
+    const s = setup();
+    db = s.db;
+    const res = await postExplain(s.app, { kind: 'column', id: 'email', context: 'customers' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ text: EXPLAIN_TEXT });
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    const opts = s.chatJson.mock.calls[0]![0] as { role: unknown; user: unknown };
+    expect(opts.role).toBe('builder');
+    const user = String(opts.user);
+    expect(user).toContain('Email');
+    expect(user).toContain('(email)');
+    expect(user).toContain('Customers');
+    expect(user).toContain('1 row');
+  });
+
+  test('column explanations are cached per row count: a repeat hits, a new row misses', async () => {
+    const s = setup();
+    db = s.db;
+    const body = { kind: 'column', id: 'email', context: 'customers' };
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(1);
+    s.tables.insert('customers', { name: 'Tom Ray', email: 'tom@acme.co' });
+    expect((await postExplain(s.app, body)).status).toBe(200);
+    expect(s.chatJson).toHaveBeenCalledTimes(2);
+    const opts = s.chatJson.mock.calls[1]![0] as { user: unknown };
+    expect(String(opts.user)).toContain('2 rows');
+  });
+
+  test('an unknown column (or list) is a 404 and never reaches the gateway', async () => {
+    const s = setup();
+    db = s.db;
+    const res = await postExplain(s.app, { kind: 'column', id: 'nope', context: 'customers' });
+    expect(res.status).toBe(404);
+    const res2 = await postExplain(s.app, { kind: 'column', id: 'email', context: 'nope' });
+    expect(res2.status).toBe(404);
+    expect(s.chatJson).not.toHaveBeenCalled();
+  });
+
   test('an unknown step is a 404 and never reaches the gateway', async () => {
     const s = setup();
     db = s.db;

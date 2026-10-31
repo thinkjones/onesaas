@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { workflowNameFromSentence } from '../agent/useAgent.ts';
 import { useCreateWorkflow } from '../api.ts';
 import { Textarea } from '../components/ui/textarea.tsx';
@@ -20,7 +20,24 @@ export const HOME_PROMPT = 'What do you want to achieve today?';
 export default function HomePage() {
   const create = useCreateWorkflow();
   const navigate = useNavigate();
+  const location = useLocation();
+  // TellMeMoreFallback's last resort: with no reducers yet there is no
+  // helper panel to send to, so "Tell me more" lands here with the message
+  // already in the box — Dad presses Build it to create one and send it.
+  // Box text (not an auto-send), so the state needs no consuming. Applied
+  // via the previous-render pattern (not an initializer): a same-path
+  // re-navigation — already Home when it fires — re-renders without
+  // remounting, and the prefill must land then too. Re-applying only on a
+  // CHANGED value never clobbers Dad's typing.
   const [sentence, setSentence] = useState('');
+  const [appliedPrefill, setAppliedPrefill] = useState<string | undefined>(undefined);
+  const locationState = location.state as { homePrefill?: unknown } | null;
+  const homePrefill =
+    typeof locationState?.homePrefill === 'string' ? locationState.homePrefill : undefined;
+  if (homePrefill !== appliedPrefill) {
+    setAppliedPrefill(homePrefill);
+    if (homePrefill !== undefined) setSentence(homePrefill);
+  }
   const [error, setError] = useState<string | null>(null);
 
   const handleStart = (raw: string): void => {

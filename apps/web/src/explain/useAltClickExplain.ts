@@ -11,7 +11,7 @@ import type { ExplainTarget } from '../api.ts';
 /**
  * Window event fired when "Tell me more" has no direct handler. WorkflowPage
  * listens: it opens the helper panel and sends the message. Outside the
- * workflow page nothing consumes it yet (the popover text still shows).
+ * workflow page TellMeMoreFallback (mounted in AppShell) routes to a panel.
  */
 export const TELL_ME_MORE_EVENT = 'dad:tell-me-more';
 
