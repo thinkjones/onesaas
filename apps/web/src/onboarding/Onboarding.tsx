@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router';
-import { useEvents, useSettings } from '../api.ts';
+import { MOOD_DRAW_TIMEOUT_MS, useEvents, useSettings } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import { sound } from '../sound/sound.ts';
@@ -12,20 +12,12 @@ import StepReframe from './StepReframe.tsx';
 import StepWelcome from './StepWelcome.tsx';
 
 /**
- * How long the reframe screen waits for the generated mood set before
- * settling on the bundled defaults. The swap still happens if the set lands
- * later — the timeout only ends the "Drawing your business…" shimmer. This
- * is real behavior (a live setTimeout), not a test artifact.
- */
-export const MOOD_DRAW_TIMEOUT_MS = 20_000;
-
-/**
  * M5 Task 5: the four-screen onboarding at /welcome. Screens 2–4 sit over the
  * mood backdrop (Dad's generated set once the `mood` event lands, else the
  * bundled defaults); the welcome screen has its own full-bleed image.
  */
 export default function Onboarding({ useVoiceFn }: { useVoiceFn?: () => UseVoiceResult }) {
-  const { settings, update } = useSettings();
+  const { settings, update, updateAsync } = useSettings();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   // Set when screen 2 fires POST /api/mood/generate.
@@ -100,7 +92,7 @@ export default function Onboarding({ useVoiceFn }: { useVoiceFn?: () => UseVoice
         {step === 1 && (
           <StepBusiness
             settings={settings}
-            update={update}
+            updateAsync={updateAsync}
             useVoiceFn={useVoiceFn}
             onNext={() => {
               setMoodRequested(true);

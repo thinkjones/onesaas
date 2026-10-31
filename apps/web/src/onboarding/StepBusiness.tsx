@@ -10,16 +10,18 @@ const inputClass =
 /**
  * M5 Task 5 screen 2: the business profile. Next saves the three fields and
  * fires POST /api/mood/generate so the reframe screen can draw Dad's own
- * business; generation is best-effort and never blocks onboarding.
+ * business; generation is best-effort and never blocks onboarding. The save
+ * is awaited first: the server reads the profile synchronously on POST
+ * receipt, so firing both at once would generate from the stale profile.
  */
 export default function StepBusiness({
   settings,
-  update,
+  updateAsync,
   onNext,
   useVoiceFn,
 }: {
   settings: Settings;
-  update(patch: SettingsPatch): void;
+  updateAsync(patch: SettingsPatch): Promise<unknown>;
   onNext(): void;
   /** Test seam, passed through to the MicButton. */
   useVoiceFn?: () => UseVoiceResult;
@@ -29,6 +31,7 @@ export default function StepBusiness({
   const [zone, setZone] = useState(
     () => settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
+  const [zoneError, setZoneError] = useState<string | null>(null);
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-12">
@@ -75,15 +78,38 @@ export default function StepBusiness({
             id="onboarding-timezone"
             className={inputClass}
             value={zone}
-            onChange={(e) => setZone(e.target.value)}
+            onChange={(e) => {
+              setZone(e.target.value);
+              setZoneError(null);
+            }}
             autoComplete="off"
+            aria-invalid={zoneError !== null}
+            aria-describedby={zoneError !== null ? 'onboarding-timezone-error' : undefined}
           />
+          {zoneError !== null && (
+            <p id="onboarding-timezone-error" role="alert" className="text-lg text-destructive">
+              {zoneError}
+            </p>
+          )}
         </div>
         <AppButton
           type="button"
           className="w-full"
-          onClick={() => {
-            update({ businessName: name, businessWhat: what, timezone: zone });
+          onClick={async () => {
+            try {
+              new Intl.DateTimeFormat(undefined, { timeZone: zone });
+            } catch {
+              // The server discards a patch with an unknown zone wholesale;
+              // stay put with an inline error instead of advancing unsaved.
+              setZoneError('Enter a valid timezone, e.g. America/Los_Angeles.');
+              return;
+            }
+            setZoneError(null);
+            try {
+              await updateAsync({ businessName: name, businessWhat: what, timezone: zone });
+            } catch {
+              // A failed save must never block onboarding (mutation toasts).
+            }
             void requestMoodGeneration();
             onNext();
           }}

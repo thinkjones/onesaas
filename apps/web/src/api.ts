@@ -181,10 +181,9 @@ export function getSettings(): Promise<Settings> {
  */
 export async function requestMoodGeneration(): Promise<void> {
   try {
-    const res = await fetch('/api/mood/generate', { method: 'POST' });
-    if (!res.ok) await throwApiError(res);
+    await postJson('/api/mood/generate');
   } catch {
-    // Swallowed on purpose (see above).
+    console.debug('[mood] background generation request failed');
   }
 }
 
@@ -196,11 +195,14 @@ export function putSettings(patch: SettingsPatch): Promise<Settings> {
 /**
  * The settings document plus an optimistic `update(patch)`: the UI (theme,
  * text size) applies instantly and rolls back with a toast if the PUT fails.
- * Shares the ['settings'] query with useBusinessTimezone below.
+ * `updateAsync` is the same mutation awaitable (onboarding awaits it so the
+ * save lands before the mood POST reads the profile). Shares the ['settings']
+ * query with useBusinessTimezone below.
  */
 export function useSettings(): {
   settings: Settings | undefined;
   update: (patch: SettingsPatch) => void;
+  updateAsync: (patch: SettingsPatch) => Promise<Settings>;
 } {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ['settings'], queryFn: getSettings });
@@ -226,7 +228,11 @@ export function useSettings(): {
       void client.invalidateQueries({ queryKey: ['settings'] });
     },
   });
-  return { settings: query.data, update: (patch) => mutation.mutate(patch) };
+  return {
+    settings: query.data,
+    update: (patch) => mutation.mutate(patch),
+    updateAsync: (patch) => mutation.mutateAsync(patch),
+  };
 }
 
 // --- Lists + views (M4 Task 8) ---
@@ -484,6 +490,14 @@ export type AgentEvent =
  * (not DesignView) so the component file exports components only.
  */
 export const PENDING_BUILT_TIMEOUT_MS = 20_000;
+
+/**
+ * How long the onboarding reframe screen waits for the generated mood set
+ * before settling on the bundled defaults. The swap still happens if the set
+ * lands later — the timeout only ends the "Drawing your business…" shimmer.
+ * This is real behavior (a live setTimeout), not a test artifact.
+ */
+export const MOOD_DRAW_TIMEOUT_MS = 20_000;
 
 /** POST /api/workflows {name, description}: a blank reducer (steps come later). */
 export function createWorkflow(body: { name: string; description: string }): Promise<Workflow> {
