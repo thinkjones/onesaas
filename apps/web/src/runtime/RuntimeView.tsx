@@ -290,7 +290,7 @@ export default function RuntimeView({
       lastLineByRunId={lastLineByRunId}
     >
       <RunStory story={detail.story} />
-      <div className="relative isolate min-h-[480px] flex-1 rounded-[var(--radius)] border border-border bg-card">
+      <div className="relative isolate h-[560px] rounded-[var(--radius)] border border-border bg-card">
         <MoodBackdrop visible={false} fileIds={settings?.moodFileIds ?? []} />
         <WorkflowCanvas
           workflow={detail.workflow}

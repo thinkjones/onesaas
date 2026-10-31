@@ -2,7 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import ActivityLog, { type ActivityEntry } from '../agent/ActivityLog.tsx';
 import AgentPanel from '../agent/AgentPanel.tsx';
+import { useAgent } from '../agent/useAgent.ts';
 import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
@@ -32,7 +34,7 @@ export interface WorkflowPageProps {
  *
  * Photo-triggered flows (trigger.upload) get an UploadDrop above the runtime
  * view: dropping a photo posts it to the upload route and jumps to the new
- * run. The helper panel sits on the right (380px, collapsible) in BOTH modes, at
+ * run. The chat sits on the right (1/3, collapsible) in BOTH modes, at
  * the same tree position so switching modes never remounts it mid-turn. When
  * the agent starts a second reducer mid-turn (create_workflow), its `switched`
  * event navigates this page to the new reducer's design view (the workflows
@@ -56,6 +58,9 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   const location = useLocation();
   const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
+  // One conversation per page mount, shared by the design Start box and the
+  // chat panel (Bug #4) — a turn started in one place continues in the other.
+  const agent = useAgent(workflowId ?? '');
   const mode = parseModeParam(params.get('mode'));
   const queryClient = useQueryClient();
   // Photo-triggered flows start runs by dropping a photo (runtime mode only).
@@ -142,8 +147,15 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
 
+  // RHS "Recent changes" log (Bug #4): design actions append lines newest
+  // first, capped at 20. Before the early returns with every other hook.
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const logActivity = useCallback((text: string) => {
+    setActivity((prev) => [{ at: new Date().toISOString(), text }, ...prev].slice(0, 20));
+  }, []);
+
   // Explain's "Tell me more" (step boxes, runs, inspector…): open the
-  // helper and send "Tell me more about <label>" through the panel's
+  // chat and send "Tell me more about <label>" through the panel's
   // sendRequest seam. Before the early returns with every other hook. The
   // handler claims the event only while the reducer resolves (pending counts:
   // the send fires once the page loads); settled without data (not-found,
@@ -216,9 +228,14 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
       <h1 className="text-2xl font-semibold">{workflowQuery.data.name}</h1>
       <ModeSwitch mode={mode} onModeChange={handleModeChange} />
       <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-[2]">
           {mode === 'design' ? (
-            <DesignView workflowId={workflowQuery.data.id} onRequestRuntime={handleRequestRuntime} />
+            <DesignView
+              workflowId={workflowQuery.data.id}
+              agent={agent}
+              logActivity={logActivity}
+              onRequestRuntime={handleRequestRuntime}
+            />
           ) : (
             <div className="flex flex-col gap-4">
               {showUploadDrop && (
@@ -242,12 +259,13 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
         {panelCollapsed ? (
           <AppButton variant="outline" onClick={() => setPanelCollapsed(false)}>
             <PanelRightOpen />
-            Show helper
+            Show chat
           </AppButton>
         ) : (
-          <div className="w-[380px] shrink-0">
+          <div className="flex min-w-[300px] flex-[1] shrink-0 flex-col gap-4">
+            {mode === 'design' && activity.length > 0 && <ActivityLog entries={activity} />}
             <AgentPanel
-              workflowId={workflowQuery.data.id}
+              agent={agent}
               prefill={agentPrefill}
               onPrefillConsumed={handlePrefillConsumed}
               initialPrompt={initialPrompt}

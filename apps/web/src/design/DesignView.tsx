@@ -1,6 +1,7 @@
 import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@dad/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { TriangleAlert } from 'lucide-react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -19,9 +20,14 @@ import {
   type WorkflowDetail,
   type WorkflowOpName,
 } from '../api.ts';
+import type { UseAgentResult } from '../agent/useAgent.ts';
 import WorkflowCanvas, { type CanvasOp, type GhostStep } from '../canvas/WorkflowCanvas.tsx';
+import type { StepNodeData } from '../canvas/StepNode.tsx';
+import { Textarea } from '../components/ui/textarea.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
+import Suggestions from '../home/Suggestions.tsx';
+import MicButton from '../voice/MicButton.tsx';
 import MoodBackdrop from '../mood/MoodBackdrop.tsx';
 import { resolveStepId } from '../runtime/params.ts';
 import { sound } from '../sound/sound.ts';
@@ -30,8 +36,8 @@ import { useSound } from '../sound/useSound.ts';
 import AppButton from './AppButton.tsx';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
+import NodeChat, { type ChatMsg, type ChatPick } from './NodeChat.tsx';
 import ProblemsBadge from './ProblemsBadge.tsx';
-import StepPalette from './StepPalette.tsx';
 import TestResults from './TestResults.tsx';
 
 export interface BuiltInfo {
@@ -41,6 +47,13 @@ export interface BuiltInfo {
 
 export interface DesignViewProps {
   workflowId: string;
+  /**
+   * The workflow's conversation, owned by the page (Bug #4): the Start box
+   * sends the first turn through it, and the RHS chat continues it.
+   */
+  agent: UseAgentResult;
+  /** Append a line to the RHS "Recent changes" log (owned by the page). */
+  logActivity(text: string): void;
   /** Turn-on succeeded: the mode container switches to runtime. */
   onRequestRuntime(): void;
   /**
@@ -48,6 +61,51 @@ export interface DesignViewProps {
    * No-op by default.
    */
   onBuilt?(info: BuiltInfo): void;
+}
+
+/**
+ * The new-automation start (Bug #4): a step-free workflow opens on a
+ * centered chat box with suggestion chips (the Start.png pattern) instead
+ * of the canvas. Submitting sends the first turn and the workspace fades
+ * in; the conversation continues in the RHS chat.
+ */
+function DesignStart({ send, busy }: { send: (text: string) => void; busy: boolean }) {
+  const [input, setInput] = useState('');
+  const submit = useCallback(
+    (text: string) => {
+      if (text.trim().length === 0 || busy) return;
+      send(text.trim());
+    },
+    [busy, send],
+  );
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 py-16 text-center">
+      <h2 className="font-display text-4xl font-bold">What should this chore reducer do?</h2>
+      <div className="flex w-full flex-col gap-2 rounded-[var(--radius)] border border-border bg-card p-4 text-left shadow-sm">
+        <Textarea
+          aria-label="Describe the chore"
+          placeholder="When a customer emails me, save them and draft a reply…"
+          rows={3}
+          value={input}
+          disabled={busy}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              submit(input);
+            }
+          }}
+        />
+        <div className="flex items-center justify-between gap-2">
+          <MicButton onSend={submit} />
+          <AppButton onClick={() => submit(input)} disabled={busy || input.trim().length === 0}>
+            Build it
+          </AppButton>
+        </div>
+      </div>
+      <Suggestions onPick={setInput} />
+    </div>
+  );
 }
 
 /** Surfaces the parsed server message; network failures get a plain-words fallback. */
@@ -65,17 +123,27 @@ function findStep(workflow: Workflow, stepId: string): StepInstance | undefined 
 }
 
 /**
- * The design screen: problems-or-turn-on + "Try it" top bar, step palette on
- * the left, canvas in the middle, the selected step's settings on the right.
+ * The design screen (Bug #4): a step-free workflow opens on the Start chat
+ * box; once started, the workspace fades in — problems-or-turn-on + "Try
+ * it" top bar, vertical canvas, and the selected step's settings below the
+ * canvas. Steps are added from node chat (no palette) or by the agent.
  *
- * Canvas edits (drag, connect, disconnect, Backspace-delete) go through the
- * ops route; deletes snapshot the step client-side first so Undo re-adds the
- * exact prior state (fields, bindings, edges, position) while the toast is
- * alive. Agent `plan` events show ghost boxes; each `built` resolves its
- * step's title against the refetched workflow and swaps the FIRST unmatched
- * ghost with that title for the real box (duplicate titles match in order).
+ * Canvas edits (connect, disconnect, Backspace-delete) go through the ops
+ * route; deletes snapshot the step client-side first so Undo re-adds the
+ * exact prior state (fields, bindings, edges) while the toast is alive.
+ * Agent `plan` events show ghost boxes; each `built` resolves its step's
+ * title against the refetched workflow and swaps the FIRST unmatched ghost
+ * with that title for the real box (duplicate titles match in order).
  */
-export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: DesignViewProps) {
+export default function DesignView({ workflowId, agent, logActivity, onRequestRuntime, onBuilt }: DesignViewProps) {
+  // Start shows until the first turn is sent from the Start box (per mount).
+  const [started, setStarted] = useState(false);
+  // Node chat: which step the mini box is open for, plus per-step histories.
+  const [chatFor, setChatFor] = useState<string | undefined>(undefined);
+  const [chatHistories, setChatHistories] = useState<Record<string, ChatMsg[]>>({});
+  const appendChat = useCallback((stepId: string, msg: ChatMsg) => {
+    setChatHistories((prev) => ({ ...prev, [stepId]: [...(prev[stepId] ?? []), msg] }));
+  }, []);
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const detailQuery = useWorkflowDetail(workflowId);
@@ -222,9 +290,10 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
         builtFired.current.add(id);
         sound.chime('step');
         onBuilt?.({ stepId: id, title: stepsById.get(id)!.title });
+        logActivity(`Built "${stepsById.get(id)!.title}".`);
       }
     }
-  }, [detail, pendingBuilt, failedBuilt, builtIds, ghosts, onBuilt]);
+  }, [detail, pendingBuilt, failedBuilt, builtIds, ghosts, onBuilt, logActivity]);
 
   const visibleGhosts = useMemo(
     () => ghosts.filter((g) => !matchedGhostIds.includes(g.id)),
@@ -339,12 +408,13 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
       const outgoing = wf.edges.filter((e) => e.from === stepId);
       const res = await send({ op: 'removeStep', args: [stepId] });
       if (!res?.ok) return;
+      logActivity(`Deleted "${snapshot.title}".`);
       toast.success(`Deleted "${snapshot.title}".`, {
         duration: 5000,
         action: { label: 'Undo', onClick: () => void handleUndo(snapshot, incoming, outgoing) },
       });
     },
-    [client, workflowId, detail, send, handleUndo],
+    [client, workflowId, detail, send, handleUndo, logActivity],
   );
 
   const handleCanvasOp = useCallback(
@@ -372,38 +442,110 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
   );
 
   const handleAddStep = useCallback(
-    async (type: string) => {
+    async (spec: {
+      type: string;
+      title?: string;
+      summary?: string;
+      config?: Record<string, unknown>;
+      inputs?: Record<string, unknown>;
+      after?: string;
+    }): Promise<string | undefined> => {
       const wf = detail;
-      if (!wf) return;
-      const def = catalog[type];
-      if (!def) return;
+      if (!wf) return undefined;
+      const def = catalog[spec.type];
+      if (!def) return undefined;
       if (def.kind === 'trigger') {
         // There is only ever one start box: a "When" pick swaps it, then its
         // settings open so Dad can set it up (empty config flags a problem).
-        const res = await send({ op: 'setTrigger', args: [{ type, config: {} }] });
+        const res = await send({ op: 'setTrigger', args: [{ type: spec.type, config: {} }] });
         if (res?.ok) setSelectedStep(wf.trigger.id);
-        return;
+        return res?.ok ? def.title : undefined;
       }
-      const after = selectedStepId ?? wf.steps[wf.steps.length - 1]?.id ?? wf.trigger.id;
+      const after = spec.after ?? selectedStepId ?? wf.steps[wf.steps.length - 1]?.id ?? wf.trigger.id;
       const beforeIds = new Set([wf.trigger.id, ...wf.steps.map((s) => s.id)]);
       const res = await send({
         op: 'addStep',
         args: [
           {
-            type,
-            title: def.title,
-            summary: def.description,
-            config: {},
-            inputs: {},
+            type: spec.type,
+            title: spec.title ?? def.title,
+            summary: spec.summary ?? def.description,
+            config: spec.config ?? {},
+            inputs: spec.inputs ?? {},
             after,
           },
         ],
       });
-      if (!res?.ok) return;
+      if (!res?.ok) return undefined;
       const addedStep = res.workflow.steps.find((s) => !beforeIds.has(s.id));
       if (addedStep) setSelectedStep(addedStep.id);
+      return addedStep?.title ?? def.title;
     },
     [detail, selectedStepId, send, setSelectedStep],
+  );
+
+  const handleChatSubmit = useCallback(
+    async (anchorId: string, text: string, pick: ChatPick | undefined) => {
+      const wf = detail;
+      if (!wf) return;
+      const anchor =
+        wf.trigger.id === anchorId ? wf.trigger : wf.steps.find((s) => s.id === anchorId);
+      if (!anchor) return;
+      appendChat(anchorId, { from: 'dad', text });
+      if (!pick) {
+        // Free text goes to the workflow conversation with node context; the
+        // outcome lands on the canvas and in the RHS chat via the existing
+        // agent machinery, and the RHS log records that this node was touched.
+        void agent.send(`About the "${anchor.title}" step: ${text}`);
+        appendChat(anchorId, { from: 'agent', text: 'Sent — follow along in the chat.' });
+        logActivity(`Asked about "${anchor.title}".`);
+        return;
+      }
+      if (pick.kind === 'step') {
+        const source = wf.steps.find((s) => s.id === pick.stepId);
+        if (!source) return;
+        const title = await handleAddStep({
+          type: source.type,
+          title: source.title,
+          summary: source.summary,
+          config: source.config,
+          inputs: source.inputs,
+          after: anchorId,
+        });
+        if (title === undefined) return;
+        appendChat(anchorId, { from: 'agent', text: `Added a copy of "${source.title}".` });
+        logActivity(`Added a copy of "${source.title}".`);
+        return;
+      }
+      const title = await handleAddStep({ type: pick.type, after: anchorId });
+      if (title === undefined) return;
+      appendChat(anchorId, { from: 'agent', text: `Added "${title}".` });
+      logActivity(`Added "${title}".`);
+    },
+    [detail, agent, appendChat, handleAddStep, logActivity],
+  );
+
+  const renderNodeDesign = useCallback(
+    (s: StepInstance): StepNodeData['design'] => ({
+      onAdd: () => setChatFor(s.id),
+      onSelect: () => handleSelectStep(s.id),
+      onDelete: () => void handleRemove(s.id),
+      showDelete: detail !== undefined && s.id !== detail.trigger.id,
+      nodeChat:
+        chatFor === s.id && detail ? (
+          <NodeChat
+            anchorTitle={s.title}
+            history={chatHistories[s.id] ?? []}
+            busy={op.isPending || agent.busy}
+            siblings={detail.steps
+              .filter((o) => o.id !== s.id)
+              .map((o) => ({ id: o.id, title: o.title }))}
+            onSubmit={(text, pick) => void handleChatSubmit(s.id, text, pick)}
+            onClose={() => setChatFor(undefined)}
+          />
+        ) : undefined,
+    }),
+    [detail, chatFor, chatHistories, op.isPending, agent.busy, handleSelectStep, handleRemove, handleChatSubmit],
   );
 
   const handleSave = useCallback(
@@ -465,6 +607,14 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
     [problemsByStep, testByStep],
   );
 
+  const handleStartSubmit = useCallback(
+    (text: string) => {
+      setStarted(true);
+      void agent.send(text);
+    },
+    [agent],
+  );
+
   if (detailQuery.isPending) return <p className="text-base">Loading chore reducer…</p>;
   if (detailQuery.isError || !detail) {
     return (
@@ -478,62 +628,80 @@ export default function DesignView({ workflowId, onRequestRuntime, onBuilt }: De
 
   const selected = selectedStepId === undefined ? undefined : findStep(detail, selectedStepId);
   const problemCount = detail.problems.length;
+  const showStart = detail.steps.length === 0 && !started;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        {problemCount === 0 ? (
-          <span
-            data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
-            className="inline-flex items-center gap-1"
+    <MotionConfig reducedMotion="user">
+      <AnimatePresence mode="wait" initial={false}>
+        {showStart ? (
+          <motion.div
+            key="start"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
           >
-            <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
-              Turn on
-            </AppButton>
-            <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
-          </span>
+            <DesignStart send={handleStartSubmit} busy={agent.busy} />
+          </motion.div>
         ) : (
-          <p className="text-base">
-            {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
-          </p>
+          <motion.div
+            key="work"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                {problemCount === 0 ? (
+                  <span
+                    data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
+                    className="inline-flex items-center gap-1"
+                  >
+                    <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
+                      Turn on
+                    </AppButton>
+                    <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
+                  </span>
+                ) : (
+                  <p className="text-base">
+                    {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
+                  </p>
+                )}
+                <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
+                  {testRun.isPending ? 'Trying…' : 'Try it'}
+                </AppButton>
+                <SoundControl />
+              </div>
+              {testResult && <TestResults story={testResult.story} />}
+              <div className="relative isolate h-[560px] min-w-0 rounded-[var(--radius)] border border-border bg-card">
+                <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
+                <WorkflowCanvas
+                  workflow={detail}
+                  mode="design"
+                  ghosts={visibleGhosts}
+                  ghostEdges={visibleGhostEdges}
+                  builtIds={builtIds}
+                  selectedStepId={selectedStepId}
+                  onSelectStep={handleSelectStep}
+                  onChange={handleCanvasOp}
+                  renderNodeExtra={renderNodeExtra}
+                  renderNodeDesign={renderNodeDesign}
+                />
+              </div>
+              {selected && (
+                <ConfigForm
+                  key={selected.id}
+                  step={selected}
+                  workflow={detail}
+                  onSave={(patch) => void handleSave(selected.id, patch)}
+                  saving={op.isPending}
+                />
+              )}
+            </div>
+          </motion.div>
         )}
-        <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
-          {testRun.isPending ? 'Trying…' : 'Try it'}
-        </AppButton>
-        <SoundControl />
-      </div>
-      {testResult && <TestResults story={testResult.story} />}
-      {/* Wraps instead of crushing: at narrow widths the canvas keeps a
-          usable minimum and the inspector drops below it (no change at
-          desktop widths, where palette + canvas + inspector fit one line). */}
-      <div className="flex flex-wrap gap-4">
-        <StepPalette onAddStep={(type) => void handleAddStep(type)} disabled={op.isPending} />
-        <div className="relative isolate min-h-[480px] min-w-0 grow basis-[240px] rounded-[var(--radius)] border border-border bg-card">
-          <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
-          <WorkflowCanvas
-            workflow={detail}
-            mode="design"
-            ghosts={visibleGhosts}
-            ghostEdges={visibleGhostEdges}
-            builtIds={builtIds}
-            selectedStepId={selectedStepId}
-            onSelectStep={handleSelectStep}
-            onChange={handleCanvasOp}
-            renderNodeExtra={renderNodeExtra}
-          />
-        </div>
-        {selected && (
-          <div className="w-[340px] shrink-0">
-            <ConfigForm
-              key={selected.id}
-              step={selected}
-              workflow={detail}
-              onSave={(patch) => void handleSave(selected.id, patch)}
-              saving={op.isPending}
-            />
-          </div>
-        )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </MotionConfig>
   );
 }

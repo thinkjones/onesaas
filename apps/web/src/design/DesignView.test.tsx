@@ -1,10 +1,11 @@
 import type { StepInstance, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PENDING_BUILT_TIMEOUT_MS, type WorkflowDetail } from '../api.ts';
+import type { UseAgentResult } from '../agent/useAgent.ts';
 import DesignView from './DesignView.tsx';
 
 function step(id: string, title: string, position = { x: 500, y: 100 }): StepInstance {
@@ -72,6 +73,18 @@ function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
   });
 }
 
+function makeAgent(overrides?: Partial<UseAgentResult>): UseAgentResult {
+  return {
+    transcript: [],
+    busy: false,
+    sendError: null,
+    historyPending: false,
+    historyError: false,
+    send: vi.fn(async () => {}),
+    ...overrides,
+  };
+}
+
 function renderDesign(
   initialDetail: WorkflowDetail,
   opts?: {
@@ -79,6 +92,8 @@ function renderDesign(
     onRequestRuntime?: () => void;
     onBuilt?: (info: { stepId: string; title: string }) => void;
     fetchHandler?: (url: string, init?: RequestInit) => unknown;
+    agent?: UseAgentResult;
+    logActivity?: (text: string) => void;
   },
 ) {
   const fetch = mockFetch(
@@ -94,15 +109,23 @@ function renderDesign(
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onRequestRuntime = opts?.onRequestRuntime ?? (() => {});
+  const agent = opts?.agent ?? makeAgent();
+  const logActivity = opts?.logActivity ?? (() => {});
   const rendered = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[opts?.entry ?? '/reducers/flow-1']}>
         <Toaster />
-        <DesignView workflowId="flow-1" onRequestRuntime={onRequestRuntime} onBuilt={opts?.onBuilt} />
+        <DesignView
+          workflowId="flow-1"
+          agent={agent}
+          logActivity={logActivity}
+          onRequestRuntime={onRequestRuntime}
+          onBuilt={opts?.onBuilt}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { ...rendered, fetch, client };
+  return { ...rendered, fetch, client, agent, logActivity };
 }
 
 beforeEach(() => {
@@ -383,18 +406,46 @@ describe('DesignView problems and turn on', () => {
   });
 });
 
-describe('DesignView palette', () => {
-  test('the palette groups catalog steps with plain names and descriptions', async () => {
+describe('DesignView node chat', () => {
+  // NOTE: ReactFlow leaves unmeasured nodes visibility:hidden in jsdom,
+  // which wipes computed accessible names inside the canvas (aria-labels
+  // read back as ""). Role+name queries cannot work there, so in-canvas
+  // UI is matched by stable attribute/text instead: toolbar buttons by
+  // aria-label attribute, the chat box by placeholder, options by title
+  // text scoped to the listbox. In a real browser the nodes are measured
+  // (hover reveals the toolbar) and the names compute normally.
+  const openChat = async (stepTitle: string) => {
+    await screen.findByText(stepTitle);
+    const add = document.querySelector(`[aria-label="Add a step after ${stepTitle}"]`);
+    if (!add) throw new Error(`add-after button for ${stepTitle} missing`);
+    fireEvent.click(add);
+    return screen.findByPlaceholderText('Name a step type, or just describe it…');
+  };
+
+  const clickOption = async (title: string) => {
+    // The option title can also name a canvas node, so scope the text to
+    // the chat dropdown (the listbox needs no name filter, so a role
+    // query still works for it).
+    const listbox = await screen.findByRole('listbox', { hidden: true });
+    const option = within(listbox).getByText(title).closest('[role="option"]');
+    if (!option) throw new Error(`option for ${title} missing`);
+    fireEvent.click(option);
+  };
+
+  test('the dropdown groups catalog steps with plain names and descriptions', async () => {
     renderDesign(detail());
+    const box = await openChat('Pick out the details');
+    fireEvent.change(box, { target: { value: 'a' } });
     for (const group of ['When…', 'Get…', 'Work out…', 'Save…', 'Do…']) {
       expect(await screen.findByText(group)).toBeDefined();
     }
     // Each entry shows the catalog description, not the type id.
-    expect(screen.getByText('Reads details out of text.')).toBeDefined();
+    fireEvent.change(box, { target: { value: 'extract' } });
+    expect(await screen.findByText('Reads details out of text.')).toBeDefined();
     expect(screen.queryByText('ai.extract')).toBeNull();
   });
 
-  test('clicking a palette step adds it after the selected step and opens its settings', async () => {
+  test('picking a type adds it after the anchor step and opens its settings', async () => {
     const initial = detail();
     const added = step('extract-1', 'Extract details');
     const afterAdd: WorkflowDetail = {
@@ -404,8 +455,9 @@ describe('DesignView palette', () => {
     };
     // Stateful like the server: the post-op refetch must see the new step.
     let current = initial;
+    const logActivity = vi.fn();
     const { fetch } = renderDesign(initial, {
-      entry: '/reducers/flow-1?step=s1',
+      logActivity,
       fetchHandler: (url, init) => {
         if (url === '/api/workflows/flow-1') return current;
         if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
@@ -415,7 +467,9 @@ describe('DesignView palette', () => {
         throw new Error(`unexpected fetch: ${url}`);
       },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Extract details' }));
+    const box = await openChat('Pick out the details');
+    fireEvent.change(box, { target: { value: 'extract' } });
+    await clickOption('Extract details');
     await waitFor(() => {
       expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/ops'))).toBe(true);
     });
@@ -433,8 +487,121 @@ describe('DesignView palette', () => {
         },
       ],
     });
-    // The new step is selected: its settings open.
+    // The new step is selected: its settings open. The mini history and the
+    // RHS log both record the add.
     expect(await screen.findByRole('heading', { name: 'Settings for Extract details' })).toBeDefined();
+    expect(await screen.findByText('Added "Extract details".')).toBeDefined();
+    expect(logActivity).toHaveBeenCalledWith('Added "Extract details".');
+  });
+
+  test('picking an existing step adds a copy after the anchor step', async () => {
+    const s2 = step('s2', 'Write the reply');
+    const initial = detail([step('s1', 'Pick out the details'), s2]);
+    // Stateful like the server: the post-op refetch must see the new step.
+    let current = initial;
+    const { fetch } = renderDesign(initial, {
+      fetchHandler: (url, init) => {
+        if (url === '/api/workflows/flow-1') return current;
+        if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
+          const copy = step('s3', 'Write the reply');
+          current = { ...current, steps: [...current.steps, copy] };
+          return { ok: true, workflow: current, note: 'Added step "Write the reply".' };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      },
+    });
+    const box = await openChat('Pick out the details');
+    fireEvent.change(box, { target: { value: 'reply' } });
+    expect(await screen.findByText('In this reducer')).toBeDefined();
+    await clickOption('Write the reply');
+    await waitFor(() => {
+      expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/ops'))).toBe(true);
+    });
+    const opsCall = fetch.mock.calls.find((c) => String(c[0]).endsWith('/ops'))!;
+    expect(JSON.parse(String((opsCall[1] as RequestInit).body))).toEqual({
+      op: 'addStep',
+      args: [
+        {
+          type: 'ai.extract',
+          title: 'Write the reply',
+          summary: 'Write the reply.',
+          config: { instructions: 'Read it.', fields: [] },
+          inputs: {},
+          after: 's1',
+        },
+      ],
+    });
+    expect(await screen.findByText('Added a copy of "Write the reply".')).toBeDefined();
+  });
+
+  test('picking a "When" step swaps the trigger', async () => {
+    const { fetch } = renderDesign(detail());
+    const box = await openChat('Manual trigger');
+    fireEvent.change(box, { target: { value: 'gmail button' } });
+    await clickOption('Gmail button');
+    await waitFor(() => {
+      expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/ops'))).toBe(true);
+    });
+    const opsCall = fetch.mock.calls.find((c) => String(c[0]).endsWith('/ops'))!;
+    expect(JSON.parse(String((opsCall[1] as RequestInit).body))).toEqual({
+      op: 'setTrigger',
+      args: [{ type: 'trigger.gmailButton', config: {} }],
+    });
+  });
+
+  test('free text goes to the agent with node context and logs the touch', async () => {
+    const agent = makeAgent();
+    const logActivity = vi.fn();
+    renderDesign(detail(), { agent, logActivity });
+    const box = await openChat('Pick out the details');
+    fireEvent.change(box, { target: { value: 'zzz-no-such-step' } });
+    expect(screen.queryByRole('listbox', { hidden: true })).toBeNull();
+    fireEvent.submit(box.closest('form')!);
+    await waitFor(() => {
+      expect(agent.send).toHaveBeenCalledWith(
+        'About the "Pick out the details" step: zzz-no-such-step',
+      );
+    });
+    expect(await screen.findByText('Sent — follow along in the chat.')).toBeDefined();
+    expect(logActivity).toHaveBeenCalledWith('Asked about "Pick out the details".');
+  });
+});
+
+describe('DesignView start', () => {
+  test('a step-free workflow opens on the Start chat box, not the canvas', async () => {
+    renderDesign(detail([]));
+    expect(
+      await screen.findByRole('heading', { name: 'What should this chore reducer do?' }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole('textbox', { name: 'Describe the chore' }),
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Try it' })).toBeNull();
+  });
+
+  test('a suggestion chip fills the Start box without submitting', async () => {
+    const agent = makeAgent();
+    renderDesign(detail([]), { agent });
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep track of bookings' }));
+    expect(
+      (screen.getByRole('textbox', { name: 'Describe the chore' }) as HTMLTextAreaElement).value,
+    ).toBe('Keep track of bookings');
+    expect(agent.send).not.toHaveBeenCalled();
+  });
+
+  test('submitting the Start box sends the first turn and opens the workspace', async () => {
+    const agent = makeAgent();
+    renderDesign(detail([]), { agent });
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Describe the chore' }), {
+      target: { value: 'Sort my inbox' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Build it' }));
+    await waitFor(() => {
+      expect(agent.send).toHaveBeenCalledWith('Sort my inbox');
+    });
+    // The Start box is gone; the workspace top bar fades in.
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
+    expect(screen.queryByRole('textbox', { name: 'Describe the chore' })).toBeNull();
   });
 });
 
@@ -479,5 +646,17 @@ describe('DesignView try it', () => {
     ).toBeDefined();
     // …and the per-box why under the title.
     expect(screen.getByText('I read the details out of the email.')).toBeDefined();
+  });
+});
+
+describe('DesignView canvas', () => {
+  test('the canvas container has a definite height', async () => {
+    // ReactFlow sizes itself to 100% of its parent: a min-height-only
+    // container collapses it to 0px (an invisible canvas no layout-blind
+    // jsdom test can see). Pin the definite height here.
+    renderDesign(detail());
+    await screen.findByText('Pick out the details');
+    const container = document.querySelector('.react-flow')?.parentElement;
+    expect(container?.className).toMatch(/(?<![\w-])h-\[\d+px\]/);
   });
 });

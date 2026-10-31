@@ -4,7 +4,19 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { type RunDetail, type Settings, type WorkflowDetail } from '../api.ts';
+import type { UseAgentResult } from '../agent/useAgent.ts';
 import DesignView from '../design/DesignView.tsx';
+
+function makeAgent(): UseAgentResult {
+  return {
+    transcript: [],
+    busy: false,
+    sendError: null,
+    historyPending: false,
+    historyError: false,
+    send: vi.fn(async () => {}),
+  };
+}
 import RuntimeView from '../runtime/RuntimeView.tsx';
 
 // M5 Task 4 D1 regression: the mood backdrop paints at z-index:-1, so its
@@ -98,7 +110,7 @@ test('DesignView canvas container isolates the mood backdrop stacking context', 
   const { container } = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/design/flow-1']}>
-        <DesignView workflowId="flow-1" onRequestRuntime={() => {}} />
+        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

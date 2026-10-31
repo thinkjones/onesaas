@@ -2,8 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentTranscriptEntry } from '../api.ts';
-import AgentPanel from './AgentPanel.tsx';
-import { AGENT_SETTLING_MS, workflowNameFromSentence } from './useAgent.ts';
+import AgentPanel, { type AgentPanelProps } from './AgentPanel.tsx';
+import { AGENT_SETTLING_MS, useAgent, workflowNameFromSentence } from './useAgent.ts';
+
+// The page owns the conversation (Bug #4); the wrapper calls the real hook
+// so the fetch-stub harness keeps driving honest behavior.
+function PanelWithAgent(props: Omit<AgentPanelProps, 'agent'>) {
+  const agent = useAgent('flow-1');
+  return <AgentPanel {...props} agent={agent} />;
+}
 
 // Captures EventSource subscribers so tests can deliver agent events.
 class FakeEventSource {
@@ -77,8 +84,7 @@ function renderPanel(opts?: {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const rendered = render(
     <QueryClientProvider client={client}>
-      <AgentPanel
-        workflowId="flow-1"
+      <PanelWithAgent
         prefill={opts?.prefill}
         onPrefillConsumed={opts?.onPrefillConsumed}
         initialPrompt={opts?.initialPrompt}
@@ -91,7 +97,7 @@ function renderPanel(opts?: {
 }
 
 function textarea(): HTMLElement {
-  return screen.getByRole('textbox', { name: 'Message the helper' });
+  return screen.getByRole('textbox', { name: 'Chat message' });
 }
 
 const PERSISTED: AgentTranscriptEntry[] = [
@@ -390,7 +396,7 @@ describe('AgentPanel chrome', () => {
     const onCollapse = vi.fn();
     renderPanel({ transcript: [], onCollapse });
     await screen.findByText('Tell me what you want this chore reducer to do.');
-    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
 
@@ -528,7 +534,7 @@ describe('AgentPanel remount', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const panel = (
       <QueryClientProvider client={client}>
-        <AgentPanel workflowId="flow-1" />
+        <PanelWithAgent />
       </QueryClientProvider>
     );
     const first = render(panel);

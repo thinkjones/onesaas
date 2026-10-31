@@ -46,23 +46,30 @@ function positionsOf(wf: Workflow): Record<string, { x: number; y: number }> {
 }
 
 describe('layoutWorkflow', () => {
-  test('all {0,0} positions get distinct left-to-right positions', () => {
+  test('lays the graph top-down with distinct positions', () => {
     const laid = layoutWorkflow(flow1({ x: 0, y: 0 }));
     const pos = positionsOf(laid);
     const keys = Object.values(pos).map((p) => `${p.x},${p.y}`);
     expect(new Set(keys).size).toBe(3);
-    expect(pos['trigger']!.x).toBeLessThan(pos['extract']!.x);
-    expect(pos['extract']!.x).toBeLessThan(pos['save']!.x);
+    expect(pos['trigger']!.y).toBeLessThan(pos['extract']!.y);
+    expect(pos['extract']!.y).toBeLessThan(pos['save']!.y);
   });
 
-  test('keeps existing non-zero positions', () => {
+  test('always re-lays out: saved positions are not preserved', () => {
+    // Nodes are not draggable (Bug #4), so there are no user positions to
+    // keep — the whole graph is laid out every time.
     const wf = flow1({ x: 0, y: 0 });
     wf.steps[0]!.position = { x: 500, y: 300 };
     const laid = layoutWorkflow(wf);
-    expect(laid.steps[0]!.position).toEqual({ x: 500, y: 300 });
-    // …while the unpositioned nodes still get laid out.
     const pos = positionsOf(laid);
-    expect(pos['trigger']).not.toEqual({ x: 0, y: 0 });
-    expect(pos['save']).not.toEqual({ x: 0, y: 0 });
+    expect(pos['extract']).not.toEqual({ x: 500, y: 300 });
+    expect(pos['trigger']!.y).toBeLessThan(pos['extract']!.y);
+    expect(pos['extract']!.y).toBeLessThan(pos['save']!.y);
+  });
+
+  test('layout is deterministic: same graph, same positions', () => {
+    const a = positionsOf(layoutWorkflow(flow1({ x: 0, y: 0 })));
+    const b = positionsOf(layoutWorkflow(flow1({ x: 100, y: 900 })));
+    expect(a).toEqual(b);
   });
 });

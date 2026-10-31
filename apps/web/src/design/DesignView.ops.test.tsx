@@ -7,7 +7,19 @@ import { MemoryRouter } from 'react-router';
 import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { WorkflowDetail } from '../api.ts';
+import type { UseAgentResult } from '../agent/useAgent.ts';
 import DesignView from './DesignView.tsx';
+
+function makeAgent(): UseAgentResult {
+  return {
+    transcript: [],
+    busy: false,
+    sendError: null,
+    historyPending: false,
+    historyError: false,
+    send: vi.fn(async () => {}),
+  };
+}
 
 // Capture the props DesignView passes through to ReactFlow so tests can drive
 // canvas changes directly (no drag simulation needed).
@@ -125,7 +137,7 @@ function renderOps(entry = '/reducers/flow-1') {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <Toaster />
-        <DesignView workflowId="flow-1" onRequestRuntime={() => {}} />
+        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -304,7 +316,7 @@ describe('DesignView canvas ops', () => {
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/reducers/flow-1']}>
           <Toaster />
-          <DesignView workflowId="flow-1" onRequestRuntime={() => {}} />
+          <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -359,13 +371,6 @@ describe('DesignView canvas ops', () => {
     });
   });
 
-  test('picking a "When" step swaps the trigger', async () => {
-    const { fetch } = renderOps();
-    fireEvent.click(await screen.findByRole('button', { name: 'Gmail button' }));
-    await waitFor(() => {
-      expect(opsCalls(fetch)).toEqual([
-        { op: 'setTrigger', args: [{ type: 'trigger.gmailButton', config: {} }] },
-      ]);
-    });
-  });
+  // Trigger-swap coverage moved to DesignView.test.tsx ("node chat"):
+  // the ops harness mocks ReactFlow, so node UI never renders here.
 });
