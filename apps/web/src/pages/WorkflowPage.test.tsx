@@ -198,7 +198,7 @@ describe('WorkflowPage photo drop zone', () => {
     position: { x: 100, y: 100 },
   };
 
-  function uploadWorkflow(): Workflow {
+  function uploadWorkflow(steps: StepInstance[] = []): Workflow {
     return {
       id: 'flow-upload',
       name: 'Photo flow',
@@ -206,8 +206,8 @@ describe('WorkflowPage photo drop zone', () => {
       version: 1,
       status: 'on',
       trigger: UPLOAD_TRIGGER,
-      steps: [],
-      edges: [],
+      steps,
+      edges: steps.map((s) => ({ from: 'trigger', to: s.id })),
     };
   }
 
@@ -223,9 +223,10 @@ describe('WorkflowPage photo drop zone', () => {
     endedAt: '2026-10-30T10:42:01.000Z',
   };
 
-  function renderUploadPage(opts?: { search?: string; uploadError?: string }) {
+  function renderUploadPage(opts?: { search?: string; uploadError?: string; steps?: StepInstance[] }) {
     const uploads: unknown[] = [];
     let runs: Run[] = [];
+    const steps = opts?.steps ?? [];
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       const respond = (body: unknown, status = 200) =>
@@ -235,16 +236,16 @@ describe('WorkflowPage photo drop zone', () => {
           json: async () => body,
           text: async () => JSON.stringify(body),
         }) as Response;
-      if (url === '/api/workflows') return respond([uploadWorkflow()]);
+      if (url === '/api/workflows') return respond([uploadWorkflow(steps)]);
       if (url === '/api/workflows/flow-upload')
-        return respond({ ...uploadWorkflow(), problems: [] });
+        return respond({ ...uploadWorkflow(steps), problems: [] });
       if (url === '/api/runs?workflowId=flow-upload') return respond(runs);
       if (url === '/api/runs/run-new')
         return respond({
           run: NEW_RUN,
           steps: [],
           story: ['Runs when you drop a photo.'],
-          workflow: uploadWorkflow(),
+          workflow: uploadWorkflow(steps),
         });
       if (url === '/api/workflows/flow-upload/agent' && init?.method !== 'POST') return respond([]);
       if (url === '/api/workflows/flow-upload/upload' && init?.method === 'POST') {
@@ -280,7 +281,8 @@ describe('WorkflowPage photo drop zone', () => {
   });
 
   test('design mode hides the drop zone', async () => {
-    renderUploadPage({ search: '?mode=design' });
+    // A step so design mode opens the workspace (step-free opens Start).
+    renderUploadPage({ search: '?mode=design', steps: [EXTRACT] });
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
     expect(screen.queryByText('Drop the mug shot here')).toBeNull();
   });
@@ -307,17 +309,17 @@ describe('WorkflowPage photo drop zone', () => {
   });
 });
 
-describe('WorkflowPage helper panel', () => {
+describe('WorkflowPage chat panel', () => {
   const HANDOFF =
     '"Pick out the details" stopped with: I could not read the email. Can you help me fix it?';
 
   function panelInput(): HTMLElement {
-    return screen.getByRole('textbox', { name: 'Message the helper' });
+    return screen.getByRole('textbox', { name: 'Chat message' });
   }
 
   test('the panel shows in runtime mode and is still there in design mode', async () => {
     renderPage(() => {}, () => {});
-    // Runtime mode (default): the failed run's Fix button plus the helper panel.
+    // Runtime mode (default): the failed run's Fix button plus the chat panel.
     expect(await screen.findByText('Fix this step')).toBeDefined();
     expect(panelInput()).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Design' }));
@@ -328,9 +330,9 @@ describe('WorkflowPage helper panel', () => {
   test('the panel collapses and reopens', async () => {
     renderPage(() => {}, () => {});
     expect(await screen.findByText('Fix this step')).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
-    expect(screen.queryByRole('textbox', { name: 'Message the helper' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
+    expect(screen.queryByRole('textbox', { name: 'Chat message' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show chat' }));
     expect(panelInput()).toBeDefined();
   });
 
@@ -347,8 +349,8 @@ describe('WorkflowPage helper panel', () => {
 
     // …and a collapse/reopen cycle proves the seam cleared: a stale prefill
     // would refill the remounted panel's input.
-    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show chat' }));
     expect((panelInput() as HTMLTextAreaElement).value).toBe('');
   });
 
@@ -376,8 +378,8 @@ describe('WorkflowPage helper panel', () => {
     });
 
     // …and collapse/reopen sends nothing more.
-    fireEvent.click(screen.getByRole('button', { name: 'Hide helper' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Show helper' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show chat' }));
     expect(panelInput()).toBeDefined();
     await act(async () => {
       await new Promise((r) => setTimeout(r, 20));

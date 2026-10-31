@@ -247,7 +247,7 @@ describe('TellMeMoreFallback', () => {
     const { agentPosts, location } = renderShell('/reducers/wf-1?mode=design', [OLDER]);
     // The page's own panel is up…
     expect(
-      await screen.findByRole('textbox', { name: 'Message the helper' }),
+      await screen.findByRole('textbox', { name: 'Chat message' }),
     ).toBeDefined();
     // …and a tell-me-more from the page sends directly without navigating.
     window.dispatchEvent(

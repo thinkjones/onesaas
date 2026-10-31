@@ -584,30 +584,57 @@ export function postExplain(target: ExplainTarget): Promise<{ text: string }> {
 }
 
 /**
- * Subscribes to one workflow's agent events over SSE. A dedicated EventSource
- * (useLiveEvents ignores agent events): cheap enough for one design screen,
- * skipped outside browsers like useEvents.
+ * One shared EventSource for every useAgentEvents subscriber. The design
+ * screen mounts three subscribers (canvas ghosts, agent chat, page-level
+ * switches); per-hook connections held 3 SSE streams plus useLiveEvents,
+ * starving the browser's 6-per-origin pool until API calls hung. Native
+ * reconnect is preserved (no onerror handler, like before).
+ */
+let sharedAgentSource: EventSource | undefined;
+const sharedAgentListeners = new Set<(e: AgentEvent, wid: string) => void>();
+
+/**
+ * Subscribes to one workflow's agent events over SSE (useLiveEvents ignores
+ * agent events), multiplexed over the shared connection; skipped outside
+ * browsers like useEvents.
  */
 export function useAgentEvents(workflowId: string, onEvent: (e: AgentEvent) => void): void {
   const ref = useRef(onEvent);
   useEffect(() => {
     ref.current = onEvent;
   }, [onEvent]);
+  const widRef = useRef(workflowId);
+  useEffect(() => {
+    widRef.current = workflowId;
+  }, [workflowId]);
   useEffect(() => {
     if (typeof EventSource === 'undefined') return;
-    const es = new EventSource('/api/events');
-    es.onmessage = (msg: MessageEvent) => {
-      const data = JSON.parse(msg.data) as {
-        type?: unknown;
-        workflowId?: unknown;
-        event?: AgentEvent;
+    if (!sharedAgentSource) {
+      const es = new EventSource('/api/events');
+      es.onmessage = (msg: MessageEvent) => {
+        const data = JSON.parse(msg.data) as {
+          type?: unknown;
+          workflowId?: unknown;
+          event?: AgentEvent;
+        };
+        if (data.type === 'agent' && typeof data.workflowId === 'string' && data.event) {
+          for (const l of sharedAgentListeners) l(data.event, data.workflowId);
+        }
       };
-      if (data.type === 'agent' && data.workflowId === workflowId && data.event) {
-        ref.current(data.event);
+      sharedAgentSource = es;
+    }
+    const listener = (e: AgentEvent, wid: string) => {
+      if (wid === widRef.current) ref.current(e);
+    };
+    sharedAgentListeners.add(listener);
+    return () => {
+      sharedAgentListeners.delete(listener);
+      if (sharedAgentListeners.size === 0) {
+        sharedAgentSource?.close();
+        sharedAgentSource = undefined;
       }
     };
-    return () => es.close();
-  }, [workflowId]);
+  }, []);
 }
 
 // NOTE: run.endedAt is only meaningful on terminal runs — a failed→waiting

@@ -55,6 +55,11 @@ export interface WorkflowCanvasProps {
   onChange?(op: CanvasOp): void;
   /** Approval / failure cards slot. */
   renderNodeExtra?(stepId: string): ReactNode;
+  /**
+   * Design-mode hover actions + node chat (Bug #4). Applied only in design
+   * mode; runtime passes nothing and nodes stay clean.
+   */
+  renderNodeDesign?(step: StepInstance): StepNodeData['design'];
 }
 
 type CanvasNode = Node<StepNodeData, 'step'>;
@@ -85,9 +90,10 @@ function classifyOptions(config: Record<string, unknown>): string[] {
 }
 
 /**
- * The workflow canvas shared by design and runtime modes. Runtime nodes are
- * not draggable/connectable and elements are not selectable; clicks still
- * report through onSelectStep so Task 5 can open the inspector.
+ * The workflow canvas shared by design and runtime modes. Nodes flow
+ * top-down (auto-laid-out, never draggable — Bug #4). Runtime nodes are
+ * not connectable and elements are not selectable; clicks still report
+ * through onSelectStep so Task 5 can open the inspector.
  *
  * Design mode additionally renders the agent's planned ghosts (dashed, inert,
  * laid out together with the real graph) and deletes selected boxes on
@@ -105,6 +111,7 @@ export default function WorkflowCanvas({
   onSelectStep,
   onChange,
   renderNodeExtra,
+  renderNodeDesign,
 }: WorkflowCanvasProps) {
   // Ghosts join the layout as unpositioned steps, so dagre places them
   // relative to the real graph (which keeps its positions) instead of in a
@@ -128,6 +135,7 @@ export default function WorkflowCanvas({
     const placed = new Map(
       [laid.trigger, ...laid.steps].map((s) => [s.id, s] as const),
     );
+    const designMode = mode === 'design';
     const nodes: (CanvasNode | CanvasGhostNode)[] = [workflow.trigger, ...workflow.steps].map(
       (s): CanvasNode => ({
         id: s.id,
@@ -140,6 +148,7 @@ export default function WorkflowCanvas({
           extra: renderNodeExtra?.(s.id),
           fresh: builtIds?.includes(s.id) ?? false,
           workflowId: workflow.id,
+          design: designMode ? renderNodeDesign?.(s) : undefined,
         },
         selected: s.id === selectedStepId,
       }),
@@ -156,7 +165,7 @@ export default function WorkflowCanvas({
       });
     }
     return nodes;
-  }, [laid, workflow, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra]);
+  }, [laid, workflow, mode, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeDesign]);
 
   const initialEdges: (CanvasEdge | CanvasGhostEdge)[] = useMemo(() => {
     const ghostIds = new Set((ghosts ?? []).map((g) => g.id));
@@ -259,11 +268,14 @@ export default function WorkflowCanvas({
         }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        nodesDraggable={design}
+        nodesDraggable={false}
         nodesConnectable={design}
         elementsSelectable={design}
         deleteKeyCode={design ? 'Backspace' : null}
         fitView
+        // Tall vertical flows must stay readable: fit small flows at full
+        // size, shrink large ones only slightly (the user pans the rest).
+        fitViewOptions={{ minZoom: 0.8, maxZoom: 1 }}
       />
     </MotionConfig>
   );

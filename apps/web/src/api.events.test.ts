@@ -3,7 +3,7 @@ import { act, render } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { useLiveEvents } from './api.ts';
+import { useAgentEvents, useLiveEvents, type AgentEvent } from './api.ts';
 
 vi.mock('sonner', () => ({ toast: vi.fn(), Toaster: () => null }));
 
@@ -163,5 +163,51 @@ describe('useLiveEvents reconnect', () => {
     });
     expect(toast).not.toHaveBeenCalled();
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('useAgentEvents sharing', () => {
+  function AgentHarness({ wid, onEvent }: { wid: string; onEvent: (e: AgentEvent) => void }) {
+    useAgentEvents(wid, onEvent);
+    return null;
+  }
+
+  const agentMsg = (workflowId: string) =>
+    JSON.stringify({
+      type: 'agent',
+      workflowId,
+      event: { type: 'activity', text: 'Did a thing.' },
+    });
+
+  test('two subscribers share one EventSource and each gets its own workflow’s events', async () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    render(createElement(AgentHarness, { wid: 'flow-1', onEvent: a }), { wrapper });
+    render(createElement(AgentHarness, { wid: 'flow-2', onEvent: b }), { wrapper });
+    expect(MockEventSource.instances).toHaveLength(1);
+    await act(async () => {
+      MockEventSource.instances[0]!.onmessage!({ data: agentMsg('flow-1') });
+    });
+    expect(a).toHaveBeenCalledTimes(1);
+    expect(b).not.toHaveBeenCalled();
+    await act(async () => {
+      MockEventSource.instances[0]!.onmessage!({ data: agentMsg('flow-2') });
+    });
+    expect(b).toHaveBeenCalledTimes(1);
+  });
+
+  test('the shared connection closes when the last subscriber unmounts', async () => {
+    const a = vi.fn();
+    const first = render(createElement(AgentHarness, { wid: 'flow-1', onEvent: a }), {
+      wrapper,
+    });
+    const second = render(createElement(AgentHarness, { wid: 'flow-1', onEvent: a }), {
+      wrapper,
+    });
+    expect(MockEventSource.instances).toHaveLength(1);
+    first.unmount();
+    expect(MockEventSource.instances[0]!.close).not.toHaveBeenCalled();
+    second.unmount();
+    expect(MockEventSource.instances[0]!.close).toHaveBeenCalledTimes(1);
   });
 });

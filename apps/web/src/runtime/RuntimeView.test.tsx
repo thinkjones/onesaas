@@ -227,3 +227,18 @@ describe('RuntimeView detail branches', () => {
     expect(screen.getByRole('listbox', { name: 'Runs' })).toBeDefined();
   });
 });
+
+describe('RuntimeView canvas', () => {
+  test('the canvas container has a definite height', async () => {
+    // Same collapse as design mode (see the DesignView canvas test):
+    // WorkflowCanvas is mocked here, but the real container div wraps it.
+    const client = makeClient();
+    seed(client, [BOB, ALICE], [BOB_DETAIL, ALICE_DETAIL]);
+    renderRuntime(client, '/');
+    await waitFor(() => {
+      expect(screen.getByTestId('pinned-run').textContent).toBe('run-bob');
+    });
+    const container = screen.getByTestId('canvas').parentElement;
+    expect(container?.className).toMatch(/(?<![\w-])h-\[\d+px\]/);
+  });
+});

@@ -1,8 +1,9 @@
 import type { StepInstance, StepKind, StepRunStatus } from '@dad/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { cn } from 'cn';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import type { ReactNode, SyntheticEvent } from 'react';
 import AppCard from '../design/AppCard.tsx';
 import StatusBadge from '../design/StatusBadge.tsx';
 import Explain from '../explain/Explain.tsx';
@@ -23,6 +24,19 @@ export interface StepNodeData extends Record<string, unknown> {
    * button and alt-click stay off — the server scopes steps by workflow.
    */
   workflowId?: string;
+  /**
+   * Design-mode hover actions + node chat (Bug #4). Absent in runtime mode
+   * (and on ghosts, which use GhostNode): no toolbar, no chat.
+   */
+  design?: {
+    onAdd(): void;
+    onSelect(): void;
+    onDelete(): void;
+    /** False for the trigger, which cannot be deleted. */
+    showDelete: boolean;
+    /** Rendered node chat box, when open for this step. */
+    nodeChat?: ReactNode;
+  };
 }
 
 // Handle chrome matches the card language: token-derived inline styles beat
@@ -40,13 +54,51 @@ const HANDLE_STYLE = {
  * reducedMotion="user" for prefers-reduced-motion.
  */
 export default function StepNode({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
-  const { step, kind, status, extra, fresh, workflowId } = data;
+  const { step, kind, status, extra, fresh, workflowId, design } = data;
   const { icon: Icon, tint } = stepVisuals[kind];
   const explainTarget =
     workflowId === undefined ? null : { kind: 'step' as const, id: step.id, context: workflowId };
+  const stop = (fn: () => void) => (e: SyntheticEvent) => {
+    e.stopPropagation();
+    fn();
+  };
   return (
-    <>
-      <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
+    <div className="group">
+      {design && (
+        <div
+          role="toolbar"
+          aria-label={`${step.title} actions`}
+          className="nodrag nopan absolute -top-3 right-2 z-10 hidden gap-1 group-hover:flex group-focus-within:flex"
+        >
+          <button
+            type="button"
+            aria-label={`Add a step after ${step.title}`}
+            onClick={stop(design.onAdd)}
+            className="rounded-full border border-border bg-card p-1.5 shadow-sm hover:bg-accent"
+          >
+            <Plus className="size-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-label={`Change ${step.title}`}
+            onClick={stop(design.onSelect)}
+            className="rounded-full border border-border bg-card p-1.5 shadow-sm hover:bg-accent"
+          >
+            <Pencil className="size-4" aria-hidden />
+          </button>
+          {design.showDelete && (
+            <button
+              type="button"
+              aria-label={`Delete ${step.title}`}
+              onClick={stop(design.onDelete)}
+              className="rounded-full border border-border bg-card p-1.5 shadow-sm hover:bg-accent"
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
+      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
       <motion.div
         key={status ?? 'none'}
         initial={{ opacity: 0, scale: fresh === true ? 0.9 : 0.96 }}
@@ -83,7 +135,8 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
         </AppCard>
         {extra && <div className="mt-2 w-[280px]">{extra}</div>}
       </motion.div>
-      <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
-    </>
+      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+      {design?.nodeChat && <div className="mt-2 w-[280px]">{design.nodeChat}</div>}
+    </div>
   );
 }

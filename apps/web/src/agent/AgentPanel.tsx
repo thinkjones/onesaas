@@ -4,10 +4,15 @@ import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
 import MicButton from '../voice/MicButton.tsx';
 import Message from './Message.tsx';
-import { useAgent } from './useAgent.ts';
+import type { UseAgentResult } from './useAgent.ts';
 
 export interface AgentPanelProps {
-  workflowId: string;
+  /**
+   * The workflow's conversation, owned by the page (Bug #4): the design
+   * Start box and this chat share one useAgent instance so a turn started
+   * in one place continues in the other.
+   */
+  agent: UseAgentResult;
   /** WorkflowPage's agentPrefill seam: applied to the input once, then cleared. */
   prefill?: string;
   onPrefillConsumed?(): void;
@@ -26,13 +31,13 @@ export interface AgentPanelProps {
 }
 
 /**
- * The helper chat: transcript (Dad right, agent left, activity as small grey
+ * The chat: transcript (Dad right, agent left, activity as small grey
  * lines, asks as chips) with a textarea + Send below and a push-to-talk mic
  * button. Only the LATEST ask renders clickable chips — older ones stay
  * visible but disabled, and everything locks while busy.
  */
 export default function AgentPanel({
-  workflowId,
+  agent,
   prefill,
   onPrefillConsumed,
   initialPrompt,
@@ -40,7 +45,7 @@ export default function AgentPanel({
   sendRequest,
   onCollapse,
 }: AgentPanelProps) {
-  const { transcript, busy, sendError, historyPending, historyError, send } = useAgent(workflowId);
+  const { transcript, busy, sendError, historyPending, historyError, send } = agent;
   const [input, setInput] = useState('');
 
   // Each prefill value applies once (guarded by ref, so re-renders and
@@ -107,13 +112,13 @@ export default function AgentPanel({
 
   return (
     <section
-      aria-label="Helper"
+      aria-label="Chat"
       className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-4 shadow-sm"
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Helper</h2>
+        <h2 className="text-lg font-semibold">Chat</h2>
         {onCollapse && (
-          <AppButton variant="ghost" size="icon" onClick={onCollapse} aria-label="Hide helper">
+          <AppButton variant="ghost" size="icon" onClick={onCollapse} aria-label="Hide chat">
             <PanelRightClose />
           </AppButton>
         )}
@@ -151,8 +156,8 @@ export default function AgentPanel({
       </div>
       <div className="flex flex-col gap-2">
         <Textarea
-          aria-label="Message the helper"
-          placeholder="Write to your helper…"
+          aria-label="Chat message"
+          placeholder="Ask about this chore reducer…"
           rows={3}
           value={input}
           disabled={busy}
