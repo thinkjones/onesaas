@@ -1,4 +1,7 @@
-import { Route, Routes } from 'react-router';
+import type { ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
+import { useSettings } from './api.ts';
+import Onboarding from './onboarding/Onboarding.tsx';
 import ChoreReducersPage from './pages/ChoreReducersPage.tsx';
 import DesignPreviewPage from './pages/DesignPreviewPage.tsx';
 import HomePage from './pages/HomePage.tsx';
@@ -7,10 +10,31 @@ import SettingsPage from './pages/SettingsPage.tsx';
 import WorkflowPage from './pages/WorkflowPage.tsx';
 import AppShell from './shell/AppShell.tsx';
 
+/**
+ * M5 Task 5: until `settings.onboarded` is true, every in-app route redirects
+ * to /welcome. While settings load the children render (no redirect flash),
+ * and /welcome itself renders outside the shell with no nav rail.
+ */
+export function OnboardingGate({ children }: { children: ReactNode }) {
+  const { settings } = useSettings();
+  const location = useLocation();
+  if (settings && !settings.onboarded && location.pathname !== '/welcome') {
+    return <Navigate to="/welcome" replace />;
+  }
+  return children;
+}
+
 export default function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
+      <Route path="welcome" element={<Onboarding />} />
+      <Route
+        element={
+          <OnboardingGate>
+            <AppShell />
+          </OnboardingGate>
+        }
+      >
         <Route index element={<HomePage />} />
         <Route path="reducers" element={<ChoreReducersPage />} />
         <Route path="reducers/:workflowId" element={<WorkflowPage />} />

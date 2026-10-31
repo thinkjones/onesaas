@@ -174,6 +174,20 @@ export function getSettings(): Promise<Settings> {
   return getJson('/api/settings');
 }
 
+/**
+ * POST /api/mood/generate: draw the business in the background (202, the set
+ * lands via the `mood` event). Best-effort by design — a failure leaves the
+ * bundled defaults in place and must never block onboarding.
+ */
+export async function requestMoodGeneration(): Promise<void> {
+  try {
+    const res = await fetch('/api/mood/generate', { method: 'POST' });
+    if (!res.ok) await throwApiError(res);
+  } catch {
+    // Swallowed on purpose (see above).
+  }
+}
+
 /** PUT /api/settings: merge a patch into the settings document. */
 export function putSettings(patch: SettingsPatch): Promise<Settings> {
   return putJson('/api/settings', patch);

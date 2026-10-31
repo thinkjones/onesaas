@@ -32,3 +32,16 @@ saved as JPEG quality 82 with sharp).
 | `apps/web/public/mood/default-2.jpg` (front on a quiet street) | Generated with Muse Image during the hackathon | Original work | Muse Image |
 | `apps/web/public/mood/default-3.jpg` (tools and materials on a workbench) | Generated with Muse Image during the hackathon | Original work | Muse Image |
 | `apps/web/public/mood/default-4.jpg` (coffee on the counter) | Generated with Muse Image during the hackathon | Original work | Muse Image |
+
+## Onboarding cards (`apps/web/public/onboarding/`)
+
+The three illustrated example cards on the onboarding reframe screen,
+generated with Muse Image during the hackathon (`muse-image-1.0`, calm
+watercolor prompts in the same style as the mood defaults, resized to fit
+1600 px and saved as JPEG quality 82 with sharp).
+
+| File | Source | Licence | Author |
+| ---- | ------ | ------- | ------ |
+| `apps/web/public/onboarding/card-1.jpg` (Answer customer emails faster) | Generated with Muse Image during the hackathon | Original work | Muse Image |
+| `apps/web/public/onboarding/card-2.jpg` (Keep track of bookings) | Generated with Muse Image during the hackathon | Original work | Muse Image |
+| `apps/web/public/onboarding/card-3.jpg` (Turn a photo into a post) | Generated with Muse Image during the hackathon | Original work | Muse Image |
