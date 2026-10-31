@@ -48,3 +48,6 @@ data/
 
 # Playwright E2E output (videos, screenshots, temp DB)
 test-results/
+
+# Working plans stay local; shipped docs (e.g. docs/glimmer.md) are committed.
+docs/plans/

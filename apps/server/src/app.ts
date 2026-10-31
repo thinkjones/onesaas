@@ -16,7 +16,7 @@ import { buildRunStory } from './engine/story.js';
 import { createExplainer, ExplainBody, ExplainError } from './explain/explain.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
 import type { TestRunResult } from './engine/testRun.js';
-import type { Gateway } from './models/gateway.js';
+import type { Gateway, ModelStatus } from './models/gateway.js';
 import type { ImageModels } from './models/image.js';
 import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
 import type { SettingsStore } from './settings/store.js';
@@ -83,6 +83,17 @@ export function createApp(deps: AppDeps): Hono {
   injectors.set(app, injectWebSocket);
 
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // Model status (M5 Task 7): one row per role for Settings → Thinking. Real
+  // gateways always carry status(); hand-made fakes in direct createApp calls
+  // may not, and read as unconfigured rather than throwing.
+  app.get('/api/models/status', (c) => {
+    const withStatus = gateway as (Gateway & { status?: () => ModelStatus[] }) | undefined;
+    if (typeof withStatus?.status !== 'function') {
+      return c.json({ error: 'Server not configured' }, 500);
+    }
+    return c.json(withStatus.status());
+  });
 
   app.post('/api/pairing/start', (c) => {
     if (!pairing) return c.json({ error: 'Bridge not configured' }, 500);

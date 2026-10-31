@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
-import { useSettings, type Settings, type SettingsPatch } from '../api.ts';
+import {
+  useModelStatus,
+  useSettings,
+  type ModelStatus,
+  type Settings,
+  type SettingsPatch,
+} from '../api.ts';
 import { CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
 import AppCard from '../design/AppCard.tsx';
@@ -248,6 +254,57 @@ function SoundSection({
   );
 }
 
+const ROLE_LABELS: Record<ModelStatus['role'], string> = {
+  builder: 'Building chore reducers',
+  planner: 'Big plans',
+  triage: 'Inbox sorting',
+  vision: 'Reading web pages',
+};
+
+function modelDisplayName(row: ModelStatus): string {
+  if (row.provider === 'glimmer') return 'Muse Glimmer';
+  if (row.model.includes('wonder')) return 'Muse Wonder';
+  if (row.model.includes('spark')) return 'Muse Spark';
+  return row.model;
+}
+
+function ThinkingSection() {
+  const { data, isError } = useModelStatus();
+  const triage = data?.find((row) => row.role === 'triage');
+  const onGlimmer = triage?.provider === 'glimmer' && triage.healthy;
+  return (
+    <AppCard>
+      <CardHeader>
+        <CardTitle>Thinking</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data === undefined && !isError && (
+          <p className="text-muted-foreground">Checking which model handles what…</p>
+        )}
+        {isError && (
+          <p className="text-muted-foreground">Couldn&rsquo;t check which model handles what.</p>
+        )}
+        {data !== undefined && (
+          <div className="space-y-1">
+            <p>
+              {onGlimmer
+                ? 'Inbox sorting runs on this computer (Muse Glimmer) ✓'
+                : "Inbox sorting is using Muse Spark (Glimmer isn't running on this computer)."}
+            </p>
+            {data
+              .filter((row) => row.role !== 'triage')
+              .map((row) => (
+                <p key={row.role}>
+                  {ROLE_LABELS[row.role]}: {modelDisplayName(row)}
+                </p>
+              ))}
+          </div>
+        )}
+      </CardContent>
+    </AppCard>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, update } = useSettings();
   if (!settings) {
@@ -267,14 +324,7 @@ export default function SettingsPage() {
       <section aria-label="Chrome">
         <Pairing />
       </section>
-      <AppCard>
-        <CardHeader>
-          <CardTitle>Thinking</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">Which model handles what will show up here.</p>
-        </CardContent>
-      </AppCard>
+      <ThinkingSection />
     </div>
   );
 }

@@ -316,6 +316,32 @@ export function useBusinessTimezone() {
   return useQuery({ queryKey: ['settings'], queryFn: getSettings });
 }
 
+/**
+ * Mirrors apps/server/src/models/gateway.ts ModelStatus (the web package
+ * cannot import server code, so the shape is redeclared here like
+ * EngineEvent). One row per model role: where it runs and whether it is up.
+ */
+export type ModelRole = 'builder' | 'planner' | 'triage' | 'vision';
+
+export interface ModelStatus {
+  role: ModelRole;
+  provider: 'meta' | 'glimmer';
+  model: string;
+  healthy: boolean;
+  note?: string;
+}
+
+/** GET /api/models/status: the per-role rows for Settings → Thinking. */
+export function getModelStatus(): Promise<ModelStatus[]> {
+  return getJson('/api/models/status');
+}
+
+export function useModelStatus() {
+  // The server re-checks Glimmer every 60 s; poll on the same cadence so
+  // Settings picks up a revive (or outage) without a reload.
+  return useQuery({ queryKey: ['model-status'], queryFn: getModelStatus, refetchInterval: 60_000 });
+}
+
 /** Subscribes to the SSE stream; closes the connection on unmount. */
 export function useEvents(onEvent: (e: EngineEvent) => void): void {
   const ref = useRef(onEvent);
