@@ -40,10 +40,11 @@ export const UI_DESCRIPTIONS: Record<string, string> = {
     'Design is where you build and change the chore reducer with your helper. Watch it run shows what it actually did, run by run.',
   'turn-on':
     'Turn on starts the chore reducer so it watches for new work on its own. You can turn it off again any time.',
-  'nav-home': 'Home is where you start something new and see your chore reducers and pinned numbers at a glance.',
-  'nav-reducers':
-    'Chore reducers are the little helpers you built — one for each chore they take off your plate.',
-  'nav-lists': 'Lists are the things your business keeps track of, like customers and bookings.',
+  'nav-inbox':
+    'Inbox shows everything your chore reducers have done, newest first — like an email inbox for your business.',
+  'nav-automate':
+    'Automate is where you describe a chore and build a new chore reducer, and see your reducers and pinned numbers at a glance.',
+  'nav-data': 'Data is the things your business keeps track of, like customers and bookings.',
   'nav-settings':
     'Settings is where you tell the app about your business and how you want it to look and sound.',
 };

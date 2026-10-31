@@ -19,10 +19,11 @@ import { TELL_ME_MORE_EVENT } from './useAltClickExplain.ts';
  *   A bad id (`/reducers/nope`, settled without data) is NOT deferred to:
  *   WorkflowPage leaves the event alone there, so the fallback routes it to
  *   a live panel instead of a dead click.
- * - With no reducers yet there is no panel to send to, so it routes Home
- *   with the message prefilled in the box (`homePrefill` state) instead of
- *   silently creating a reducer Dad never asked for. Never a dead click:
- *   even a failed workflows fetch lands Home with the prefill.
+ * - With no reducers yet there is no panel to send to, so it routes
+ *   Automate with the message prefilled in the box (`homePrefill` state)
+ *   instead of silently creating a reducer Dad never asked for. Never a
+ *   dead click: even a failed workflows fetch lands Automate with the
+ *   prefill.
  */
 export default function TellMeMoreFallback() {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ export default function TellMeMoreFallback() {
         if (target) {
           navigate(`/reducers/${target.id}?mode=design`, { state: { agentPrompt: text } });
         } else {
-          navigate('/', { state: { homePrefill: text } });
+          navigate('/automate', { state: { homePrefill: text } });
         }
       })();
     };
