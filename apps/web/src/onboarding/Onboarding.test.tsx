@@ -41,6 +41,7 @@ function stubFetch(
   log: FetchLog,
   pairing = { paired: false, connected: false },
   moodOk = true,
+  putOk = true,
 ): void {
   vi.stubGlobal(
     'fetch',
@@ -51,6 +52,9 @@ function stubFetch(
       }
       if (url === '/api/settings' && init?.method === 'PUT') {
         log.puts.push(JSON.parse(String(init.body)));
+        if (!putOk) {
+          return { ok: false, status: 500, text: async () => '{"error":"boom"}' } as Response;
+        }
         return { ok: true, json: async () => ({ ...doc, ...JSON.parse(String(init.body)) }) } as Response;
       }
       if (url === '/api/mood/generate' && init?.method === 'POST') {
@@ -74,8 +78,9 @@ function renderOnboarding(
   path = '/welcome',
   pairing = { paired: false, connected: false },
   moodOk = true,
+  putOk = true,
 ) {
-  stubFetch(doc, log, pairing, moodOk);
+  stubFetch(doc, log, pairing, moodOk, putOk);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -501,5 +506,79 @@ test('no redirect when onboarded is true', async () => {
   );
   expect(await screen.findByRole('heading', { name: 'Settings' })).not.toBeNull();
   expect(screen.queryByText(SCREEN1_COPY)).toBeNull();
+  unmount();
+});
+
+test('the gate renders Loading… while settings load (no content, no redirect)', async () => {
+  const doc = settingsDoc();
+  const log: FetchLog = { puts: [], moodPosts: 0 };
+  // The settings GET stays pending until the test releases it.
+  let resolveGet!: (res: Response) => void;
+  const getGate = new Promise<Response>((resolve) => {
+    resolveGet = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/settings' && (init?.method === undefined || init?.method === 'GET')) {
+        return getGate;
+      }
+      if (url === '/api/settings' && init?.method === 'PUT') {
+        log.puts.push(JSON.parse(String(init.body)));
+        return { ok: true, json: async () => doc } as Response;
+      }
+      if (url === '/api/mood/generate' && init?.method === 'POST') {
+        log.moodPosts += 1;
+        return { ok: true, json: async () => ({}) } as Response;
+      }
+      if (url === '/api/pairing/status') {
+        return { ok: true, json: async () => ({ paired: false, connected: false }) } as Response;
+      }
+      throw new Error(`unexpected fetch: ${url} ${init?.method}`);
+    }),
+  );
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { unmount } = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/settings']}>
+        <AppRoutes />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  // While settings are in flight: the placeholder, and nothing else.
+  expect(await screen.findByText('Loading…')).not.toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
+  expect(screen.queryByText(SCREEN1_COPY)).toBeNull();
+
+  // Once settings land, the normal gate behavior resumes (redirect to /welcome).
+  await act(async () => {
+    resolveGet({ ok: true, json: async () => doc } as Response);
+    await getGate;
+  });
+  expect(await screen.findByText(SCREEN1_COPY)).not.toBeNull();
+  unmount();
+});
+
+test('a failing settings PUT still advances to screen 3 and fires the mood POST', async () => {
+  const log: FetchLog = { puts: [], moodPosts: 0 };
+  const { unmount } = renderOnboarding(
+    settingsDoc(),
+    log,
+    '/welcome',
+    { paired: false, connected: false },
+    true,
+    false,
+  );
+  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
+  await screen.findByLabelText("What's your business called?");
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+  // The 500 is swallowed by the try/catch (never-block): onboarding still
+  // advances and the mood POST still fires.
+  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
+  expect(log.puts).toHaveLength(1);
+  expect(log.moodPosts).toBe(1);
   unmount();
 });
