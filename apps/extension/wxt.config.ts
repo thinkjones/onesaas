@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: "My Dad's AI Agent",
     version: '0.1.0',
-    permissions: ['storage', 'tabs', 'activeTab', 'scripting'],
+    permissions: ['storage', 'tabs', 'activeTab', 'scripting', 'identity'],
     host_permissions: [
       'https://mail.google.com/*',
       'https://calendar.google.com/*',
