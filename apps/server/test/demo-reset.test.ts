@@ -1,15 +1,21 @@
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { describe, expect, test } from 'vitest';
-// NOTE: the CLI lives at repo-root scripts/demo-reset.ts, but this test
+import { describe, expect, test, vi } from 'vitest';
+// NOTE: the CLI entry is repo-root scripts/demo-reset.ts, but this test
 // imports the implementation from src/demoReset.ts: tsc's rootDir forbids
-// importing outside apps/server (TS6059), so the testable core lives in the
-// package and the root script re-exports these same functions. The Step 4 dry
-// run exercises the real root CLI end to end.
-import { demoReset, isServerLive, saveDemoProfile } from '../src/demoReset.js';
+// importing outside apps/server (TS6059), so the testable core — including
+// runDemoResetCli, the argv parser the root wrapper forwards to — lives in the
+// package. The Step 4 dry run exercises the real root CLI end to end.
+import {
+  demoReset,
+  demoResetHelpText,
+  isServerLive,
+  runDemoResetCli,
+  saveDemoProfile,
+} from '../src/demoReset.js';
 import { openDb } from '../src/db/connection.js';
 import { createRepo } from '../src/db/repo.js';
 import { createFileStore } from '../src/files/store.js';
@@ -78,6 +84,23 @@ function readFresh(dataDir: string): {
       .listWorkflows()
       .map((w) => w.id);
     return { settings, workflowIds };
+  } finally {
+    db.close();
+  }
+}
+
+/** A loud failure must leave the lived-in state fully intact: db, settings,
+ * workflows AND readable mood bytes. */
+async function expectLivedInIntact(dataDir: string, moodId: string): Promise<void> {
+  expect(existsSync(dbFileFor(dataDir))).toBe(true);
+  const { settings, workflowIds } = readFresh(dataDir);
+  expect(settings.businessName).toBe("Dad's Hardware");
+  expect(workflowIds.length).toBeGreaterThan(0);
+  const db = openDb(dbFileFor(dataDir));
+  try {
+    const files = createFileStore({ db, dir: filesDirFor(dataDir) });
+    const got = await files.read(moodId);
+    expect(got.mime).toBe('image/jpeg');
   } finally {
     db.close();
   }
@@ -158,17 +181,213 @@ describe('saveDemoProfile + demoReset --keep-profile', () => {
 
   test('--keep-profile with a missing demo-profile.json fails loudly and deletes nothing', async () => {
     const dataDir = makeDataDir();
-    await seedLivedIn(dataDir);
+    const { moodId } = await seedLivedIn(dataDir);
 
     await expect(demoReset({ dataDir, keepProfile: true, checkLive: false })).rejects.toThrow(
       /demo-profile\.json/,
     );
 
     // The profile is validated BEFORE anything destructive runs.
-    expect(existsSync(dbFileFor(dataDir))).toBe(true);
-    const { settings, workflowIds } = readFresh(dataDir);
-    expect(settings.businessName).toBe("Dad's Hardware");
-    expect(workflowIds.length).toBeGreaterThan(0);
+    await expectLivedInIntact(dataDir, moodId);
+  });
+});
+
+describe('corrupt demo profiles fail loudly and delete nothing', () => {
+  // Each case mutates a freshly snapshotted valid profile (a string return
+  // overwrites the file raw), then --keep-profile must reject while the
+  // lived-in state survives untouched — mirroring the missing-profile test.
+  const cases: Array<{ name: string; corrupt: (p: Record<string, any>) => unknown }> = [
+    { name: 'bad JSON', corrupt: () => 'oops not json{{{' },
+    { name: 'non-object JSON', corrupt: () => [1, 2, 3] },
+    {
+      name: 'wrong version',
+      corrupt: (p) => ({ ...p, version: 999 }),
+    },
+    {
+      name: 'settings not an object',
+      corrupt: (p) => ({ ...p, settings: 'evening' }),
+    },
+    {
+      name: 'bad theme',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, theme: 'noon' } }),
+    },
+    {
+      name: 'bad moodFileIds type',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, moodFileIds: 'mood-test-1' } }),
+    },
+    {
+      name: 'moodImages not an array',
+      corrupt: (p) => ({ ...p, moodImages: {} }),
+    },
+    {
+      name: 'mood image not referenced by settings',
+      corrupt: (p) => ({
+        ...p,
+        moodImages: [{ ...p.moodImages[0], fileId: 'ghost-image' }],
+      }),
+    },
+    {
+      name: 'moodFileIds entry with no bytes',
+      corrupt: (p) => ({
+        ...p,
+        settings: { ...p.settings, moodFileIds: [...p.settings.moodFileIds, 'ghost-id'] },
+      }),
+    },
+    {
+      name: 'mood image with non-image mime',
+      corrupt: (p) => ({
+        ...p,
+        moodImages: [{ ...p.moodImages[0], mime: 'text/plain' }],
+      }),
+    },
+    {
+      name: 'mood image with invalid base64',
+      corrupt: (p) => ({
+        ...p,
+        moodImages: [{ ...p.moodImages[0], dataBase64: '!!!not-base64!!!' }],
+      }),
+    },
+    {
+      name: 'scalar garbage: businessName',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, businessName: 42 } }),
+    },
+    {
+      name: 'scalar garbage: timezone',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, timezone: 7 } }),
+    },
+    {
+      name: 'scalar garbage: textSize',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, textSize: 'huge' } }),
+    },
+    {
+      name: 'scalar garbage: onboarded',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, onboarded: 'yes' } }),
+    },
+    {
+      name: 'scalar garbage: sound.volume',
+      corrupt: (p) => ({
+        ...p,
+        settings: { ...p.settings, sound: { on: true, volume: 'loud' } },
+      }),
+    },
+  ];
+
+  test.each(cases)('$name', async ({ corrupt }) => {
+    const dataDir = makeDataDir();
+    const { moodId } = await seedLivedIn(dataDir);
+    await saveDemoProfile({ dataDir });
+
+    const profilePath = join(dataDir, 'demo-profile.json');
+    const mutated = corrupt(JSON.parse(readFileSync(profilePath, 'utf8')));
+    writeFileSync(profilePath, typeof mutated === 'string' ? mutated : JSON.stringify(mutated));
+
+    await expect(demoReset({ dataDir, keepProfile: true, checkLive: false })).rejects.toThrow(
+      /Cannot use/,
+    );
+    await expectLivedInIntact(dataDir, moodId);
+  });
+});
+
+describe('runDemoResetCli argv validation', () => {
+  // Drives the real argv parser the root wrapper forwards to (temp dirs only).
+  test.each([['--keepprofile'], ['--data-dir=foo'], ['--keep_profile']])(
+    'unknown flag %s exits 1 with usage and touches nothing',
+    async (flag) => {
+      const dataDir = makeDataDir();
+      const { moodId } = await seedLivedIn(dataDir);
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await expect(
+          runDemoResetCli(['--data-dir', dataDir, flag], { checkLive: false }),
+        ).resolves.toBe(1);
+        expect(err.mock.calls.join('\n')).toMatch(/Usage:/);
+      } finally {
+        err.mockRestore();
+      }
+      await expectLivedInIntact(dataDir, moodId);
+    },
+  );
+
+  // Unknown short flag, stray positional, and a trailing --data-dir with no value.
+  test.each([[['-x']], [['oops']], [['--data-dir']]])(
+    'stray token %s exits 1 without resetting',
+    async (extra) => {
+      const dataDir = makeDataDir();
+      const { moodId } = await seedLivedIn(dataDir);
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await expect(
+          runDemoResetCli(['--data-dir', dataDir, ...extra], { checkLive: false }),
+        ).resolves.toBe(1);
+      } finally {
+        err.mockRestore();
+      }
+      await expectLivedInIntact(dataDir, moodId);
+    },
+  );
+
+  test.each([
+    [['--save-profile', '--keep-profile']],
+    [['--save-profile', '--with-flow1']],
+  ])('--save-profile combined with %s exits 1 and snapshots nothing', async (flags) => {
+    const dataDir = makeDataDir();
+    const { moodId } = await seedLivedIn(dataDir);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(
+        runDemoResetCli(['--data-dir', dataDir, ...flags], { checkLive: false }),
+      ).resolves.toBe(1);
+      expect(err.mock.calls.join('\n')).toMatch(/cannot be combined/);
+    } finally {
+      err.mockRestore();
+    }
+    expect(existsSync(join(dataDir, 'demo-profile.json'))).toBe(false);
+    await expectLivedInIntact(dataDir, moodId);
+  });
+
+  test.each([['--help'], ['-h']])('%s exits 0 and touches nothing', async (flag) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const untouched = join(makeDataDir(), 'never-created');
+      await expect(runDemoResetCli(['--data-dir', untouched, flag])).resolves.toBe(0);
+      expect(existsSync(untouched)).toBe(false);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test('help documents itself and the exit-code contract', () => {
+    expect(demoResetHelpText()).toMatch(/-h, --help/);
+    expect(demoResetHelpText()).toMatch(/Exit codes: 0 on success, 1 on any failure/);
+    expect(demoResetHelpText()).toMatch(/cannot be combined/);
+  });
+
+  test('bare reset through the CLI entry returns 0 with factory defaults', async () => {
+    const dataDir = makeDataDir();
+    await seedLivedIn(dataDir);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(runDemoResetCli(['--data-dir', dataDir], { checkLive: false })).resolves.toBe(0);
+    } finally {
+      log.mockRestore();
+    }
+    const fresh = readFresh(dataDir);
+    expect(fresh.workflowIds).toEqual([]);
+    expect(fresh.settings.theme).toBe('morning');
+  });
+
+  test('--save-profile through the CLI entry snapshots and returns 0', async () => {
+    const dataDir = makeDataDir();
+    await seedLivedIn(dataDir);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(
+        runDemoResetCli(['--data-dir', dataDir, '--save-profile'], { checkLive: false }),
+      ).resolves.toBe(0);
+    } finally {
+      log.mockRestore();
+    }
+    expect(existsSync(join(dataDir, 'demo-profile.json'))).toBe(true);
   });
 });
 

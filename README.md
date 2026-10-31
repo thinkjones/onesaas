@@ -56,7 +56,7 @@ pnpm dev
 
 - `pnpm test` — run all tests (Vitest)
 - `pnpm typecheck` — typecheck every workspace package
-- `pnpm demo:reset [--keep-profile] [--with-flow1]` — wipe `data/` back to a clean demo start (server stopped). `--save-profile` snapshots the demo profile first. See [`docs/demo-checklist.md`](docs/demo-checklist.md).
+- `pnpm demo:reset [--keep-profile] [--with-flow1]` — wipe the database and uploads back to a clean demo start (server stopped). `--save-profile` snapshots the demo profile first. See [`docs/demo-checklist.md`](docs/demo-checklist.md).
 
 ## Optional: inbox triage on Muse Glimmer
 
