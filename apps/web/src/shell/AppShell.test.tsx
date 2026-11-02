@@ -4,14 +4,24 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AppShell from './AppShell.tsx';
 
-function renderShell() {
+function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === '/api/workflows') {
+        return { ok: true, status: 200, json: async () => opts?.workflows ?? [] };
+      }
+      throw new Error(`unexpected fetch: ${String(input)}`);
+    }),
+  );
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[opts?.path ?? '/']}>
         <Routes>
           <Route element={<AppShell />}>
-            <Route index element={<p>page body</p>} />
+            <Route path="/" element={<p>page body</p>} />
+            <Route path="/automate" element={<p>automate body</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -44,5 +54,17 @@ describe('AppShell', () => {
     const strip = container.querySelector('[data-tauri-drag-region]');
     expect(strip).not.toBeNull();
     expect(strip?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('hides the nav rail on first-time Automate (no chores yet)', async () => {
+    renderShell({ path: '/automate', workflows: [] });
+    expect(await screen.findByText('automate body')).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'Inbox' })).toBeNull();
+  });
+
+  test('shows the nav rail on Automate once a chore exists', async () => {
+    renderShell({ path: '/automate', workflows: [{ id: 'wf-1' }] });
+    expect(await screen.findByText('automate body')).toBeDefined();
+    expect(await screen.findByRole('link', { name: 'Inbox' })).toBeDefined();
   });
 });

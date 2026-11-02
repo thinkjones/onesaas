@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { workflowNameFromSentence } from '../agent/useAgent.ts';
-import { useCreateWorkflow } from '../api.ts';
+import { useCreateWorkflow, useWorkflows } from '../api.ts';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
 import MicButton from '../voice/MicButton.tsx';
-import AtAGlance from '../home/AtAGlance.tsx';
 import ReducerCards from '../home/ReducerCards.tsx';
 import Suggestions from '../home/Suggestions.tsx';
 
@@ -14,11 +13,15 @@ import Suggestions from '../home/Suggestions.tsx';
 // a workflow and navigates to it in design mode with the message sent (the
 // M3 flow: the opening send happens on the workflow page via location state,
 // so the panel's optimistic row keeps Dad's first message in the transcript).
+// Bug #7: with no chores yet this is the first-time landing — the pure
+// prompt, centred, with no reducer cards (the sidebar hides too, in
+// AppShell); the cards appear under the prompt once a chore exists.
 
 export const HOME_PROMPT = 'What do you want to achieve today?';
 
 export default function HomePage() {
   const create = useCreateWorkflow();
+  const workflowsQuery = useWorkflows();
   const navigate = useNavigate();
   const location = useLocation();
   // TellMeMoreFallback's last resort: with no reducers yet there is no
@@ -63,8 +66,21 @@ export default function HomePage() {
     );
   };
 
+  if (workflowsQuery.isPending) {
+    return <p className="text-base text-muted-foreground">Loading…</p>;
+  }
+  // A failed list degrades to the prompt-only view (the prefill box must
+  // still work when the reducers list can't load).
+  const firstTime = (workflowsQuery.data?.length ?? 0) === 0;
+
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8">
+    <div
+      className={
+        firstTime
+          ? 'mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center gap-8'
+          : 'mx-auto flex max-w-3xl flex-col gap-8'
+      }
+    >
       <div className="flex flex-col items-center gap-4 text-center">
         <h1 className="font-display text-[44px] leading-tight font-semibold text-balance">
           {HOME_PROMPT}
@@ -94,8 +110,7 @@ export default function HomePage() {
           setError(null);
         }}
       />
-      <ReducerCards />
-      <AtAGlance />
+      {!firstTime && <ReducerCards />}
     </div>
   );
 }

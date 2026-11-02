@@ -148,6 +148,29 @@ function App() {
     </p>
   );
 
+  // Border spinner for the in-flight Pair click (the popup has no stylesheet,
+  // so the keyframes ride along in a style tag).
+  const spinner = (
+    <>
+      <style>{'@keyframes dad-spin { to { transform: rotate(360deg); } }'}</style>
+      <span
+        role="status"
+        aria-label="Pairing"
+        style={{
+          display: 'inline-block',
+          width: 12,
+          height: 12,
+          marginRight: 6,
+          verticalAlign: '-1px',
+          border: '2px solid #ccc',
+          borderTopColor: '#333',
+          borderRadius: '50%',
+          animation: 'dad-spin 0.8s linear infinite',
+        }}
+      />
+    </>
+  );
+
   if (status === null) {
     return <div style={box}>{error ? <p style={{ color: '#b00020' }}>{error}</p> : <p>Loading…</p>}</div>;
   }
@@ -169,7 +192,13 @@ function App() {
           style={{ width: '100%', fontSize: 18, padding: 6, boxSizing: 'border-box' }}
         />
         <button onClick={() => void pair()} disabled={!valid || busy} style={buttonStyle}>
-          {busy ? 'Pairing…' : 'Pair'}
+          {busy ? (
+            <>
+              {spinner}Pairing…
+            </>
+          ) : (
+            'Pair'
+          )}
         </button>
         {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
       </div>

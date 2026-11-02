@@ -105,7 +105,7 @@ export default function Onboarding({ useVoiceFn }: { useVoiceFn?: () => UseVoice
           <StepConnect
             onFinish={() => {
               update({ onboarded: true });
-              navigate('/');
+              navigate('/automate');
             }}
           />
         )}

@@ -88,6 +88,7 @@ function renderOnboarding(
         <Routes>
           <Route path="/welcome" element={<Onboarding />} />
           <Route path="/" element={<div>Home</div>} />
+          <Route path="/automate" element={<div>Automate</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -388,7 +389,7 @@ test('Back is available on screens 2-4', async () => {
   unmount();
 });
 
-test('"Skip for now" on screen 4 sets onboarded:true and navigates to /', async () => {
+test('"Skip for now" on screen 4 sets onboarded:true and navigates to /automate', async () => {
   const log: FetchLog = { puts: [], moodPosts: 0 };
   const { unmount } = renderOnboarding(settingsDoc(), log);
   fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
@@ -398,12 +399,12 @@ test('"Skip for now" on screen 4 sets onboarded:true and navigates to /', async 
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
   fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
-  expect(await screen.findByText('Home')).not.toBeNull();
+  expect(await screen.findByText('Automate')).not.toBeNull();
   expect(log.puts).toContainEqual({ onboarded: true });
   unmount();
 });
 
-test('"Finish" on screen 4 sets onboarded:true and navigates to /', async () => {
+test('"Finish" on screen 4 sets onboarded:true and navigates to /automate', async () => {
   const log: FetchLog = { puts: [], moodPosts: 0 };
   const { unmount } = renderOnboarding(settingsDoc(), log);
   fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
@@ -413,7 +414,7 @@ test('"Finish" on screen 4 sets onboarded:true and navigates to /', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 
   fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
-  expect(await screen.findByText('Home')).not.toBeNull();
+  expect(await screen.findByText('Automate')).not.toBeNull();
   expect(log.puts).toContainEqual({ onboarded: true });
   unmount();
 });

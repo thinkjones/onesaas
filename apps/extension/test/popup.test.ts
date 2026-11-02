@@ -170,4 +170,28 @@ describe('popup unpaired view', () => {
     expect(sendMessage).toHaveBeenCalledWith({ action: 'pair', code: '123456' });
     expect(container.textContent ?? '').toContain('Paired ✓');
   });
+
+  test('a spinner shows while the pair request is in flight', async () => {
+    await renderPopup();
+    let resolvePair!: (v: unknown) => void;
+    sendMessage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePair = resolve;
+        }),
+    );
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+      await tick();
+    });
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => {
+      status = { paired: true, connected: true };
+      resolvePair({ ok: true });
+    });
+    await flush();
+    expect(container.textContent ?? '').toContain('Paired ✓');
+  });
 });
