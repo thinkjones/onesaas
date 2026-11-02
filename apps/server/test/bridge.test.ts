@@ -674,14 +674,78 @@ describe('pairing HTTP routes', () => {
       expect(res.status).toBe(200);
       return (await res.json()) as { paired: boolean; connected: boolean };
     };
-    expect(await status()).toEqual({ paired: false, connected: false });
+    expect(await status()).toEqual({
+      paired: false,
+      connected: false,
+      lastPingAt: null,
+      peer: null,
+    });
 
     const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
     const { code } = (await startRes.json()) as { code: string };
     const client = await connect(port);
     const inbox = new Inbox(client);
     await pairAndHello(client, inbox, code);
-    expect(await status()).toEqual({ paired: true, connected: true });
+    expect(await status()).toEqual({
+      paired: true,
+      connected: true,
+      lastPingAt: expect.any(String),
+      peer: null,
+    });
+  });
+
+  test('GET /api/pairing/status exposes the hello client identity', async () => {
+    const { port } = await setup();
+    const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
+    const { code } = (await startRes.json()) as { code: string };
+    const client = await connect(port);
+    const inbox = new Inbox(client);
+    send(client, { type: 'pair', code });
+    const paired = await inbox.next();
+    send(client, { type: 'hello', token: paired.token, client: { profileEmail: 'dad@example.com' } });
+    expect(await inbox.next()).toEqual({ type: 'ready', buttons: [] });
+    const statusRes = await fetch(`http://127.0.0.1:${port}/api/pairing/status`);
+    expect(await statusRes.json()).toEqual({
+      paired: true,
+      connected: true,
+      lastPingAt: expect.any(String),
+      peer: 'dad@example.com',
+    });
+  });
+
+  test('POST /api/pairing/ping with no extension reports ok:false honestly', async () => {
+    const { port } = await setup();
+    const res = await fetch(`http://127.0.0.1:${port}/api/pairing/ping`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: false, connected: false, lastPingAt: null, peer: null });
+  });
+
+  test('POST /api/pairing/ping round-trips through a live extension', async () => {
+    const { port } = await setup();
+    const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
+    const { code } = (await startRes.json()) as { code: string };
+    const client = await connect(port);
+    const inbox = new Inbox(client);
+    await pairAndHello(client, inbox, code);
+    // Auto-answer correlated pings exactly like the extension does.
+    client.on('message', (data) => {
+      const msg = JSON.parse(String(data));
+      if (msg.type === 'ping' && typeof msg.id === 'string') {
+        client.send(JSON.stringify({ type: 'pong', id: msg.id }));
+      }
+    });
+    const res = await fetch(`http://127.0.0.1:${port}/api/pairing/ping`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      connected: boolean;
+      lastPingAt: unknown;
+      peer: unknown;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.connected).toBe(true);
+    expect(typeof body.lastPingAt).toBe('string');
+    expect(body.peer).toBeNull();
   });
 
   test('POST /api/pairing/revoke forgets the token and drops the socket', async () => {
@@ -699,7 +763,13 @@ describe('pairing HTTP routes', () => {
     expect(await revokeRes.json()).toEqual({ revoked: true });
     expect((await closedP).code).toBe(4401);
     const statusRes = await fetch(`http://127.0.0.1:${port}/api/pairing/status`);
-    expect(await statusRes.json()).toEqual({ paired: false, connected: false });
+    // Last-contact record survives revoke; paired/connected go false.
+    expect(await statusRes.json()).toEqual({
+      paired: false,
+      connected: false,
+      lastPingAt: expect.any(String),
+      peer: null,
+    });
   });
 });
 
@@ -722,10 +792,109 @@ describe('unconfigured app (createApp({}))', () => {
     expect(await res.json()).toEqual({ error: 'Bridge not configured' });
   });
 
+  test('POST /api/pairing/ping returns 500', async () => {
+    const res = await createApp({}).request('/api/pairing/ping', { method: 'POST' });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Bridge not configured' });
+  });
+
   test('/ext socket is closed with 1011', async () => {
     const { port } = await setupUnconfigured();
     const client = await connect(port);
     const closed = waitClose(client);
     await expect(closed.then((c) => c.code)).resolves.toBe(1011);
+  });
+});
+
+describe('bridge ping() + connectionInfo()', () => {
+  function helloed(client?: { profileEmail: string }) {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    const hello: Record<string, unknown> = { type: 'hello', token };
+    if (client) hello.client = client;
+    ws.onmessage!(JSON.stringify(hello));
+    return { bridge, ws };
+  }
+
+  test('connectionInfo() is null-null before any contact', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    expect(bridge.connectionInfo()).toEqual({ lastPingAt: null, peer: null });
+  });
+
+  test('hello stamps lastPingAt and captures the client identity', () => {
+    const { bridge } = helloed({ profileEmail: 'dad@example.com' });
+    const info = bridge.connectionInfo();
+    expect(info.peer).toBe('dad@example.com');
+    expect(info.lastPingAt).toEqual(expect.any(String));
+    expect(Date.parse(info.lastPingAt!)).toBeLessThanOrEqual(Date.now());
+  });
+
+  test('bare hello leaves peer null but still stamps lastPingAt', () => {
+    const { bridge } = helloed();
+    const info = bridge.connectionInfo();
+    expect(info.peer).toBeNull();
+    expect(info.lastPingAt).toEqual(expect.any(String));
+  });
+
+  test('inbound bare ping answers with a bare pong and keeps lastPingAt fresh', () => {
+    const { bridge, ws } = helloed();
+    ws.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
+    const last = bridge.connectionInfo().lastPingAt!;
+    expect(Date.now() - Date.parse(last)).toBeLessThan(2000);
+  });
+
+  test('ping() resolves true when the extension answers with the matching id', async () => {
+    const { bridge, ws } = helloed();
+    const pending = bridge.ping(1000);
+    const pings = ws.sent.filter((m: { type: string }) => m.type === 'ping');
+    expect(pings).toHaveLength(1);
+    expect(typeof (pings[0] as { id?: unknown }).id).toBe('string');
+    ws.onmessage!(JSON.stringify({ type: 'pong', id: (pings[0] as { id: string }).id }));
+    await expect(pending).resolves.toBe(true);
+    expect(bridge.connected()).toBe(true);
+  });
+
+  test('ping() resolves false with no socket and sends nothing', async () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    await expect(bridge.ping(50)).resolves.toBe(false);
+  });
+
+  test('ping() times out, drops the socket, and reports disconnected', async () => {
+    const { bridge, ws } = helloed();
+    await expect(bridge.ping(30)).resolves.toBe(false);
+    expect(bridge.connected()).toBe(false);
+    expect(ws.closed).toBeDefined();
+  });
+
+  test('concurrent pings share one flight (single wire message, both true)', async () => {
+    const { bridge, ws } = helloed();
+    const p1 = bridge.ping(1000);
+    const p2 = bridge.ping(1000);
+    const pings = ws.sent.filter((m: { type: string }) => m.type === 'ping');
+    expect(pings).toHaveLength(1);
+    ws.onmessage!(JSON.stringify({ type: 'pong', id: (pings[0] as { id: string }).id }));
+    await expect(p1).resolves.toBe(true);
+    await expect(p2).resolves.toBe(true);
+  });
+
+  test('stale-id pong neither resolves the ping nor counts as fresh contact; right id does', async () => {
+    const { bridge, ws } = helloed();
+    const pending = bridge.ping(500);
+    ws.onmessage!(JSON.stringify({ type: 'pong', id: 'wrong' }));
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    expect(settled).toBe(false);
+    const id = (ws.sent.find((m: { type: string }) => m.type === 'ping') as { id: string }).id;
+    ws.onmessage!(JSON.stringify({ type: 'pong', id }));
+    await expect(pending).resolves.toBe(true);
   });
 });

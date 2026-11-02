@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import Pairing from './Pairing.tsx';
 
@@ -12,6 +12,20 @@ function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
     const url = String(input);
     return { ok: true, json: async () => handler(url, init) } as Response;
   });
+}
+
+// Realistic ping replies: a live socket answers ok:true with a fresh stamp;
+// no socket answers ok:false with no stamp.
+function pingLive(peer: string | null = null) {
+  return { ok: true, connected: true, lastPingAt: new Date().toISOString(), peer };
+}
+
+function pingDead() {
+  return { ok: false, connected: false, lastPingAt: null, peer: null };
+}
+
+function isPing(url: string, init?: RequestInit) {
+  return url === '/api/pairing/ping' && init?.method === 'POST';
 }
 
 test('start shows the 6-digit code', async () => {
@@ -37,6 +51,7 @@ test('poll reaching paired shows Connected', async () => {
     'fetch',
     mockFetch((url, init) => {
       if (url === '/api/pairing/start' && init?.method === 'POST') return { code: '123456' };
+      if (isPing(url, init)) return pingLive();
       if (url === '/api/pairing/status') {
         statusCalls += 1;
         return statusCalls === 1
@@ -62,8 +77,9 @@ test('start failure shows the error inline', async () => {
 });
 
 test('shows connected state on load when already paired, without starting pairing', async () => {
-  const fetchMock = mockFetch((url) => {
+  const fetchMock = mockFetch((url, init) => {
     if (url === '/api/pairing/status') return { paired: true, connected: true };
+    if (isPing(url, init)) return pingLive();
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -77,8 +93,9 @@ test('shows connected state on load when already paired, without starting pairin
 test('shows paired-but-offline state on load when Chrome is not connected', async () => {
   vi.stubGlobal(
     'fetch',
-    mockFetch((url) => {
+    mockFetch((url, init) => {
       if (url === '/api/pairing/status') return { paired: true, connected: false };
+      if (isPing(url, init)) return pingDead();
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -107,7 +124,8 @@ test('keeps polling while connected and reflects a server-side revoke', async ()
   let statusCalls = 0;
   vi.stubGlobal(
     'fetch',
-    mockFetch((url) => {
+    mockFetch((url, init) => {
+      if (isPing(url, init)) return pingLive();
       if (url === '/api/pairing/status') {
         statusCalls += 1;
         return statusCalls === 1
@@ -133,6 +151,7 @@ test('revoke after pairing clears the dead code back to the start view', async (
     'fetch',
     mockFetch((url, init) => {
       if (url === '/api/pairing/start' && init?.method === 'POST') return { code: '123456' };
+      if (isPing(url, init)) return pingLive();
       if (url === '/api/pairing/status') {
         statusCalls += 1;
         return statusCalls === 1
@@ -180,6 +199,7 @@ test('Unpair button revokes the pairing and returns to the start view', async ()
       revoked = true;
       return { revoked: true };
     }
+    if (isPing(url, init)) return pingDead();
     if (url === '/api/pairing/status') {
       return revoked ? { paired: false, connected: false } : { paired: true, connected: false };
     }
@@ -210,6 +230,9 @@ test('Unpair failure shows the error inline and stays paired', async () => {
       if (url === '/api/pairing/revoke' && init?.method === 'POST') {
         return { ok: false, text: async () => 'boom' } as Response;
       }
+      if (url === '/api/pairing/ping' && init?.method === 'POST') {
+        return { ok: true, json: async () => pingDead() } as Response;
+      }
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -235,4 +258,129 @@ test('unmount clears the poll interval', async () => {
   await screen.findByText('123456');
   unmount();
   expect(clearSpy).toHaveBeenCalled();
+});
+
+test('mount pings a paired extension and shows who it is talking to', async () => {
+  const fetchMock = mockFetch((url, init) => {
+    if (url === '/api/pairing/status') {
+      return {
+        paired: true,
+        connected: true,
+        lastPingAt: new Date(Date.now() - 8000).toISOString(),
+        peer: 'dad@gmail.com',
+      };
+    }
+    if (isPing(url, init)) return pingLive('dad@gmail.com');
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const { unmount } = render(<Pairing />);
+  expect(await screen.findByText('Talking to: dad@gmail.com')).toBeDefined();
+  expect(await screen.findByText('Last ping: just now')).toBeDefined();
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/pairing/ping',
+    expect.objectContaining({ method: 'POST' }),
+  );
+  unmount();
+});
+
+test('a failed mount ping flips a stale connected claim to the offline view', async () => {
+  const stale = new Date(Date.now() - 61_000).toISOString();
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/status') {
+        return { paired: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+      }
+      if (isPing(url, init)) {
+        return { ok: false, connected: false, lastPingAt: stale, peer: 'dad@gmail.com' };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  expect(await screen.findByText('Not connected')).toBeDefined();
+  expect(await screen.findByText(/Paired, but Chrome isn't connected/)).toBeDefined();
+  expect(await screen.findByText('Talking to: dad@gmail.com')).toBeDefined();
+  unmount();
+});
+
+test('an unknown Chrome profile reads as unknown, not blank', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/status') {
+        return { paired: true, connected: true, lastPingAt: new Date().toISOString(), peer: null };
+      }
+      if (isPing(url, init)) return pingLive();
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  expect(await screen.findByText('Talking to: Chrome (profile unknown)')).toBeDefined();
+  unmount();
+});
+
+test('an unpaired mount never hits the ping endpoint', async () => {
+  const fetchMock = mockFetch((url) => {
+    if (url === '/api/pairing/status') return { paired: false, connected: false };
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const { unmount } = render(<Pairing />);
+  await screen.findByText('Connect Chrome');
+  expect(fetchMock).not.toHaveBeenCalledWith('/api/pairing/ping', expect.anything());
+  unmount();
+});
+
+test('a connected poll with a stale last ping re-verifies through the ping endpoint', async () => {
+  const stale = new Date(Date.now() - 61_000).toISOString();
+  let pingCalls = 0;
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/status') {
+        return { paired: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+      }
+      if (isPing(url, init)) {
+        pingCalls += 1;
+        return { ok: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  await screen.findByText('Connected');
+  // Mount ping (call 1) merges a still-stale stamp; the 2s poll re-verifies (call 2).
+  await waitFor(() => expect(pingCalls).toBe(2), { timeout: 5000 });
+  unmount();
+});
+
+test('a connected poll with a fresh last ping does not re-verify', async () => {
+  let pingCalls = 0;
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/status') {
+        return {
+          paired: true,
+          connected: true,
+          lastPingAt: new Date().toISOString(),
+          peer: null,
+        };
+      }
+      if (isPing(url, init)) {
+        pingCalls += 1;
+        return pingLive();
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  await screen.findByText('Connected');
+  // Mount ping lands first; the 2s poll after it must not ping again.
+  await waitFor(() => expect(pingCalls).toBe(1), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 2500));
+  expect(pingCalls).toBe(1);
+  unmount();
 });

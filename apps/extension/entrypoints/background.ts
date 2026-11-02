@@ -29,6 +29,9 @@ export default defineBackground(() => {
           },
         },
       },
+      identity: {
+        getProfileUserInfo: () => browser.identity.getProfileUserInfo(),
+      },
     },
     WebSocket: WebSocket as unknown as WebSocketCtor,
   });

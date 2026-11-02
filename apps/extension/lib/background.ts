@@ -55,6 +55,10 @@ export interface BrowserLike {
       addListener(fn: (message: any) => unknown): void;
     };
   };
+  /** Chrome profile lookup for the hello client identity; absent in tests that don't need it. */
+  identity?: {
+    getProfileUserInfo(): Promise<{ email?: string; id?: string }>;
+  };
 }
 
 export interface Timers {
@@ -110,6 +114,8 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const PING_EVERY_MS = 20000;
 const PAIR_TIMEOUT_MS = 5000;
 const TRIGGER_TIMEOUT_MS = 5000;
+/** Active probe budget: localhost answers in ms; 2s is generous, never a hang. */
+const PING_TIMEOUT_MS = 2000;
 
 interface PendingPair {
   resolve: (reply: { ok: true } | { ok: false; error: string }) => void;
@@ -137,8 +143,35 @@ export function createBackground(deps: {
   let pendingPair: PendingPair | null = null;
   let openWaiters: Array<() => void> = [];
   let readyWaiters: Array<() => void> = [];
+  let pongWaiters: Array<(alive: boolean) => void> = [];
   let helloAcked = false;
   let disposed = false;
+  // Chrome profile address for the hello client identity (null when Chrome
+  // is signed out or the lookup fails — hello goes out bare, the app shows
+  // the peer as unknown).
+  let profileEmail: string | null = null;
+  // Last ping-protocol contact with the app (ready, pong, or server ping —
+  // cmd traffic proves nothing about ping freshness, so it never stamps).
+  let lastPingAt: string | null = null;
+
+  function noteServerPing() {
+    lastPingAt = new Date().toISOString();
+  }
+
+  function sendHello(): void {
+    if (!token) return;
+    send(
+      profileEmail !== null
+        ? { type: 'hello', token, client: { profileEmail } }
+        : { type: 'hello', token },
+    );
+  }
+
+  function failPongWaiters(): void {
+    const waiters = pongWaiters;
+    pongWaiters = [];
+    for (const w of waiters) w(false);
+  }
   // Last workflow-button list from the server. The server sends `buttons`
   // only on hello, so Gmail tabs that boot later pull this via `getButtons`
   // instead of waiting for a push that already happened. An empty list is a
@@ -177,7 +210,7 @@ export function createBackground(deps: {
       failures = 0;
       clearPing();
       pingTimer = timers.setInterval(() => send({ type: 'ping' }), PING_EVERY_MS);
-      if (token) send({ type: 'hello', token });
+      sendHello();
       // Waiters survive closes and resolve on ANY future open within budget,
       // so a pair racing a reconnect still lands.
       const waiters = openWaiters;
@@ -190,6 +223,8 @@ export function createBackground(deps: {
     ws.onclose = () => {
       clearPing();
       helloAcked = false;
+      // The probe's socket died: an in-flight ping can never be answered.
+      failPongWaiters();
       if (disposed) return;
       // Backoff 1, 2, 5, 10s, then stay at 10s.
       const delay = RECONNECT_DELAYS_MS[Math.min(failures, RECONNECT_DELAYS_MS.length - 1)]!;
@@ -275,7 +310,7 @@ export function createBackground(deps: {
           // Practically unreachable; the in-memory token still lasts the
           // session, and this keeps the event handler from rejecting.
         }
-        send({ type: 'hello', token });
+        sendHello();
         const pending = pendingPair;
         pendingPair = null;
         if (pending) {
@@ -288,6 +323,7 @@ export function createBackground(deps: {
         // Store nothing, forward nothing: buttons always arrive separately
         // (and are [] in M1 anyway). But mark the hello acked so queued
         // triggers may send.
+        noteServerPing();
         helloAcked = true;
         const waiters = readyWaiters;
         readyWaiters = [];
@@ -312,7 +348,18 @@ export function createBackground(deps: {
         break;
       }
       case 'pong': {
-        break; // Keep-alive ack; nothing to track in M1.
+        noteServerPing();
+        const waiters = pongWaiters;
+        pongWaiters = [];
+        for (const w of waiters) w(true);
+        break;
+      }
+      case 'ping': {
+        // The app's liveness probe: answer with the same id so it can
+        // correlate, and count it as contact.
+        noteServerPing();
+        send({ type: 'pong', id: msg.id });
+        break;
       }
     }
   }
@@ -470,6 +517,28 @@ export function createBackground(deps: {
   }
 
   /**
+   * Active liveness probe for the popup ("is the app REALLY there?", asked on
+   * open): one bare ping, true on any pong within 2s. A bare pong also
+   * answers the 20s keepalive — either way a pong proves the app is alive —
+   * and a close mid-probe fails it instead of hanging to the timeout.
+   */
+  function pingProbe(): Promise<{ ok: boolean }> {
+    if (!isOpen()) return Promise.resolve({ ok: false });
+    send({ type: 'ping' });
+    return new Promise((resolve) => {
+      const timer = timers.setTimeout(() => {
+        pongWaiters = pongWaiters.filter((w) => w !== done);
+        resolve({ ok: false });
+      }, PING_TIMEOUT_MS);
+      const done = (alive: boolean) => {
+        timers.clearTimeout(timer);
+        resolve({ ok: alive });
+      };
+      pongWaiters.push(done);
+    });
+  }
+
+  /**
    * Queue one trigger until the socket is open AND the hello is acked. A
    * click-after-idle wakes a fresh worker whose socket is still connecting;
    * sending immediately would no-op (or the server would drop the pre-auth
@@ -524,8 +593,9 @@ export function createBackground(deps: {
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
     if (msg['action'] === 'unpair') return unpair();
     if (msg['action'] === 'status') {
-      return { paired: token !== null, connected: isOpen() };
+      return { paired: token !== null, connected: isOpen(), lastPingAt };
     }
+    if (msg['action'] === 'ping') return pingProbe();
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload. The inbox watcher sends
@@ -549,6 +619,12 @@ export function createBackground(deps: {
       const stored = await browser.storage.local.get(TOKEN_KEY);
       const found = stored[TOKEN_KEY];
       token = typeof found === 'string' ? found : null;
+      try {
+        const info = await browser.identity?.getProfileUserInfo?.();
+        if (info?.email) profileEmail = info.email;
+      } catch {
+        // Unknown profile: hello goes out bare and the app shows it as unknown.
+      }
       connect();
     },
     dispose(): void {
@@ -564,6 +640,7 @@ export function createBackground(deps: {
       }
       openWaiters = [];
       readyWaiters = [];
+      failPongWaiters();
       try {
         socket?.close();
       } catch {

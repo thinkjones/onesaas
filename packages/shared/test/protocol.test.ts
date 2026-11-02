@@ -22,3 +22,25 @@ test('protocol strips unknown extra keys instead of rejecting', () => {
   expect(msg).toEqual({ type: 'ping' });
   expect('extra' in msg).toBe(false);
 });
+
+test('hello carries optional client identity (old hellos still parse)', () => {
+  expect(ExtensionToServer.parse({ type: 'hello', token: 't' })).toEqual({
+    type: 'hello',
+    token: 't',
+  });
+  expect(
+    ExtensionToServer.parse({
+      type: 'hello',
+      token: 't',
+      client: { profileEmail: 'dad@example.com' },
+    }),
+  ).toEqual({ type: 'hello', token: 't', client: { profileEmail: 'dad@example.com' } });
+});
+
+test('server ping carries an id; the pong reply echoes it', () => {
+  expect(ServerToExtension.parse({ type: 'ping', id: 'p1' })).toEqual({ type: 'ping', id: 'p1' });
+  expect(ExtensionToServer.parse({ type: 'pong', id: 'p1' })).toEqual({ type: 'pong', id: 'p1' });
+  // The bare keep-alive pair is unchanged.
+  expect(ServerToExtension.parse({ type: 'pong' })).toEqual({ type: 'pong' });
+  expect(ExtensionToServer.parse({ type: 'ping' })).toEqual({ type: 'ping' });
+});

@@ -13,9 +13,11 @@ import App from '../entrypoints/popup/App.tsx';
 interface FakeStatus {
   paired: boolean;
   connected: boolean;
+  lastPingAt: string | null;
 }
 
 let status: FakeStatus;
+let pingOk: boolean;
 let sendMessage: ReturnType<typeof vi.fn>;
 let getProfileUserInfo: ReturnType<typeof vi.fn>;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -46,18 +48,20 @@ function buttonByText(text: string): HTMLButtonElement {
 }
 
 beforeEach(() => {
-  status = { paired: false, connected: false };
+  status = { paired: false, connected: false, lastPingAt: null };
+  pingOk = true;
   sendMessage = vi.fn(async (msg: { action: string; code?: string }) => {
     if (msg.action === 'status') return { ...status };
+    if (msg.action === 'ping') return { ok: pingOk };
     if (msg.action === 'pair') {
       if (/^\d{6}$/.test(msg.code ?? '')) {
-        status = { paired: true, connected: true };
+        status = { paired: true, connected: true, lastPingAt: null };
         return { ok: true };
       }
       return { ok: false, error: 'Bad code.' };
     }
     if (msg.action === 'unpair') {
-      status = { paired: false, connected: false };
+      status = { paired: false, connected: false, lastPingAt: null };
       return {};
     }
     throw new Error(`unexpected action: ${msg.action}`);
@@ -90,7 +94,7 @@ async function renderPopup() {
 
 describe('popup paired view', () => {
   test('shows status, profile, info, app link, and unpair/re-pair', async () => {
-    status = { paired: true, connected: true };
+    status = { paired: true, connected: true, lastPingAt: null };
     await renderPopup();
     const text = container.textContent ?? '';
     expect(text).toContain("My Dad's AI Agent");
@@ -105,7 +109,7 @@ describe('popup paired view', () => {
   });
 
   test('paired but offline says not connected and still shows the profile', async () => {
-    status = { paired: true, connected: false };
+    status = { paired: true, connected: false, lastPingAt: null };
     await renderPopup();
     const text = container.textContent ?? '';
     expect(text).toContain('Paired ✓');
@@ -114,14 +118,14 @@ describe('popup paired view', () => {
   });
 
   test('a profile lookup failure falls back to not signed in', async () => {
-    status = { paired: true, connected: true };
+    status = { paired: true, connected: true, lastPingAt: null };
     getProfileUserInfo.mockRejectedValueOnce(new Error('nope'));
     await renderPopup();
     expect(container.textContent ?? '').toContain('Chrome profile: not signed in');
   });
 
   test('unpair revokes the server token, forgets local state, shows the code box', async () => {
-    status = { paired: true, connected: true };
+    status = { paired: true, connected: true, lastPingAt: null };
     await renderPopup();
     await act(async () => {
       buttonByText('Unpair').click();
@@ -136,7 +140,7 @@ describe('popup paired view', () => {
   });
 
   test('pair again keeps the server token and shows the code box', async () => {
-    status = { paired: true, connected: true };
+    status = { paired: true, connected: true, lastPingAt: null };
     await renderPopup();
     await act(async () => {
       buttonByText('Pair again').click();
@@ -188,10 +192,55 @@ describe('popup unpaired view', () => {
     });
     expect(container.querySelector('[role="status"]')).not.toBeNull();
     await act(async () => {
-      status = { paired: true, connected: true };
+      status = { paired: true, connected: true, lastPingAt: null };
       resolvePair({ ok: true });
     });
     await flush();
     expect(container.textContent ?? '').toContain('Paired ✓');
+  });
+});
+
+describe('popup live ping', () => {
+  test('a failed open-probe reads not connected even when the socket is open', async () => {
+    status = {
+      paired: true,
+      connected: true,
+      lastPingAt: new Date(Date.now() - 8000).toISOString(),
+    };
+    pingOk = false;
+    await renderPopup();
+    expect(sendMessage).toHaveBeenCalledWith({ action: 'ping' });
+    const text = container.textContent ?? '';
+    expect(text).toContain('Not connected');
+    expect(text).not.toContain('Connected ✓');
+  });
+
+  test('a passing probe keeps the connected view', async () => {
+    status = {
+      paired: true,
+      connected: true,
+      lastPingAt: new Date(Date.now() - 8000).toISOString(),
+    };
+    pingOk = true;
+    await renderPopup();
+    expect(container.textContent ?? '').toContain('Connected ✓');
+  });
+
+  test('shows the last ping age and which app it is talking to', async () => {
+    status = {
+      paired: true,
+      connected: true,
+      lastPingAt: new Date(Date.now() - 8000).toISOString(),
+    };
+    await renderPopup();
+    const text = container.textContent ?? '';
+    expect(text).toContain('Last ping: 8s ago');
+    expect(text).toContain('Talking to: the app on this computer (127.0.0.1:8787)');
+  });
+
+  test('before first contact the last ping reads never', async () => {
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPopup();
+    expect(container.textContent ?? '').toContain('Last ping: never');
   });
 });

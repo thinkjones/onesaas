@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { formatPingAge } from '@dad/shared';
 
 interface Status {
   paired: boolean;
   connected: boolean;
+  lastPingAt: string | null;
 }
 
 interface PairReply {
@@ -13,6 +15,8 @@ interface PairReply {
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
 const APP_URL = 'http://localhost:5173';
+// The only peer this popup can ever talk to: the app on this machine.
+const APP_HOST = new URL(REVOKE_URL).host;
 
 // The signed-in address of the Chrome profile this popup runs in — which is
 // the profile the pairing belongs to. Null when Chrome isn't signed in (or
@@ -35,14 +39,40 @@ async function profileEmail(): Promise<string | null> {
 // manage the app, and unpair/re-pair. Covered by test/popup.test.ts.
 function App() {
   const [status, setStatus] = useState<Status | null>(null);
+  const [live, setLive] = useState<boolean | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Probes serialize: a sick app must not stack a new 2s wait on every tick.
+  const probing = useRef(false);
+
+  // Active liveness check: socket-open is not proof the app answers, so ask
+  // the background to round-trip a real ping. Never rejects.
+  const probe = async () => {
+    if (probing.current) return;
+    probing.current = true;
+    try {
+      const r = (await browser.runtime.sendMessage({ action: 'ping' })) as
+        | { ok?: boolean }
+        | undefined;
+      setLive(!!r?.ok);
+    } catch {
+      setLive(false);
+    } finally {
+      probing.current = false;
+    }
+  };
 
   const refresh = async () => {
     const s = (await browser.runtime.sendMessage({ action: 'status' })) as Partial<Status>;
-    setStatus({ paired: !!s?.paired, connected: !!s?.connected });
+    const paired = !!s?.paired;
+    setStatus({
+      paired,
+      connected: !!s?.connected,
+      lastPingAt: typeof s?.lastPingAt === 'string' ? s.lastPingAt : null,
+    });
+    if (paired) await probe();
   };
 
   useEffect(() => {
@@ -210,8 +240,12 @@ function App() {
       <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
       <p style={{ margin: '0 0 4px' }}>Paired ✓</p>
       <p style={{ margin: '0 0 4px' }}>
-        {status.connected ? 'Connected ✓' : 'Not connected — is the app running?'}
+        {status.connected && live !== false ? 'Connected ✓' : 'Not connected — is the app running?'}
       </p>
+      <p style={{ margin: '0 0 4px' }}>
+        Talking to: the app on this computer ({APP_HOST})
+      </p>
+      <p style={{ margin: '0 0 4px' }}>Last ping: {formatPingAge(status.lastPingAt)}</p>
       <p style={{ margin: '0 0 8px' }}>Chrome profile: {email ?? 'not signed in'}</p>
       {info}
       {manageLink}

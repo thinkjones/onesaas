@@ -57,6 +57,10 @@ function makeBrowser(
     tabReply?: unknown;
     tabThrows?: boolean;
     captureThrows?: boolean;
+    /** Adds an identity surface resolving getProfileUserInfo to this email. */
+    email?: string;
+    /** The identity surface throws instead of resolving. */
+    identityThrows?: boolean;
   } = {},
 ) {
   const store: Record<string, unknown> = {};
@@ -128,6 +132,16 @@ function makeBrowser(
         },
       },
     },
+    ...(opts.email !== undefined || opts.identityThrows
+      ? {
+          identity: {
+            getProfileUserInfo: async () => {
+              if (opts.identityThrows) throw new Error('identity unavailable');
+              return { email: opts.email ?? '', id: 'profile1' };
+            },
+          },
+        }
+      : {}),
   };
   return {
     browser,
@@ -240,6 +254,7 @@ describe('unpair', () => {
     expect(await t.runtimeMessage({ action: 'status' })).toEqual({
       paired: false,
       connected: true,
+      lastPingAt: null,
     });
     bg.dispose();
   });
@@ -262,11 +277,13 @@ describe('status', () => {
     expect(await t.runtimeMessage({ action: 'status' })).toEqual({
       paired: false,
       connected: false,
+      lastPingAt: null,
     });
     lastSocket().open();
     expect(await t.runtimeMessage({ action: 'status' })).toEqual({
       paired: false,
       connected: true,
+      lastPingAt: null,
     });
     bg.dispose();
 
@@ -277,11 +294,13 @@ describe('status', () => {
     expect(await t2.runtimeMessage({ action: 'status' })).toEqual({
       paired: true,
       connected: true,
+      lastPingAt: null,
     });
     lastSocket().close();
     expect(await t2.runtimeMessage({ action: 'status' })).toEqual({
       paired: true,
       connected: false,
+      lastPingAt: null,
     });
     bg2.dispose();
   });
@@ -934,6 +953,134 @@ describe('getButtons (late-loading Gmail tabs)', () => {
     sock.close();
     await vi.advanceTimersByTimeAsync(60000);
     expect(sentJson(sock)).toEqual([{ type: 'ping' }, { type: 'ping' }]);
+    bg.dispose();
+  });
+});
+
+describe('mutual ping', () => {
+  it('hello carries the Chrome profile email when identity resolves', async () => {
+    const t = makeBrowser({ token: 'tok123', email: 'dad@gmail.com' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    expect(sentJson(lastSocket())).toEqual([
+      { type: 'hello', token: 'tok123', client: { profileEmail: 'dad@gmail.com' } },
+    ]);
+    bg.dispose();
+  });
+
+  it('hello stays bare when identity is missing, empty, or throws', async () => {
+    for (const opts of [{}, { email: '' }, { identityThrows: true }]) {
+      const t = makeBrowser({ token: 'tok', ...opts });
+      const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+      await bg.boot();
+      lastSocket().open();
+      expect(sentJson(lastSocket())).toEqual([{ type: 'hello', token: 'tok' }]);
+      bg.dispose();
+    }
+  });
+
+  it('the pair-flow hello carries the profile email too', async () => {
+    const t = makeBrowser({ email: 'dad@gmail.com' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const replyP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    await flush();
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(replyP).resolves.toEqual({ ok: true });
+    expect(sentJson(lastSocket())).toContainEqual({
+      type: 'hello',
+      token: 'newtok',
+      client: { profileEmail: 'dad@gmail.com' },
+    });
+    bg.dispose();
+  });
+
+  it('a correlated server ping gets a pong(id) reply', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().receive({ type: 'ping', id: 'p1' });
+    await flush();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'pong', id: 'p1' });
+    bg.dispose();
+  });
+
+  it('ready, pong, and server ping stamp lastPingAt; cmd traffic does not', async () => {
+    vi.setSystemTime(new Date('2026-05-01T12:00:00.000Z'));
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const lastPing = async () =>
+      (await (t.runtimeMessage({ action: 'status' }) as unknown as Promise<{ lastPingAt: string | null }>))
+        .lastPingAt;
+    expect(await lastPing()).toBeNull();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    expect(await lastPing()).toBe('2026-05-01T12:00:00.000Z');
+    // A cmd proves nothing about ping freshness: the stamp must not move.
+    lastSocket().receive({ type: 'cmd', id: 'c1', site: 'gmail', action: 'readOpenEmail', input: {} });
+    await flush();
+    expect(await lastPing()).toBe('2026-05-01T12:00:00.000Z');
+    await vi.advanceTimersByTimeAsync(30_000);
+    lastSocket().receive({ type: 'pong' });
+    await flush();
+    expect(await lastPing()).toBe('2026-05-01T12:00:30.000Z');
+    await vi.advanceTimersByTimeAsync(30_000);
+    lastSocket().receive({ type: 'ping', id: 'p9' });
+    await flush();
+    expect(await lastPing()).toBe('2026-05-01T12:01:00.000Z');
+    bg.dispose();
+  });
+
+  it('ping action returns ok:false immediately when disconnected', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    // Socket never opened.
+    await expect(t.runtimeMessage({ action: 'ping' })).resolves.toEqual({ ok: false });
+    expect(lastSocket().sent).toHaveLength(0);
+    bg.dispose();
+  });
+
+  it('ping action sends a ping and resolves true on the pong', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pingP = t.runtimeMessage({ action: 'ping' }) as Promise<unknown>;
+    await flush();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'ping' });
+    lastSocket().receive({ type: 'pong' });
+    await expect(pingP).resolves.toEqual({ ok: true });
+    bg.dispose();
+  });
+
+  it('ping action resolves false after 2s of silence', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pingP = t.runtimeMessage({ action: 'ping' }) as Promise<unknown>;
+    const assertion = expect(pingP).resolves.toEqual({ ok: false });
+    await vi.advanceTimersByTimeAsync(2000);
+    await assertion;
+    bg.dispose();
+  });
+
+  it('ping action resolves false when the socket closes mid-probe', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pingP = t.runtimeMessage({ action: 'ping' }) as Promise<unknown>;
+    const assertion = expect(pingP).resolves.toEqual({ ok: false });
+    await flush();
+    lastSocket().close();
+    await assertion;
     bg.dispose();
   });
 });

@@ -154,8 +154,30 @@ export async function startPairing(): Promise<{ code: string }> {
   return (await res.json()) as { code: string };
 }
 
-export function getPairingStatus(): Promise<{ paired: boolean; connected: boolean }> {
+/** GET /api/pairing/status: Task 11 { paired, connected } plus the last-contact record. */
+export interface PairingStatus {
+  paired: boolean;
+  connected: boolean;
+  lastPingAt: string | null;
+  peer: string | null;
+}
+
+export function getPairingStatus(): Promise<PairingStatus> {
   return getJson('/api/pairing/status');
+}
+
+/** POST /api/pairing/ping: round-trips a live probe, reporting the (possibly self-healed) state. */
+export interface PairingPing {
+  ok: boolean;
+  connected: boolean;
+  lastPingAt: string | null;
+  peer: string | null;
+}
+
+export async function pingPairing(): Promise<PairingPing> {
+  const res = await fetch(apiUrl('/api/pairing/ping'), { method: 'POST' });
+  if (!res.ok) await throwApiError(res);
+  return (await res.json()) as PairingPing;
 }
 
 export async function revokePairing(): Promise<{ revoked: boolean }> {

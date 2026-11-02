@@ -130,10 +130,19 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(pairing.start());
   });
 
-  // Task 11 contract: { paired, connected }.
+  // Task 11 contract: { paired, connected }, plus the last-contact record
+  // (lastPingAt/peer) so Settings can show when the extension last answered.
   app.get('/api/pairing/status', (c) => {
     if (!pairing || !bridge) return c.json({ error: 'Bridge not configured' }, 500);
-    return c.json({ paired: pairing.paired(), connected: bridge.connected() });
+    return c.json({ paired: pairing.paired(), connected: bridge.connected(), ...bridge.connectionInfo() });
+  });
+
+  // Active liveness probe: round-trips a correlated ping through the socket
+  // and reports the (possibly self-healed) state in one response.
+  app.post('/api/pairing/ping', async (c) => {
+    if (!pairing || !bridge) return c.json({ error: 'Bridge not configured' }, 500);
+    const ok = await bridge.ping();
+    return c.json({ ok, connected: bridge.connected(), ...bridge.connectionInfo() });
   });
 
   app.post('/api/pairing/revoke', (c) => {

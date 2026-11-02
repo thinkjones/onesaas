@@ -60,7 +60,21 @@ export interface Bridge {
    * Revoke needs this: clearing the token alone would leave the old socket
    * authorized until its next hello.
    */
-  dropActive(): void;
+  dropActive(reason?: string): void;
+  /**
+   * Round-trip a correlated ping through the active socket. Resolves true on
+   * the matching pong; false when no socket is attached, the send fails, or
+   * the timeout elapses (a timed-out socket is half-open, so it is dropped —
+   * self-heal into an honest disconnected state). Concurrent calls share one
+   * flight: a single wire message, every caller gets the same answer.
+   */
+  ping(timeoutMs?: number): Promise<boolean>;
+  /**
+   * Last ping-protocol contact (server clock, ISO; null until first contact)
+   * plus the hello client identity (null when the client sent none). A
+   * last-contact record: survives disconnects, overwritten by each hello.
+   */
+  connectionInfo(): { lastPingAt: string | null; peer: string | null };
 }
 
 interface PendingCall {
@@ -91,6 +105,63 @@ export function createBridge(o: {
       // socket (e.g. pair reply) leaves the active socket untouched.
       if (active === ws) active = null;
     }
+  }
+
+  // --- Mutual-ping liveness ------------------------------------------------
+  // Only correlated traffic counts: hello, the extension's bare keepalive
+  // pings, and pongs answering this server's own ping id. Stale or
+  // unsolicited pongs are ignored, never stamped.
+  let lastPingAtMs: number | null = null;
+  let peer: string | null = null;
+
+  function notePing() {
+    lastPingAtMs = Date.now();
+  }
+
+  function connectionInfo(): { lastPingAt: string | null; peer: string | null } {
+    return {
+      lastPingAt: lastPingAtMs === null ? null : new Date(lastPingAtMs).toISOString(),
+      peer,
+    };
+  }
+
+  let pingFlight: {
+    id: string;
+    timer: ReturnType<typeof setTimeout>;
+    resolve: (ok: boolean) => void;
+  } | null = null;
+  let inflightPing: Promise<boolean> | null = null;
+
+  function settlePingFlight(ok: boolean): void {
+    const flight = pingFlight;
+    pingFlight = null;
+    inflightPing = null;
+    if (flight) {
+      clearTimeout(flight.timer);
+      flight.resolve(ok);
+    }
+  }
+
+  function ping(timeoutMs = 5000): Promise<boolean> {
+    if (inflightPing) return inflightPing;
+    const socket = active;
+    if (socket === null) return Promise.resolve(false);
+    inflightPing = new Promise<boolean>((resolve) => {
+      const id = randomUUID();
+      const timer = setTimeout(() => {
+        if (pingFlight?.id !== id) return; // Superseded.
+        dropActive('Ping timeout');
+      }, timeoutMs);
+      timer.unref?.();
+      pingFlight = { id, timer, resolve };
+      try {
+        socket.send(JSON.stringify({ type: 'ping', id }));
+      } catch {
+        if (active === socket) active = null;
+        settlePingFlight(false);
+      }
+    });
+    return inflightPing;
   }
 
   function failAllPending(): void {
@@ -133,8 +204,13 @@ export function createBridge(o: {
           // This clears the map, so the old socket's late async onclose
           // no-ops (active is already the new socket) and cannot re-reject.
           failAllPending();
+          // The ping went to the now-dead socket: settle it instead of
+          // letting its timeout drop the replacement.
+          settlePingFlight(false);
         }
         active = ws;
+        peer = msg.client?.profileEmail ?? null;
+        notePing();
         // Buttons start empty; Task 9 sends the real set via onReady.
         sendTo(ws, { type: 'ready', buttons: [] });
         // Each subscriber is isolated: one throwing handler must not starve
@@ -151,7 +227,17 @@ export function createBridge(o: {
       }
       case 'ping': {
         // Harmless keep-alive: allowed pre-auth.
+        notePing();
         sendTo(ws, { type: 'pong' });
+        break;
+      }
+      case 'pong': {
+        // Only the matching pong proves liveness; stale or unsolicited
+        // pongs are ignored, never stamped.
+        if ('id' in msg && typeof msg.id === 'string' && pingFlight?.id === msg.id) {
+          notePing();
+          settlePingFlight(true);
+        }
         break;
       }
       case 'trigger': {
@@ -190,6 +276,7 @@ export function createBridge(o: {
       if (active === ws) {
         active = null;
         failAllPending();
+        settlePingFlight(false);
       }
     };
   }
@@ -231,15 +318,16 @@ export function createBridge(o: {
     sendTo(socket, msg);
   }
 
-  function dropActive(): void {
+  function dropActive(reason = 'Revoked'): void {
     const socket = active;
     // Null + fail FIRST so the socket's late async onclose no-ops instead of
     // double-tearing-down; the close itself is best-effort.
     active = null;
     failAllPending();
+    settlePingFlight(false);
     if (socket === null) return;
     try {
-      socket.close(4401, 'Revoked');
+      socket.close(4401, reason);
     } catch {
       // Already dead; session state is already cleared above.
     }
@@ -250,6 +338,8 @@ export function createBridge(o: {
     connected: () => active !== null,
     send,
     dropActive,
+    ping,
+    connectionInfo,
     onTrigger: (fn: (t: TriggerMsg) => void) => {
       triggerFns.push(fn);
     },

@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { getPairingStatus, revokePairing, startPairing } from './api.ts';
+import { formatPingAge } from '@dad/shared';
+import {
+  getPairingStatus,
+  pingPairing,
+  revokePairing,
+  startPairing,
+  type PairingStatus,
+} from './api.ts';
 import AppButton from './design/AppButton.tsx';
 import CardHeading from './design/CardHeading.tsx';
 import CheckIcon from 'lucide-react/icons/check';
 import PuzzleIcon from 'lucide-react/icons/puzzle';
 
-interface PairingStatus {
-  paired: boolean;
-  connected: boolean;
+// The extension's keepalives stamp the server every 20s: a connected claim
+// with an older stamp is suspicious and gets re-verified with a live probe.
+const STALE_PING_MS = 30_000;
+
+function lastPingIsStale(lastPingAt: string | null | undefined): boolean {
+  if (lastPingAt === null || lastPingAt === undefined) return true;
+  const then = Date.parse(lastPingAt);
+  if (Number.isNaN(then)) return true;
+  return Date.now() - then > STALE_PING_MS;
 }
 
 export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatus) => void }) {
@@ -18,10 +31,31 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
   // that reports unpaired while the user is still mid-pairing must NOT clear
   // their code — only a paired -> unpaired transition does).
   const wasPaired = useRef(false);
+  // Probes serialize: a sick extension must not stack 5s waits.
+  const pinging = useRef(false);
+
+  // Round-trips a live probe and merges the (possibly self-healed) state over
+  // the last status. Never rejects — failures surface inline.
+  async function verifyConnection(): Promise<void> {
+    if (pinging.current) return;
+    pinging.current = true;
+    try {
+      const p = await pingPairing();
+      setStatus((s) =>
+        s === null ? s : { ...s, connected: p.connected, lastPingAt: p.lastPingAt, peer: p.peer },
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      pinging.current = false;
+    }
+  }
 
   // On mount, learn whether the extension is already paired: returning users
-  // must see their state, not another Connect button. A failed check falls
-  // back to the unpaired view with the error shown; Connect retries it.
+  // must see their state, not another Connect button. A paired mount also
+  // probes the extension — socket state alone is not proof Chrome answers.
+  // A failed check falls back to the unpaired view with the error shown;
+  // Connect retries it.
   useEffect(() => {
     let cancelled = false;
     getPairingStatus().then(
@@ -29,16 +63,19 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
         if (cancelled) return;
         wasPaired.current = s.paired;
         setStatus(s);
+        if (s.paired) void verifyConnection();
       },
       (e: unknown) => {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
-        setStatus({ paired: false, connected: false });
+        setStatus({ paired: false, connected: false, lastPingAt: null, peer: null });
       },
     );
     return () => {
       cancelled = true;
     };
+    // verifyConnection is ref-stable (refs + setState only); mount runs once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Lets embedders (onboarding) mirror the paired flag off this same status
@@ -75,8 +112,11 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
 
   // Poll every 2s until the unpaired start state: after a code is issued until
   // it is redeemed, while paired-but-offline until Chrome connects, and while
-  // connected (a server-side revoke must reflect here). Only the quiet
-  // unpaired start state skips polling; cleanup stops it on unmount.
+  // connected (a server-side revoke must reflect here). A connected claim
+  // with a stale last-ping stamp is re-verified with a live probe — cheap
+  // when healthy (fresh polls skip it), honest when the socket is half-open.
+  // Only the quiet unpaired start state skips polling; cleanup stops it on
+  // unmount.
   const waiting = status !== null && (code !== null || status.paired);
   useEffect(() => {
     if (!waiting) return;
@@ -88,10 +128,13 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           if (wasPaired.current && !s.paired) setCode(null);
           wasPaired.current = s.paired;
           setStatus(s);
+          if (s.paired && s.connected && lastPingIsStale(s.lastPingAt)) void verifyConnection();
         })
         .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     }, 2000);
     return () => clearInterval(timer);
+    // verifyConnection is ref-stable (refs + setState only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting]);
 
   return (
@@ -102,9 +145,15 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
         <p>Checking connection…</p>
       ) : status.paired ? (
         <>
-          <p className="flex items-center gap-1.5">
-            Connected <CheckIcon size={13} strokeWidth={2} aria-hidden className="text-success" />
-          </p>
+          {status.connected ? (
+            <p className="flex items-center gap-1.5">
+              Connected <CheckIcon size={13} strokeWidth={2} aria-hidden className="text-success" />
+            </p>
+          ) : (
+            <p>Not connected</p>
+          )}
+          <p>Talking to: {status.peer ?? 'Chrome (profile unknown)'}</p>
+          <p>Last ping: {formatPingAge(status.lastPingAt)}</p>
           {status.connected ? (
             <p>
               Open a Gmail thread and click &apos;Save as lead &amp; reply&apos; to start a run.
