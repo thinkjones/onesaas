@@ -3,7 +3,13 @@ import { act, render } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { useAgentEvents, useLiveEvents, type AgentEvent } from './api.ts';
+import {
+  onAppFocus,
+  useAgentEvents,
+  useLiveEvents,
+  type AgentEvent,
+  type AppFocusEvent,
+} from './api.ts';
 
 vi.mock('sonner', () => ({ toast: vi.fn(), Toaster: () => null }));
 
@@ -209,5 +215,42 @@ describe('useAgentEvents sharing', () => {
     expect(MockEventSource.instances[0]!.close).not.toHaveBeenCalled();
     second.unmount();
     expect(MockEventSource.instances[0]!.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('desktop focus + presence', () => {
+  test('the stream is tagged ?client=tauri inside the desktop shell only', () => {
+    renderLiveEvents();
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(MockEventSource.instances[0]!.url).toBe('/api/events');
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    renderLiveEvents();
+    expect(MockEventSource.instances).toHaveLength(2);
+    expect(MockEventSource.instances[1]!.url).toBe(
+      'http://127.0.0.1:8787/api/events?client=tauri',
+    );
+  });
+
+  test('app-focus events dispatch to subscribers; malformed ones are dropped', async () => {
+    renderLiveEvents();
+    const seen: AppFocusEvent[] = [];
+    const off = onAppFocus((e) => seen.push(e));
+    const es = MockEventSource.instances[0]!;
+    await act(async () => {
+      es.onmessage!({
+        data: JSON.stringify({ type: 'app-focus', path: '/settings', hash: 'chrome-extension' }),
+      });
+    });
+    expect(seen).toEqual([{ type: 'app-focus', path: '/settings', hash: 'chrome-extension' }]);
+    await act(async () => {
+      es.onmessage!({ data: JSON.stringify({ type: 'app-focus' }) });
+      es.onmessage!({ data: JSON.stringify({ type: 'app-focus', path: 42 }) });
+    });
+    expect(seen).toHaveLength(1);
+    off();
+    await act(async () => {
+      es.onmessage!({ data: JSON.stringify({ type: 'app-focus', path: '/settings' }) });
+    });
+    expect(seen).toHaveLength(1);
   });
 });

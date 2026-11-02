@@ -31,10 +31,15 @@ const SPARK_ROWS: ModelStatus[] = [
   { role: 'vision', provider: 'meta', model: 'muse-spark-1.3', healthy: true },
 ];
 
-function renderSettings(models: ModelStatus[] | 'hang', onNavigate?: (path: string) => void) {
+function renderSettings(
+  models: ModelStatus[] | 'hang',
+  onNavigate?: (path: string) => void,
+  health: 'up' | 'down' = 'up',
+) {
   let settings: Record<string, unknown> = { ...SETTINGS };
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
+    // The Tauri shell calls absolute loopback URLs; browsers use relative paths.
+    const url = String(input).replace('http://127.0.0.1:8787', '');
     if (url === '/api/settings') {
       if (init?.method === 'PUT') {
         settings = { ...settings, ...JSON.parse(String(init.body)) };
@@ -47,6 +52,10 @@ function renderSettings(models: ModelStatus[] | 'hang', onNavigate?: (path: stri
       return ok(models);
     }
     if (url === '/api/pairing/status') return ok({ paired: false, connected: false });
+    if (url === '/health') {
+      if (health === 'down') throw new Error('unreachable');
+      return ok({ ok: true });
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetch);
@@ -195,4 +204,24 @@ test('an armed reset button disarms after five seconds', async () => {
   expect(screen.getByRole('button', { name: 'Yes, reset data' })).toBeDefined();
   act(() => vi.advanceTimersByTime(5000));
   expect(screen.getByRole('button', { name: 'Reset data' })).toBeDefined();
+});
+
+test('services shows window type, api base + health, and bridge state', async () => {
+  renderSettings(SPARK_ROWS);
+  expect(await screen.findByText('Services')).toBeDefined();
+  expect(await screen.findByText('This window: Browser tab')).toBeDefined();
+  expect(await screen.findByText(`App API: ${window.location.origin} (Running)`)).toBeDefined();
+  expect(await screen.findByText('Extension bridge: ws://127.0.0.1:8787/ext (Not connected)')).toBeDefined();
+});
+
+test('services shows desktop shell + loopback api inside Tauri', async () => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  renderSettings(SPARK_ROWS);
+  expect(await screen.findByText('This window: Desktop app')).toBeDefined();
+  expect(await screen.findByText('App API: http://127.0.0.1:8787 (Running)')).toBeDefined();
+});
+
+test('services shows api down when health is unreachable', async () => {
+  renderSettings(SPARK_ROWS, undefined, 'down');
+  expect(await screen.findByText(/App API: .* \(Down\)/)).toBeDefined();
 });

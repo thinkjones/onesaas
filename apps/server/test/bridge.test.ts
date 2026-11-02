@@ -272,6 +272,37 @@ describe('pairing', () => {
     expect(pairing.redeem(pairing.start().code)).not.toBeNull();
     expect(pairing.paired()).toBe(true);
   });
+
+  test('generation() is 0 unpaired and bumps on every redeem', () => {
+    const pairing = makePairing();
+    expect(pairing.generation()).toBe(0);
+    pairing.redeem(pairing.start().code);
+    expect(pairing.generation()).toBe(1);
+    // A new pair while paired (the stranded-Chrome recovery) bumps again.
+    pairing.redeem(pairing.start().code);
+    expect(pairing.generation()).toBe(2);
+  });
+
+  test('generation() reads 0 after revoke but stays monotonic across it', () => {
+    const pairing = makePairing();
+    pairing.redeem(pairing.start().code);
+    pairing.revoke();
+    expect(pairing.generation()).toBe(0);
+    pairing.redeem(pairing.start().code);
+    expect(pairing.generation()).toBe(2);
+  });
+
+  test('generation() survives a restart (persisted in the store)', () => {
+    const backing = new Map<string, string>();
+    const first = createPairing(mapStore(backing));
+    first.redeem(first.start().code);
+    first.redeem(first.start().code);
+    expect(first.generation()).toBe(2);
+    // Same store, new instance: the count persists.
+    const second = createPairing(mapStore(backing));
+    expect(second.paired()).toBe(true);
+    expect(second.generation()).toBe(2);
+  });
 });
 
 describe('settings store', () => {
@@ -679,6 +710,7 @@ describe('pairing HTTP routes', () => {
       connected: false,
       lastPingAt: null,
       peer: null,
+      generation: 0,
     });
 
     const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
@@ -691,6 +723,7 @@ describe('pairing HTTP routes', () => {
       connected: true,
       lastPingAt: expect.any(String),
       peer: null,
+      generation: 1,
     });
   });
 
@@ -710,6 +743,7 @@ describe('pairing HTTP routes', () => {
       connected: true,
       lastPingAt: expect.any(String),
       peer: 'dad@example.com',
+      generation: 1,
     });
   });
 
@@ -769,6 +803,7 @@ describe('pairing HTTP routes', () => {
       connected: false,
       lastPingAt: expect.any(String),
       peer: null,
+      generation: 0,
     });
   });
 });
@@ -896,5 +931,35 @@ describe('bridge ping() + connectionInfo()', () => {
     const id = (ws.sent.find((m: { type: string }) => m.type === 'ping') as { id: string }).id;
     ws.onmessage!(JSON.stringify({ type: 'pong', id }));
     await expect(pending).resolves.toBe(true);
+  });
+});
+
+describe('bridge ping authentication', () => {
+  test('pre-auth pings are answered but never stamped; only the active socket stamps', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const token = pairing.redeem(pairing.start().code)!;
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    // Tokenless keepalive (the stranded state): answered, not stamped.
+    ws.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
+    expect(bridge.connectionInfo().lastPingAt).toBeNull();
+
+    ws.onmessage!(JSON.stringify({ type: 'hello', token }));
+    const stamped = bridge.connectionInfo().lastPingAt;
+    expect(stamped).toEqual(expect.any(String));
+
+    // A second, unauthenticated socket's ping must not move the stamp either.
+    const ws2 = fakeSocket();
+    bridge.attach(ws2);
+    ws2.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws2.sent.at(-1)).toEqual({ type: 'pong' });
+    expect(bridge.connectionInfo().lastPingAt).toBe(stamped);
+
+    // But the active socket's own keepalive still refreshes it.
+    ws.onmessage!(JSON.stringify({ type: 'ping' }));
+    expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
+    expect(bridge.connectionInfo().lastPingAt).toEqual(expect.any(String));
   });
 });

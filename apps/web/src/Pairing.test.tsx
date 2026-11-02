@@ -384,3 +384,98 @@ test('a connected poll with a fresh last ping does not re-verify', async () => {
   expect(pingCalls).toBe(1);
   unmount();
 });
+
+test('paired view offers Pair a new Chrome with a replacement warning', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/start' && init?.method === 'POST') return { code: '123456' };
+      if (url === '/api/pairing/status') {
+        return { paired: true, connected: false, lastPingAt: null, peer: null, generation: 1 };
+      }
+      if (isPing(url, init)) return pingDead();
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  fireEvent.click(await screen.findByText('Pair a new Chrome'));
+  expect(await screen.findByText('123456')).toBeDefined();
+  expect(await screen.findByText(/replaces the current pairing/)).toBeDefined();
+  unmount();
+});
+
+test('paired-start code screen completes when the generation advances', async () => {
+  let statusCalls = 0;
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/start' && init?.method === 'POST') return { code: '123456' };
+      if (url === '/api/pairing/status') {
+        statusCalls += 1;
+        return statusCalls === 1
+          ? { paired: true, connected: false, lastPingAt: null, peer: null, generation: 1 }
+          : {
+              paired: true,
+              connected: true,
+              lastPingAt: new Date().toISOString(),
+              peer: 'dad@gmail.com',
+              generation: 2,
+            };
+      }
+      if (isPing(url, init)) return pingDead();
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  fireEvent.click(await screen.findByText('Pair a new Chrome'));
+  await screen.findByText('123456');
+  // The 2s poll reports generation 2: the code clears back to the paired view.
+  await waitFor(() => expect(screen.queryByText('123456')).toBeNull(), { timeout: 5000 });
+  expect(await screen.findByText('Connected')).toBeDefined();
+  unmount();
+});
+
+test('paired-start code screen waits while the generation is unchanged', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockFetch((url, init) => {
+      if (url === '/api/pairing/start' && init?.method === 'POST') return { code: '123456' };
+      if (url === '/api/pairing/status') {
+        return { paired: true, connected: false, lastPingAt: null, peer: null, generation: 1 };
+      }
+      if (isPing(url, init)) return pingDead();
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+  const { unmount } = render(<Pairing />);
+  fireEvent.click(await screen.findByText('Pair a new Chrome'));
+  await screen.findByText('123456');
+  // Past one full 2s poll with generation still 1: the code stays up.
+  await new Promise((r) => setTimeout(r, 2500));
+  expect(screen.queryByText('123456')).not.toBeNull();
+  unmount();
+});
+
+test('chrome-extension section is deep-linkable and scrolls on hash', async () => {
+  const spy = vi.fn();
+  window.HTMLElement.prototype.scrollIntoView = spy;
+  window.location.hash = '#chrome-extension';
+  try {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch((url) => {
+        if (url === '/api/pairing/status') return { paired: false, connected: false };
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const { unmount } = render(<Pairing />);
+    await screen.findByText('Connect Chrome');
+    expect(document.getElementById('chrome-extension')).not.toBeNull();
+    expect(spy).toHaveBeenCalled();
+    unmount();
+  } finally {
+    window.location.hash = '';
+    // @ts-expect-error restoring the (absent) jsdom original
+    delete window.HTMLElement.prototype.scrollIntoView;
+  }
+});

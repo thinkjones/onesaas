@@ -18,6 +18,7 @@ interface FakeStatus {
 
 let status: FakeStatus;
 let pingOk: boolean;
+let focusResult: { focused: boolean };
 let sendMessage: ReturnType<typeof vi.fn>;
 let getProfileUserInfo: ReturnType<typeof vi.fn>;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -67,7 +68,13 @@ beforeEach(() => {
     throw new Error(`unexpected action: ${msg.action}`);
   });
   getProfileUserInfo = vi.fn(async () => ({ email: 'priya@gmail.com', id: 'abc123' }));
-  fetchMock = vi.fn(async () => ({ ok: true }));
+  focusResult = { focused: true };
+  fetchMock = vi.fn(async (input: string | URL | Request) => {
+    if (String(input) === 'http://127.0.0.1:8787/api/app/focus') {
+      return { ok: true, json: async () => ({ ...focusResult }) };
+    }
+    return { ok: true };
+  });
   vi.stubGlobal('browser', {
     runtime: { sendMessage },
     identity: { getProfileUserInfo },
@@ -102,8 +109,7 @@ describe('popup paired view', () => {
     expect(text).toContain('Connected ✓');
     expect(text).toContain('Chrome profile: priya@gmail.com');
     expect(text).toContain('reads the email you have open');
-    const link = container.querySelector('a[href="http://localhost:5173"]');
-    expect(link?.textContent).toContain('Open the app to manage');
+    buttonByText('Open the app to manage');
     buttonByText('Unpair');
     buttonByText('Pair again');
   });
@@ -159,8 +165,7 @@ describe('popup unpaired view', () => {
     buttonByText('Pair');
     const text = container.textContent ?? '';
     expect(text).toContain('reads the email you have open');
-    const link = container.querySelector('a[href="http://localhost:5173"]');
-    expect(link?.textContent).toContain('Open the app to manage');
+    buttonByText('Open the app to manage');
   });
 
   test('pairing with a valid code lands on the paired view', async () => {
@@ -242,5 +247,84 @@ describe('popup live ping', () => {
     status = { paired: true, connected: true, lastPingAt: null };
     await renderPopup();
     expect(container.textContent ?? '').toContain('Last ping: never');
+  });
+});
+
+describe('popup open the app', () => {
+  let opened: string[];
+  let closed: number;
+
+  beforeEach(() => {
+    opened = [];
+    closed = 0;
+    vi.spyOn(window, 'open').mockImplementation(((url?: string | URL) => {
+      opened.push(String(url));
+      return null;
+    }) as typeof window.open);
+    vi.spyOn(window, 'close').mockImplementation(() => {
+      closed += 1;
+    });
+  });
+
+  test('a listening desktop app is focused and the popup closes', async () => {
+    focusResult = { focused: true };
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPopup();
+    await act(async () => {
+      buttonByText('Open the app to manage').click();
+    });
+    await flush();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/app/focus',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const focusCall = fetchMock.mock.calls.find(
+      ([u]) => u === 'http://127.0.0.1:8787/api/app/focus',
+    )!;
+    expect(JSON.parse(focusCall[1]!.body as string)).toEqual({
+      path: '/settings',
+      hash: 'chrome-extension',
+    });
+    expect(closed).toBe(1);
+    expect(opened).toHaveLength(0);
+  });
+
+  test('no desktop listening falls back to the settings page in a tab', async () => {
+    focusResult = { focused: false };
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPopup();
+    await act(async () => {
+      buttonByText('Open the app to manage').click();
+    });
+    await flush();
+    expect(opened).toEqual(['http://localhost:5173/settings#chrome-extension']);
+    expect(closed).toBe(0);
+  });
+
+  test('an unreachable server falls back to the settings page in a tab', async () => {
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPopup();
+    fetchMock.mockRejectedValueOnce(new Error('down'));
+    await act(async () => {
+      buttonByText('Open the app to manage').click();
+    });
+    await flush();
+    expect(opened).toEqual(['http://localhost:5173/settings#chrome-extension']);
+    expect(closed).toBe(0);
+  });
+
+  test('the unpaired view also opens the desktop app first', async () => {
+    focusResult = { focused: true };
+    await renderPopup();
+    await act(async () => {
+      buttonByText('Open the app to manage').click();
+    });
+    await flush();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/app/focus',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(closed).toBe(1);
+    expect(opened).toHaveLength(0);
   });
 });

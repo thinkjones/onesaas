@@ -226,8 +226,10 @@ export function createBridge(o: {
         break;
       }
       case 'ping': {
-        // Harmless keep-alive: allowed pre-auth.
-        notePing();
+        // Harmless keep-alive: answered pre-auth, but only the ACTIVE
+        // socket's pings count as contact — a tokenless socket's keepalives
+        // (the stranded state) must not fake a fresh "last ping".
+        if (isActive) notePing();
         sendTo(ws, { type: 'pong' });
         break;
       }

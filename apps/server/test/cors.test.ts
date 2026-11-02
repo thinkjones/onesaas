@@ -17,6 +17,17 @@ test('GET sends no ACAO for foreign origins', async () => {
   expect(res.headers.get('access-control-allow-origin')).toBeNull();
 });
 
+test('extension origins pass CORS (the popup POSTs revoke/focus cross-origin)', async () => {
+  for (const origin of [
+    'chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef',
+    'moz-extension://12345678-1234-1234-1234-123456789012',
+  ]) {
+    const res = await createApp({}).request('/health', { headers: { Origin: origin } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('access-control-allow-origin')).toBe(origin);
+  }
+});
+
 test('preflight approves JSON POSTs from our origins', async () => {
   const res = await createApp({}).request('/api/workflows', {
     method: 'OPTIONS',

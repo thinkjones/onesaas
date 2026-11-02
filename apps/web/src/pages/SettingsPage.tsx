@@ -3,12 +3,16 @@ import BriefcaseIcon from 'lucide-react/icons/briefcase';
 import CheckIcon from 'lucide-react/icons/check';
 import PaletteIcon from 'lucide-react/icons/palette';
 import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
+import ServerIcon from 'lucide-react/icons/server';
 import Volume2Icon from 'lucide-react/icons/volume-2';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
 import {
+  apiUrl,
+  getPairingStatus,
+  isTauri,
   useDataReset,
   useModelStatus,
   useSettings,
@@ -364,6 +368,55 @@ function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
   );
 }
 
+// The extension hardcodes this bridge address; it is independent of the API
+// base above (a scratch API on :8788 still pairs through :8787).
+const BRIDGE_URL = 'ws://127.0.0.1:8787/ext';
+
+// Debugging aid: which services this window is talking to and where. One-shot
+// checks on mount (the Pairing card below stays live on its own poll).
+function ServicesSection() {
+  const [api, setApi] = useState<'checking' | 'up' | 'down'>('checking');
+  const [bridge, setBridge] = useState<'checking' | 'connected' | 'not-connected'>('checking');
+  useEffect(() => {
+    let cancelled = false;
+    fetch(apiUrl('/health')).then(
+      (r) => {
+        if (!cancelled) setApi(r.ok ? 'up' : 'down');
+      },
+      () => {
+        if (!cancelled) setApi('down');
+      },
+    );
+    getPairingStatus().then(
+      (s) => {
+        if (!cancelled) setBridge(s.connected ? 'connected' : 'not-connected');
+      },
+      () => {
+        if (!cancelled) setBridge('not-connected');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const apiBase = isTauri() ? apiUrl('') : window.location.origin;
+  return (
+    <section className="panel" aria-label="Services">
+      <CardHeading icon={ServerIcon} title="Services" />
+      <div className="mt-2 space-y-1">
+        <p>This window: {isTauri() ? 'Desktop app' : 'Browser tab'}</p>
+        <p>
+          App API: {apiBase} ({api === 'checking' ? 'Checking…' : api === 'up' ? 'Running' : 'Down'})
+        </p>
+        <p>
+          Extension bridge: {BRIDGE_URL} (
+          {bridge === 'checking' ? 'Checking…' : bridge === 'connected' ? 'Connected' : 'Not connected'})
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, update } = useSettings();
   if (!settings) {
@@ -382,6 +435,7 @@ export default function SettingsPage() {
         <Pairing />
       </section>
       <ThinkingSection />
+      <ServicesSection />
       <ResetSection update={update} />
     </div>
   );

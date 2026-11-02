@@ -160,6 +160,8 @@ export interface PairingStatus {
   connected: boolean;
   lastPingAt: string | null;
   peer: string | null;
+  /** Monotonic redeem count (0 unpaired): the code screen completes when this moves. */
+  generation: number;
 }
 
 export function getPairingStatus(): Promise<PairingStatus> {
@@ -641,6 +643,23 @@ export function postExplain(target: ExplainTarget): Promise<{ text: string }> {
   return postJson('/api/explain', target);
 }
 
+/** SSE event asking desktop webviews to focus + navigate (mirrors server app.ts). */
+export interface AppFocusEvent {
+  type: 'app-focus';
+  path: string;
+  hash?: string;
+}
+
+const focusListeners = new Set<(e: AppFocusEvent) => void>();
+
+/** Subscribe to desktop-focus events; returns an unsubscribe fn. */
+export function onAppFocus(fn: (e: AppFocusEvent) => void): () => void {
+  focusListeners.add(fn);
+  return () => {
+    focusListeners.delete(fn);
+  };
+}
+
 /**
  * One shared EventSource for every useAgentEvents subscriber. The design
  * screen mounts three subscribers (canvas ghosts, agent chat, page-level
@@ -743,7 +762,27 @@ export function useLiveEvents(): void {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let es: EventSource | undefined;
     const onMessage = (msg: MessageEvent) => {
-      const e = JSON.parse(msg.data) as EngineEvent;
+      const raw = JSON.parse(msg.data) as {
+        type?: unknown;
+        path?: unknown;
+        hash?: unknown;
+      };
+      if (raw.type === 'app-focus' && typeof raw.path === 'string') {
+        const event: AppFocusEvent = {
+          type: 'app-focus',
+          path: raw.path,
+          hash: typeof raw.hash === 'string' ? raw.hash : undefined,
+        };
+        for (const l of focusListeners) {
+          try {
+            l(event);
+          } catch {
+            // One bad subscriber must not starve the rest.
+          }
+        }
+        return;
+      }
+      const e = raw as EngineEvent;
       if (e.type === 'run') {
         void client.invalidateQueries({ queryKey: ['run', e.run.id] });
         void client.invalidateQueries({ queryKey: ['runs', e.run.workflowId] });
@@ -763,7 +802,9 @@ export function useLiveEvents(): void {
     };
     const connect = () => {
       if (closed) return;
-      es = new EventSource(apiUrl('/api/events'));
+      // This stream is always on while the app is open, so it doubles as
+      // the desktop-presence signal: Tauri webviews tag it for /api/app/focus.
+      es = new EventSource(apiUrl('/api/events') + (isTauri() ? '?client=tauri' : ''));
       es.onmessage = onMessage;
       es.onerror = () => {
         es?.close();

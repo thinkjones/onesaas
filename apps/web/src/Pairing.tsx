@@ -31,8 +31,20 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
   // that reports unpaired while the user is still mid-pairing must NOT clear
   // their code — only a paired -> unpaired transition does).
   const wasPaired = useRef(false);
+  // What the pending code was issued against: unpaired-start completes on the
+  // paired flip, paired-start ("Pair a new Chrome") completes when the
+  // generation moves (paired stays true — only the generation changes).
+  const issued = useRef<{ generation: number | null; whilePaired: boolean } | null>(null);
   // Probes serialize: a sick extension must not stack 5s waits.
   const pinging = useRef(false);
+
+  // Deep link target for the extension popup ("open the app" lands on the
+  // card): scroll the section into view when the hash names it.
+  useEffect(() => {
+    if (window.location.hash === '#chrome-extension') {
+      document.getElementById('chrome-extension')?.scrollIntoView();
+    }
+  }, []);
 
   // Round-trips a live probe and merges the (possibly self-healed) state over
   // the last status. Never rejects — failures surface inline.
@@ -68,7 +80,7 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
       (e: unknown) => {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : String(e));
-        setStatus({ paired: false, connected: false, lastPingAt: null, peer: null });
+        setStatus({ paired: false, connected: false, lastPingAt: null, peer: null, generation: 0 });
       },
     );
     return () => {
@@ -86,10 +98,12 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
 
   async function connect() {
     setError(null);
+    issued.current = { generation: status?.generation ?? null, whilePaired: status?.paired ?? false };
     try {
       const { code } = await startPairing();
       setCode(code);
     } catch (e: unknown) {
+      issued.current = null;
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -102,6 +116,7 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
     try {
       await revokePairing();
       setCode(null);
+      issued.current = null;
       const s = await getPairingStatus();
       wasPaired.current = s.paired;
       setStatus(s);
@@ -125,7 +140,22 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
         .then((s) => {
           // Revoke lands here: the server killed the token AND the pending
           // code, so drop the dead code and fall back to the start view.
-          if (wasPaired.current && !s.paired) setCode(null);
+          if (wasPaired.current && !s.paired) {
+            setCode(null);
+            issued.current = null;
+          } else if (
+            code !== null &&
+            s.paired &&
+            (issued.current === null ||
+              !issued.current.whilePaired ||
+              (issued.current.generation !== null && s.generation !== issued.current.generation))
+          ) {
+            // Code redeemed: unpaired-start completes on the paired flip,
+            // paired-start completes when the generation moves. (issued null
+            // covers a code the poll found without a recorded issue.)
+            setCode(null);
+            issued.current = null;
+          }
           wasPaired.current = s.paired;
           setStatus(s);
           if (s.paired && s.connected && lastPingIsStale(s.lastPingAt)) void verifyConnection();
@@ -133,16 +163,26 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
         .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
     }, 2000);
     return () => clearInterval(timer);
-    // verifyConnection is ref-stable (refs + setState only).
+    // verifyConnection is ref-stable (refs + setState only); code re-arms
+    // the completion check for the pending code.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting]);
+  }, [waiting, code]);
 
   return (
-    <section className="panel max-w-xl" aria-label="Chrome extension">
+    <section id="chrome-extension" className="panel max-w-xl" aria-label="Chrome extension">
       <CardHeading icon={PuzzleIcon} title="Chrome extension" />
       {error && <p role="alert">{error}</p>}
       {status === null ? (
         <p>Checking connection…</p>
+      ) : code !== null ? (
+        <>
+          <p>
+            Enter this code in the extension popup — it expires in 10 minutes. This
+            page updates on its own once paired.
+          </p>
+          {status.paired && <p>Pairing a new Chrome replaces the current pairing.</p>}
+          <p className="text-3xl font-bold tracking-widest">{code}</p>
+        </>
       ) : status.paired ? (
         <>
           {status.connected ? (
@@ -162,14 +202,18 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           ) : (
             <p>
               Paired, but Chrome isn&apos;t connected. Open Chrome — or reload the
-              extension — and this page will update on its own.
+              extension — and this page will update on its own. If the extension
+              asks for a code instead, pair it again with the button below.
             </p>
           )}
           <AppButton type="button" onClick={() => void unpair()}>
             Unpair
           </AppButton>
+          <AppButton type="button" variant="outline" onClick={() => void connect()}>
+            Pair a new Chrome
+          </AppButton>
         </>
-      ) : code === null ? (
+      ) : (
         <>
           <p>The app reaches Gmail through the Chrome extension. Pair it once:</p>
           <ol className="list-decimal pl-6">
@@ -184,14 +228,6 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           <AppButton type="button" onClick={() => void connect()}>
             Connect Chrome
           </AppButton>
-        </>
-      ) : (
-        <>
-          <p>
-            Enter this code in the extension popup — it expires in 10 minutes. This
-            page updates on its own once paired.
-          </p>
-          <p className="text-3xl font-bold tracking-widest">{code}</p>
         </>
       )}
     </section>

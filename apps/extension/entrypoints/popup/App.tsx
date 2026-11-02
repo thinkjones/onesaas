@@ -14,7 +14,10 @@ interface PairReply {
 
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
-const APP_URL = 'http://localhost:5173';
+// Desktop focus first (works in dev and production: the Tauri webview holds
+// a tagged SSE stream); the settings page in a browser tab is the fallback.
+const FOCUS_URL = 'http://127.0.0.1:8787/api/app/focus';
+const APP_SETTINGS_URL = 'http://localhost:5173/settings#chrome-extension';
 // The only peer this popup can ever talk to: the app on this machine.
 const APP_HOST = new URL(REVOKE_URL).host;
 
@@ -170,11 +173,44 @@ function App() {
     </p>
   );
 
+  // Opens the DESKTOP app (dev and production): the server focuses a
+  // listening Tauri window and navigates it to this card. With no desktop
+  // listening — or no server at all — a browser tab is the fallback.
+  const openApp = async () => {
+    try {
+      const res = await fetch(FOCUS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/settings', hash: 'chrome-extension' }),
+      });
+      const data = (await res.json().catch(() => null)) as { focused?: boolean } | null;
+      if (res.ok && data?.focused) {
+        window.close();
+        return;
+      }
+    } catch {
+      // Unreachable server: fall through to the browser tab.
+    }
+    window.open(APP_SETTINGS_URL, '_blank');
+  };
+
   const manageLink = (
     <p>
-      <a href={APP_URL} target="_blank" rel="noreferrer">
+      <button
+        type="button"
+        onClick={() => void openApp()}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          color: '#1a73e8',
+          textDecoration: 'underline',
+          cursor: 'pointer',
+          fontSize: 14,
+        }}
+      >
         Open the app to manage →
-      </a>
+      </button>
     </p>
   );
 

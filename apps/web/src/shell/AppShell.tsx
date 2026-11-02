@@ -1,10 +1,13 @@
 import { Outlet, useLocation } from 'react-router';
 import { useWorkflows } from '../api.ts';
 import TellMeMoreFallback from '../explain/TellMeMoreFallback.tsx';
+import { useDesktopFocus } from './DesktopFocus.ts';
 import Sidebar from './Sidebar.tsx';
 import TopBar from './TopBar.tsx';
 
 export default function AppShell() {
+  // Extension "open the app" button: no-op in browsers.
+  useDesktopFocus();
   // Floating Craft shell (design-system-prompt §4): sidebar and main are
   // rounded panels on the window backdrop with an 8px gap; the main panel
   // carries the sky canvas gradient, a TopBar (§6), and the scrolling content

@@ -1,8 +1,10 @@
+import { serve } from '@hono/node-server';
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect } from 'vitest';
+import { expect, vi } from 'vitest';
 import { createServer } from '../src/main.js';
 
 test('startup leaves a blank workflow store and seeds the customers table', async () => {
@@ -227,4 +229,99 @@ test('PUT /api/settings rejects bad text size, sound, legacy theme and unknown k
   }
   // Failed patches persist nothing.
   expect(await (await app.request('/api/settings')).json()).toEqual(before);
+});
+
+test('POST /api/app/focus broadcasts to SSE listeners and reports desktop presence', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const focus = () =>
+    app.request('/api/app/focus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/settings', hash: 'chrome-extension' }),
+    });
+
+  // No listeners: nothing to focus.
+  expect((await focus()).status).toBe(200);
+  expect(await (await focus()).json()).toEqual({ focused: false });
+
+  // An untagged (browser) listener is not a desktop window.
+  const plain = await app.request('/api/events');
+  const plainReader = plain.body!.getReader();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await (await focus()).json()).toEqual({ focused: false });
+
+    // A desktop-tagged listener counts — and receives the event.
+    const res = await app.request('/api/events?client=tauri');
+    const reader = res.body!.getReader();
+    try {
+      const first = reader.read();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(await (await focus()).json()).toEqual({ focused: true });
+      const { value } = await first;
+      const text = new TextDecoder().decode(value);
+      const dataLine = text
+        .split('\n')
+        .find((line) => line.startsWith('data: '))!
+        .slice('data: '.length);
+      expect(JSON.parse(dataLine)).toEqual({
+        type: 'app-focus',
+        path: '/settings',
+        hash: 'chrome-extension',
+      });
+    } finally {
+      await reader.cancel();
+    }
+  } finally {
+    await plainReader.cancel();
+  }
+}, 8000);
+
+test('desktop presence clears when the tagged SSE stream disconnects (real server)', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
+  try {
+    if (!server.listening) {
+      await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+    }
+    const port = (server.address() as AddressInfo).port;
+    const sse = await fetch(`http://127.0.0.1:${port}/api/events?client=tauri`);
+    const reader = sse.body!.getReader();
+    const focus = () =>
+      fetch(`http://127.0.0.1:${port}/api/app/focus`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/settings' }),
+      }).then((r) => r.json());
+    await vi.waitFor(async () => {
+      expect(await focus()).toEqual({ focused: true });
+    });
+    await reader.cancel();
+    await vi.waitFor(async () => {
+      expect(await focus()).toEqual({ focused: false });
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}, 8000);
+
+test('POST /api/app/focus rejects malformed bodies and paths', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const post = (body: unknown) =>
+    app.request('/api/app/focus', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+  expect((await post({ path: 'settings' })).status).toBe(400);
+  expect((await post({ path: '/a b' })).status).toBe(400);
+  expect((await post({ path: '/../x' })).status).toBe(400);
+  expect((await post({ path: '/settings', hash: 'a b' })).status).toBe(400);
+  expect((await post({ path: '/settings', hash: '#x' })).status).toBe(400);
+  expect((await post({})).status).toBe(400);
+  expect((await post('nope')).status).toBe(400);
+  // A clean request with no listeners still reports honestly.
+  const ok = await post({ path: '/settings' });
+  expect(ok.status).toBe(200);
+  expect(await ok.json()).toEqual({ focused: false });
 });

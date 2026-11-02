@@ -35,6 +35,13 @@ export interface AppDeps {
 
 type FullBridge = Bridge & { attach(ws: BridgeSocket): void };
 
+/** SSE event asking desktop webviews to focus + navigate (redeclared in web/api.ts). */
+export interface AppFocusEvent {
+  type: 'app-focus';
+  path: string;
+  hash?: string;
+}
+
 // NOTE: installed @hono/node-ws@1.x requires createNodeWebSocket({ app }) —
 // the binding is per app instance, not a module-scope singleton. Each
 // createApp() call registers its own injector here; index.ts and tests pass
@@ -66,7 +73,9 @@ export function createApp(deps: AppDeps): Hono {
             url.hostname === 'localhost' ||
             url.hostname === '127.0.0.1' ||
             url.hostname === 'tauri.localhost' ||
-            url.protocol === 'tauri:'
+            url.protocol === 'tauri:' ||
+            url.protocol === 'chrome-extension:' ||
+            url.protocol === 'moz-extension:'
           ) {
             return origin;
           }
@@ -131,10 +140,16 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   // Task 11 contract: { paired, connected }, plus the last-contact record
-  // (lastPingAt/peer) so Settings can show when the extension last answered.
+  // (lastPingAt/peer) so Settings can show when the extension last answered,
+  // plus the pairing generation so a re-pair while paired is detectable.
   app.get('/api/pairing/status', (c) => {
     if (!pairing || !bridge) return c.json({ error: 'Bridge not configured' }, 500);
-    return c.json({ paired: pairing.paired(), connected: bridge.connected(), ...bridge.connectionInfo() });
+    return c.json({
+      paired: pairing.paired(),
+      connected: bridge.connected(),
+      ...bridge.connectionInfo(),
+      generation: pairing.generation(),
+    });
   });
 
   // Active liveness probe: round-trips a correlated ping through the socket
@@ -693,6 +708,11 @@ export function createApp(deps: AppDeps): Hono {
     });
   });
 
+  // Desktop-focus broadcast (extension "open the app" button): SSE streams
+  // subscribe here; POST /api/app/focus emits to all of them.
+  let desktopListeners = 0;
+  const focusListeners = new Set<(e: AppFocusEvent) => void>();
+
   app.get('/api/events', (c) => {
     if (!engine) return c.json({ error: 'Server not configured' }, 500);
     // Verified against the installed hono: streamSSE lives in 'hono/streaming'
@@ -706,8 +726,16 @@ export function createApp(deps: AppDeps): Hono {
       const onAgent = (e: { type: 'agent'; workflowId: string; event: unknown }): void => {
         void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
       };
+      const onFocus = (e: AppFocusEvent): void => {
+        void stream.writeSSE({ data: JSON.stringify(e) }).catch(() => {});
+      };
+      // Desktop presence: Tauri webviews tag their stream so /api/app/focus
+      // can report whether a desktop window is actually listening.
+      const isDesktop = c.req.query('client') === 'tauri';
+      if (isDesktop) desktopListeners++;
       engine.events.on('event', onEvent);
       agentEvents?.on('event', onAgent);
+      focusListeners.add(onFocus);
       try {
         await new Promise<void>((resolve) => {
           if (c.req.raw.signal.aborted) return resolve();
@@ -718,8 +746,49 @@ export function createApp(deps: AppDeps): Hono {
         // accumulate on the singleton engine's emitter.
         engine.events.off('event', onEvent);
         agentEvents?.off('event', onAgent);
+        focusListeners.delete(onFocus);
+        if (isDesktop) desktopListeners--;
       }
     });
+  });
+
+  const focusBody = z
+    .object({
+      path: z.string().min(1).max(200),
+      hash: z.string().max(100).optional(),
+    })
+    .strict();
+
+  // Desktop focus for the extension's "open the app" button: broadcast a
+  // navigation request over SSE. Works identically in dev and production —
+  // the Tauri webview is just another SSE client. Reports whether a desktop
+  // window is listening so the popup can fall back to a browser tab.
+  app.post('/api/app/focus', async (c) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid focus body' }, 400);
+    }
+    const parsed = focusBody.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'Invalid focus body' }, 400);
+    const { path, hash } = parsed.data;
+    // Local router navigation only: root-relative, no traversal or spaces.
+    if (!path.startsWith('/') || /[\s\\]/.test(path) || path.includes('..')) {
+      return c.json({ error: 'Invalid focus path' }, 400);
+    }
+    if (hash !== undefined && /[\s#]/.test(hash)) {
+      return c.json({ error: 'Invalid focus hash' }, 400);
+    }
+    const event: AppFocusEvent = { type: 'app-focus', path, hash };
+    for (const fn of focusListeners) {
+      try {
+        fn(event);
+      } catch {
+        // One broken stream must not starve the rest.
+      }
+    }
+    return c.json({ focused: desktopListeners > 0 });
   });
 
   // Push-to-talk (M5 Task 3): the browser streams PCM here and the proxy
