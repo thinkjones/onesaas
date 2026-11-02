@@ -27,7 +27,9 @@ export default defineConfig({
     {
       command: 'pnpm --filter @dad/server exec tsx src/index.ts',
       cwd: REPO_ROOT,
-      env: { PORT: String(8791), DB_FILE },
+      // SEED_FLOW1=1 opts into the flow-1 fixture specs share; customer
+      // boots (flag absent) always start with a blank workflow store.
+      env: { PORT: String(8791), DB_FILE, SEED_FLOW1: '1' },
       url: `${API_BASE}/health`,
       reuseExistingServer: false,
       timeout: 120_000,

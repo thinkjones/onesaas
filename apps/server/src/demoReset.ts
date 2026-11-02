@@ -10,7 +10,7 @@
 //   [--data-dir DIR]   (run with the server STOPPED; default data dir `data`)
 //   --keep-profile  restore business profile, theme and mood images from
 //                   data/demo-profile.json (fails loudly if it is missing)
-//   --with-flow1    keep the M1 flow-1 seed; without it the fresh DB holds NO
+//   --with-flow1    seed the flow-1 fixture; without it the fresh DB holds NO
 //                   workflows (flows 2 and 4 are always built live in the demo)
 //   --save-profile  snapshot the CURRENT data dir into demo-profile.json and
 //                   exit without resetting (one-time setup before recording)
@@ -36,12 +36,12 @@
 // The wipe itself is sequential, not atomic: a crash mid-wipe can leave a
 // half-reset data dir, and recovery is simply re-running the reset.
 //
-// The fresh DB is built by the real composition root (createServer), which is
-// also the M1 seed path (flow1.json + customers table) — no second flow-1
-// definition. Without --with-flow1 the auto-seeded flow 1 is removed again
-// (DELETE on the workflows table: no deleteWorkflow API exists, and a demo
-// script must not grow the shared Repo surface). Mood images are restored
-// through the standard upload path (saveUpload with pinned ids).
+// The fresh DB is built by the real composition root (createServer), which
+// seeds DDL + the customers table and leaves workflows blank. --with-flow1
+// then saves the flow-1 fixture explicitly (seedFlow1: the one flow1.json
+// reader, shared with the server boot opt-in) — no second flow-1 definition
+// and no DELETE-after-seed. Mood images are restored through the standard
+// upload path (saveUpload with pinned ids).
 //
 // The exported functions take explicit paths/options and never touch
 // process.exit, so test/demo-reset.test.ts can exercise them against a temp
@@ -49,6 +49,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { dirname, join, resolve, sep } from 'node:path';
+import { seedFlow1 } from './dataReset.js';
 import { openDb } from './db/connection.js';
 import { createFileStore } from './files/store.js';
 import { createServer } from './main.js';
@@ -291,12 +292,10 @@ export async function demoReset(o: DemoResetOptions): Promise<void> {
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(filesDir, { recursive: true });
 
-  // Fresh DB via the real composition root (DDL + M1 flow-1 seed + customers).
-  const { db, files } = createServer({ dbFile, filesDir });
+  // Fresh DB via the real composition root (DDL + customers; workflows blank).
+  const { db, files, repo } = createServer({ dbFile, filesDir });
   try {
-    if (!o.withFlow1) {
-      db.prepare('DELETE FROM workflows WHERE id = ?').run('flow-1');
-    }
+    if (o.withFlow1) seedFlow1(repo);
     if (profile) {
       // Images first (pinned ids), then the settings doc that references them.
       // Restore re-encodes via saveUpload (saveGenerated takes no pinned id),
@@ -324,7 +323,7 @@ export function demoResetHelpText(): string {
 
   --keep-profile  restore business profile, theme and mood images from
                   <data-dir>/demo-profile.json (fails if it is missing)
-  --with-flow1    keep the M1 flow-1 seed; otherwise the fresh DB has no
+  --with-flow1    seed the flow-1 fixture; otherwise the fresh DB has no
                   workflows (flows 2 and 4 are always built live)
   --save-profile  snapshot the current data dir to demo-profile.json and exit
                   (cannot be combined with --keep-profile or --with-flow1)

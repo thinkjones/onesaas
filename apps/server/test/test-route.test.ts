@@ -116,7 +116,7 @@ test('opening an old DB without used_sample backfills the column (old runs read 
 });
 
 test('a live run refetch carries no sample prefix', async () => {
-  const { app, repo } = createServer({ dbFile: ':memory:' });
+  const { app, repo } = createServer({ dbFile: ':memory:', seedFlow1: true });
   const run = repo.createRun({
     workflowId: 'flow-1',
     workflowVersion: 1,

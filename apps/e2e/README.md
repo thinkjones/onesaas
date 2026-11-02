@@ -31,13 +31,13 @@ First run only: `pnpm --filter @dad/e2e exec playwright install chromium`.
 
 ## Manual E2E (human, with the extension)
 
-1. `pnpm dev`, open Gmail with the unpacked extension loaded (`apps/extension/.output/chrome-mv3`).
+1. `pnpm dev`, open Gmail with the unpacked extension loaded (`apps/extension/.output/chrome-mv3`). Fresh DBs start blank — boot the server once with `SEED_FLOW1=1` (or `pnpm demo:reset --with-flow1` while stopped) so the "Save as lead & reply" button exists.
 2. Settings → Connect Chrome → enter the code in the extension popup.
 3. Open an email → "Save as lead & reply" → approve/edit/skip → draft appears in Gmail.
 4. Kill + restart the server mid-run → waiting runs resume.
 
 ## Notes for authors
 
-- Specs share one server + DB (`workers: 1`). Use the stable `flow-1` seed or create your own workflows; never assume a blank slate beyond it.
+- Specs share one server + DB (`workers: 1`). The config boots it with `SEED_FLOW1=1`, so the stable `flow-1` fixture is always present — use it or create your own workflows; never assume a blank slate beyond it. (Customer boots omit the flag and start blank.)
 - Chromium's accessibility tree exposes no landmark for plain `<div aria-label>` (e.g. the conversation, the test strip): scope text assertions to a labelled ancestor instead of `getByRole('region', …)`.
 - Suite viewport is 1600×900: at 1280px the canvas column squeezes step nodes under the side panels (unclickable).

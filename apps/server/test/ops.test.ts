@@ -644,7 +644,7 @@ test('POST /api/workflows/:id/ops refuses updateStep with an unknown patch key',
 });
 
 test('GET /api/workflows/:id returns the workflow plus problems', async () => {
-  const { app, repo } = createServer({ dbFile: ':memory:' });
+  const { app, repo } = createServer({ dbFile: ':memory:', seedFlow1: true });
   const ok = await app.request('/api/workflows/flow-1');
   expect(ok.status).toBe(200);
   const body = (await ok.json()) as WorkflowType & {

@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { expect } from 'vitest';
 import { createServer } from '../src/main.js';
 
-test('startup seeds flow-1 and the customers table', async () => {
+test('startup leaves a blank workflow store and seeds the customers table', async () => {
   const { tables, repo } = createServer({ dbFile: ':memory:' });
-  expect(repo.getWorkflow('flow-1')?.status).toBe('on');
+  expect(repo.listWorkflows()).toEqual([]);
   expect(tables.getTable('customers')).toMatchObject({
     name: 'customers',
     displayField: 'name',
@@ -15,13 +15,18 @@ test('startup seeds flow-1 and the customers table', async () => {
   });
 });
 
+test('startup with seedFlow1 seeds the flow-1 fixture (demos, e2e)', async () => {
+  const { repo } = createServer({ dbFile: ':memory:', seedFlow1: true });
+  expect(repo.getWorkflow('flow-1')?.status).toBe('on');
+});
+
 test('a second boot against the same file db does not reseed or duplicate', async () => {
   // :memory: DBs cannot be shared across createServer calls, so this test
   // needs a real tmp file both boots open.
   const dbFile = join(tmpdir(), `routes-seed-twice-${randomUUID()}.db`);
-  const first = createServer({ dbFile });
+  const first = createServer({ dbFile, seedFlow1: true });
   try {
-    const second = createServer({ dbFile });
+    const second = createServer({ dbFile, seedFlow1: true });
     try {
       expect(second.repo.listWorkflows()).toHaveLength(1);
       expect(second.repo.getWorkflow('flow-1')?.version).toBe(1);
@@ -37,12 +42,11 @@ test('a second boot against the same file db does not reseed or duplicate', asyn
   }
 });
 
-test('GET /api/workflows contains the seeded flow-1', async () => {
+test('GET /api/workflows is empty on a fresh store', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
   const res = await app.request('/api/workflows');
   expect(res.status).toBe(200);
-  const body = (await res.json()) as Array<{ id: string; status: string }>;
-  expect(body.find((w) => w.id === 'flow-1')?.status).toBe('on');
+  expect(await res.json()).toEqual([]);
 });
 
 test('GET /api/runs filters by workflowId', async () => {
@@ -69,7 +73,8 @@ test('GET /api/runs filters by workflowId', async () => {
 });
 
 test('GET /api/runs/:id returns { run, steps, story, workflow } or an exact 404', async () => {
-  const { app, repo } = createServer({ dbFile: ':memory:' });
+  // The story + workflow halves need a real workflow: opt into the fixture.
+  const { app, repo } = createServer({ dbFile: ':memory:', seedFlow1: true });
   const run = repo.createRun({
     workflowId: 'flow-1',
     workflowVersion: 1,

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { catalog } from '@dad/shared';
 import OpenAI from 'openai';
-import { resetDataToFreshInstall, seedFreshInstall } from './dataReset.js';
+import { resetDataToFreshInstall, seedFlow1, seedFreshInstall } from './dataReset.js';
 import { createConversationStore } from './agent/conversations.js';
 import { createBuilderAgent, type BuilderAgent } from './agent/loop.js';
 import { createApp } from './app.js';
@@ -31,10 +31,11 @@ let warnedHalfGlimmer = false;
 
 /**
  * Composition root: opens the DB, builds tables/repo/settings/pairing/bridge,
- * gateway/engine, registers triggers, seeds flow 1 + the customers table, and
- * returns the app plus every handle tests need.
+ * gateway/engine, registers triggers, seeds the customers table, and returns
+ * the app plus every handle tests need. The workflow store stays blank unless
+ * `seedFlow1` opts into the flow-1 fixture (demos, e2e).
  */
-export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
+export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFlow1?: boolean }): {
   app: ReturnType<typeof createApp>;
   db: ReturnType<typeof openDb>;
   tables: ReturnType<typeof createTableStore>;
@@ -175,11 +176,13 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
   });
 
   // Fresh-install seed, shared with the in-app data reset so a boot into an
-  // empty store and POST /api/data/reset land in the same state (flow 1 +
-  // the customers table) and never touch user data.
+  // empty store and POST /api/data/reset land in the same state (blank
+  // workflows + the customers table) and never touch user data.
   seedFreshInstall({ repo, tables });
+  // Opt-in flow-1 fixture (demos, e2e): never part of the customer flow.
+  if (opts?.seedFlow1) seedFlow1(repo);
   // Existing installs whose flow-1 predates the approval step move to the new
-  // definition as the next version (no-op for fresh seeds and migrated DBs).
+  // definition as the next version (no-op when flow-1 is absent or current).
   migrateFlow1Seed(repo);
 
   // AppDeps grows with the shared ops + agent + test runner; app.ts casts on

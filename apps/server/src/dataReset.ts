@@ -1,9 +1,10 @@
 // In-app data reset: wipe the LIVE database + files back to fresh-install
-// state without stopping the server. Unlike scripts/demo-reset (which deletes
-// the DB file out from under a running server and must run stopped), this
-// issues DELETEs through the open handle, so POST /api/data/reset is safe to
-// call from the Settings page. The seed half is shared with main.ts so a
-// boot-into-empty and a reset land in exactly the same state.
+// state (blank workflows) without stopping the server. Unlike
+// scripts/demo-reset (which deletes the DB file out from under a running
+// server and must run stopped), this issues DELETEs through the open handle,
+// so POST /api/data/reset is safe to call from the Settings page. The seed
+// half is shared with main.ts so a boot-into-empty and a reset land in
+// exactly the same state.
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { Workflow } from '@dad/shared';
@@ -41,14 +42,22 @@ export const CUSTOMERS_TABLE: TableDef = {
 };
 
 /**
- * Seed flow 1 + the customers table into an empty store; never touches user
- * data (both halves are guarded). Workflow.parse fails loud on a broken seed.
+ * Seed the customers table into a store missing it; never touches user data.
+ * New installs get a BLANK workflow store — flow 1 is opt-in fixture data
+ * (seedFlow1 below), not part of the customer flow.
  */
 export function seedFreshInstall(deps: { repo: Repo; tables: TableStore }): void {
-  if (deps.repo.listWorkflows().length === 0) {
-    deps.repo.saveWorkflow(Workflow.parse(flow1));
-  }
   if (!deps.tables.getTable('customers')) deps.tables.createTable(CUSTOMERS_TABLE);
+}
+
+/**
+ * Save the flow-1 fixture ("Save as lead & reply") unless a flow-1 already
+ * exists (never overwrite user edits). Demos (`demo:reset --with-flow1`) and
+ * the e2e suite (SEED_FLOW1=1) opt in explicitly. Workflow.parse fails loud
+ * on a broken seed file.
+ */
+export function seedFlow1(repo: Repo): void {
+  if (!repo.getWorkflow('flow-1')) repo.saveWorkflow(Workflow.parse(flow1));
 }
 
 export interface DataResetDeps {
@@ -61,9 +70,10 @@ export interface DataResetDeps {
 }
 
 /**
- * Wipe user data, uploads, views, pairing and settings, then reseed flow 1 +
- * customers: the store afterwards equals a fresh install (onboarded false).
- * Idempotent. Missing tables are skipped, never an error.
+ * Wipe user data, uploads, views, pairing and settings, then reseed the
+ * customers table: the store afterwards equals a fresh install (blank
+ * workflows, onboarded false). Idempotent. Missing tables are skipped, never
+ * an error.
  */
 export function resetDataToFreshInstall(deps: DataResetDeps): void {
   const { db, filesDir, repo, tables, setTimezone } = deps;

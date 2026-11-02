@@ -8,10 +8,12 @@ const hostname = '127.0.0.1';
 
 // PORT/DB_FILE exist for the Playwright suite (apps/e2e), which boots an
 // isolated stack on alt ports with a fresh database. Defaults keep `pnpm dev`
-// exactly as before.
+// exactly as before. SEED_FLOW1=1 (e2e only) opts into the flow-1 fixture;
+// customer boots always start with a blank workflow store.
 const { app, engine, files } = createServer({
   dbFile: process.env['DB_FILE'],
   filesDir: process.env['FILES_DIR'],
+  seedFlow1: process.env['SEED_FLOW1'] === '1',
 });
 // Resume interrupted runs before listening. Lives here (not createServer) so
 // the composition root stays synchronous for tests; top-level await is fine

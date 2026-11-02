@@ -57,8 +57,8 @@ test('POST /api/data/reset wipes user data back to fresh-install state', async (
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
 
-    // Fresh-install state: the flow-1 seed is back, everything else is gone.
-    expect(server.repo.listWorkflows().map((w) => w.id)).toEqual(['flow-1']);
+    // Fresh-install state: a blank workflow store; everything else is gone.
+    expect(server.repo.listWorkflows()).toEqual([]);
     expect(count(server, 'runs')).toBe(0);
     expect(count(server, 'step_runs')).toBe(0);
     expect(count(server, 'seen_emails')).toBe(0);
@@ -77,7 +77,7 @@ test('POST /api/data/reset wipes user data back to fresh-install state', async (
     // Idempotent: a second reset is a no-op 200.
     const again = await server.app.request('/api/data/reset', { method: 'POST' });
     expect(again.status).toBe(200);
-    expect(server.repo.listWorkflows().map((w) => w.id)).toEqual(['flow-1']);
+    expect(server.repo.listWorkflows()).toEqual([]);
   } finally {
     server.db.close();
   }
