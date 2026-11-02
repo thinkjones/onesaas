@@ -123,7 +123,7 @@ function renderShell(
               element={<Explain target={{ kind: 'ui', id: 'nav-settings' }} label="Settings" />}
             />
             <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
-            {/* Automate carries a NavRail-style Explain (AppShell-level in production). */}
+            {/* Automate carries a Sidebar-style Explain (AppShell-level in production). */}
             <Route
               path="/automate"
               element={

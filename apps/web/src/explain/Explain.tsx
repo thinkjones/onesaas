@@ -139,7 +139,7 @@ export default function Explain({ target, label, onTellMeMore }: ExplainProps) {
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className="nodrag flex size-10 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+        className="nodrag flex size-10 items-center justify-center rounded-full border-transparent bg-transparent p-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground"
       >
         <span
           aria-hidden

@@ -12,6 +12,9 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
       if (String(input) === '/api/workflows') {
         return { ok: true, status: 200, json: async () => opts?.workflows ?? [] };
       }
+      if (String(input) === '/api/settings') {
+        return { ok: true, status: 200, json: async () => ({ onboarded: true }) };
+      }
       throw new Error(`unexpected fetch: ${String(input)}`);
     }),
   );

@@ -1,0 +1,17 @@
+/* Craft sidebar (design-system-prompt §5), translated from Sidebar.svelte:
+ * selectors are element-agnostic (.nav covers the router NavLinks). */
+.side { display: flex; flex-direction: column; gap: 0.1rem; width: 14.5rem; flex-shrink: 0; padding: 0 0.6rem 0.6rem; background: var(--bg-sidebar); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-float); overflow-y: auto; }
+.drag { height: 2.75rem; flex-shrink: 0; }
+.create { display: flex; justify-content: space-between; padding: 0 0.15rem 0.75rem; margin-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+.create .ic { width: 2.15rem; height: 2.15rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+.create .ic:hover { color: var(--accent); border-color: var(--border-strong); }
+.group { display: flex; flex-direction: column; gap: 1px; }
+.navrow { display: flex; align-items: center; gap: 1px; }
+.side .nav { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; text-align: left; background: transparent; border-color: transparent; box-shadow: none; border-radius: var(--radius-s); padding: 0.38rem 0.6rem; font-size: 0.93rem; font-weight: 400; color: var(--text); }
+.side .nav svg { color: var(--text-dim); flex-shrink: 0; }
+.side .nav:hover { background: var(--bg-hover); border-color: transparent; }
+.side .nav.active { background: var(--bg-hover); font-weight: 500; }
+.side .nav.active svg { color: var(--text); }
+.side .nav:disabled { background: transparent; }
+.foot { margin-top: auto; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+.foot .vn { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 0.85rem; padding: 0.35rem 0.6rem 0; }
