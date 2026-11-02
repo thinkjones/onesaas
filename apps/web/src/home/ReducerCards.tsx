@@ -1,16 +1,17 @@
 import type { Run, Workflow } from '@dad/shared';
+import BotIcon from 'lucide-react/icons/bot';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { ApiError, getRuns, useWorkflows, useWorkflowOp } from '../api.ts';
-import { Badge } from '../components/ui/badge.tsx';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
+import CardHeading from '../design/CardHeading.tsx';
+import Pill from '../design/Pill.tsx';
 import { formatRunListTime } from '../runtime/format.ts';
 
-// "Your chore reducers" (M5 Task 6): one card per workflow with a working
+// "Your chore reducers" (M5 Task 6): one row per workflow with a working
 // on/off switch (the setStatus op, like DesignView's Turn on), the last run,
-// and an amber "N waiting for you" badge linking to the OLDEST waiting run
+// and an amber "N waiting for you" pill linking to the OLDEST waiting run
 // (the one waiting longest — earliest startedAt — gets Dad first).
 
 function oldestWaitingFirst(a: Run, b: Run): number {
@@ -26,7 +27,7 @@ function toastOpError(error: unknown): void {
   );
 }
 
-function ReducerCard({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
+function ReducerRow({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
   const op = useWorkflowOp(workflow.id);
   const mine = runs.filter((r) => r.workflowId === workflow.id);
   const waiting = mine.filter((r) => r.status === 'waiting').sort(oldestWaitingFirst);
@@ -36,40 +37,45 @@ function ReducerCard({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{workflow.name}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={workflow.status === 'on'}
-            disabled={op.isPending}
-            aria-label={`${workflow.name} enabled`}
-            onCheckedChange={(on) => {
-              op.mutate(
-                { op: 'setStatus', args: [on ? 'on' : 'off'] },
-                {
-                  onSuccess: (res) => {
-                    if (!res.ok) toast.error(res.error);
-                  },
-                  onError: (err) => toastOpError(err),
+    <div className="row cursor-default">
+      <span className="body">
+        <Link
+          to={`/reducers/${workflow.id}`}
+          className="t block truncate text-primary underline-offset-4 hover:underline"
+        >
+          {workflow.name}
+        </Link>
+        <span className="dim block">
+          Last run: {lastRun === undefined ? 'never' : formatRunListTime(lastRun)}
+        </span>
+      </span>
+      {waiting.length > 0 && (
+        <Link to={`/reducers/${workflow.id}?run=${waiting[0]!.id}`}>
+          <Pill tone="waiting">
+            {waiting.length} waiting for you
+          </Pill>
+        </Link>
+      )}
+      <span className="flex items-center gap-2">
+        <Switch
+          checked={workflow.status === 'on'}
+          disabled={op.isPending}
+          aria-label={`${workflow.name} enabled`}
+          onCheckedChange={(on) => {
+            op.mutate(
+              { op: 'setStatus', args: [on ? 'on' : 'off'] },
+              {
+                onSuccess: (res) => {
+                  if (!res.ok) toast.error(res.error);
                 },
-              );
-            }}
-          />
-          <span>{workflow.status === 'on' ? 'On' : 'Off'}</span>
-        </div>
-        <p>Last run: {lastRun === undefined ? 'never' : formatRunListTime(lastRun)}</p>
-        {waiting.length > 0 && (
-          <Link to={`/reducers/${workflow.id}?run=${waiting[0]!.id}`}>
-            <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-900">
-              {waiting.length} waiting for you
-            </Badge>
-          </Link>
-        )}
-      </CardContent>
-    </Card>
+                onError: (err) => toastOpError(err),
+              },
+            );
+          }}
+        />
+        <span className="dim w-7">{workflow.status === 'on' ? 'On' : 'Off'}</span>
+      </span>
+    </div>
   );
 }
 
@@ -84,14 +90,16 @@ export default function ReducerCards() {
     return <p role="alert">Couldn&apos;t load your chore reducers. Try again.</p>;
   }
   return (
-    <section aria-label="Your chore reducers" className="flex flex-col gap-3">
-      <h2 className="text-xl font-semibold">Your chore reducers</h2>
+    <section className="panel" aria-label="Your chore reducers">
+      <CardHeading icon={BotIcon} title="Your chore reducers" count={workflows.data.length} />
       {workflows.data.length === 0 ? (
-        <p>Nothing here yet — describe a chore above and I&apos;ll build your first one.</p>
+        <p className="empty-state">
+          Nothing here yet — describe a chore above and I&apos;ll build your first one.
+        </p>
       ) : (
-        <div className="grid gap-4">
+        <div className="flex flex-col">
           {workflows.data.map((w) => (
-            <ReducerCard key={w.id} workflow={w} runs={runs.data} />
+            <ReducerRow key={w.id} workflow={w} runs={runs.data} />
           ))}
         </div>
       )}

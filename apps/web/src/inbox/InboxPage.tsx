@@ -1,7 +1,9 @@
 import type { Run } from '@dad/shared';
+import InboxIcon from 'lucide-react/icons/inbox';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { getRun, getRuns, useWorkflows } from '../api.ts';
+import CardHeading from '../design/CardHeading.tsx';
 import StatusBadge from '../design/StatusBadge.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
@@ -26,22 +28,15 @@ function InboxRow({ run, reducerName }: { run: Run; reducerName: string }) {
   const target = { kind: 'run' as const, id: run.id };
   return (
     <div data-explain={dataExplainValue(target, label)} className="flex items-center gap-1">
-      <Link
-        to={`/reducers/${run.workflowId}?run=${run.id}`}
-        className="min-w-0 flex-1 rounded-[var(--radius)] border border-border bg-card p-3 shadow-sm"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="min-w-0 truncate text-base font-medium">{reducerName}</p>
-          <p className="shrink-0 text-base text-muted-foreground">
-            {formatRunListTime(run.startedAt)}
-          </p>
-        </div>
-        <p className="mt-1 truncate text-base text-muted-foreground" title={line}>
-          {line}
-        </p>
-        <div className="mt-1.5">
-          <StatusBadge status={run.status} />
-        </div>
+      <Link to={`/reducers/${run.workflowId}?run=${run.id}`} className="row min-w-0 flex-1">
+        <span className="when">{formatRunListTime(run.startedAt)}</span>
+        <span className="body">
+          <span className="t block truncate">{reducerName}</span>
+          <span className="dim block truncate" title={line}>
+            {line}
+          </span>
+        </span>
+        <StatusBadge status={run.status} />
       </Link>
       <Explain target={target} label={label} />
     </div>
@@ -59,9 +54,10 @@ export default function InboxPage() {
   const names = new Map(workflows.data.map((w) => [w.id, w.name]));
   const sorted = [...runs.data].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   return (
-    <div className="flex flex-col gap-4">
+    <section className="panel" aria-label="Inbox">
+      <CardHeading icon={InboxIcon} title="Runs" count={sorted.length} />
       {sorted.length === 0 ? (
-        <p className="text-base text-muted-foreground">
+        <p className="empty-state">
           Nothing has happened yet — describe a chore in{' '}
           <Link to="/automate" className="text-primary underline-offset-4 hover:underline">
             Automate
@@ -69,7 +65,7 @@ export default function InboxPage() {
           and your runs will land here.
         </p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="rows flex flex-col">
           {sorted.map((run) => (
             <InboxRow
               key={run.id}
@@ -79,6 +75,6 @@ export default function InboxPage() {
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

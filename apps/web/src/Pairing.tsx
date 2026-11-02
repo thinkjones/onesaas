@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { getPairingStatus, revokePairing, startPairing } from './api.ts';
 import AppButton from './design/AppButton.tsx';
-import AppCard from './design/AppCard.tsx';
+import CardHeading from './design/CardHeading.tsx';
+import PuzzleIcon from 'lucide-react/icons/puzzle';
 
 interface PairingStatus {
   paired: boolean;
@@ -93,8 +94,8 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
   }, [waiting]);
 
   return (
-    <AppCard className="max-w-xl p-6">
-      <h2 className="text-xl font-semibold">Chrome extension</h2>
+    <section className="panel max-w-xl" aria-label="Chrome extension">
+      <CardHeading icon={PuzzleIcon} title="Chrome extension" />
       {error && <p role="alert">{error}</p>}
       {status === null ? (
         <p>Checking connection…</p>
@@ -141,6 +142,6 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           <p className="text-3xl font-bold tracking-widest">{code}</p>
         </>
       )}
-    </AppCard>
+    </section>
   );
 }

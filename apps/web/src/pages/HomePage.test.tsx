@@ -185,7 +185,7 @@ describe('HomePage', () => {
       await screen.findByRole('heading', { name: 'What do you want to achieve today?' }),
     ).toBeDefined();
     expect(
-      await screen.findByRole('heading', { name: 'Your chore reducers' }),
+      await screen.findByRole('heading', { name: 'Your chore reducers · 1' }),
     ).toBeDefined();
   });
 

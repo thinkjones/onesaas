@@ -1,4 +1,3 @@
-import AppButton from '../design/AppButton.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import type { WorkflowMode } from '../runtime/params.ts';
@@ -11,32 +10,30 @@ export interface ModeSwitchProps {
 const EXPLAIN_TARGET = { kind: 'ui' as const, id: 'mode-switch' };
 const EXPLAIN_LABEL = 'Design and Watch it run';
 
-/** The big two-part "Design | Watch it run" control. */
+/** The "Design | Watch it run" segmented control (§9). */
 export default function ModeSwitch({ mode, onModeChange }: ModeSwitchProps) {
   return (
     <div
       data-explain={dataExplainValue(EXPLAIN_TARGET, EXPLAIN_LABEL)}
       className="inline-flex items-center gap-1 self-start"
     >
-      <div
-        role="group"
-        aria-label="Mode"
-        className="inline-flex gap-1 rounded-[var(--radius)] bg-muted p-1"
-      >
-        <AppButton
-          variant={mode === 'design' ? 'default' : 'ghost'}
+      <div className="seg" role="group" aria-label="Mode">
+        <button
+          type="button"
           aria-pressed={mode === 'design'}
+          className={mode === 'design' ? 'on' : ''}
           onClick={() => onModeChange('design')}
         >
           Design
-        </AppButton>
-        <AppButton
-          variant={mode === 'runtime' ? 'default' : 'ghost'}
+        </button>
+        <button
+          type="button"
           aria-pressed={mode === 'runtime'}
+          className={mode === 'runtime' ? 'on' : ''}
           onClick={() => onModeChange('runtime')}
         >
           Watch it run
-        </AppButton>
+        </button>
       </div>
       <Explain target={EXPLAIN_TARGET} label={EXPLAIN_LABEL} />
     </div>

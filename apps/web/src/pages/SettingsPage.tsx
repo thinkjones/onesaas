@@ -1,3 +1,8 @@
+import BrainIcon from 'lucide-react/icons/brain';
+import BriefcaseIcon from 'lucide-react/icons/briefcase';
+import PaletteIcon from 'lucide-react/icons/palette';
+import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
+import Volume2Icon from 'lucide-react/icons/volume-2';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -10,10 +15,9 @@ import {
   type Settings,
   type SettingsPatch,
 } from '../api.ts';
-import { CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
-import AppCard from '../design/AppCard.tsx';
+import CardHeading from '../design/CardHeading.tsx';
 import type { TextSize } from '../theme/TextSizeProvider.tsx';
 
 const inputClass =
@@ -51,11 +55,9 @@ function BusinessSection({
   const zones = allTimeZones();
 
   return (
-    <AppCard>
-      <CardHeader>
-        <CardTitle>Your business</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="panel" aria-label="Your business">
+      <CardHeading icon={BriefcaseIcon} title="Your business" />
+      <div className="mt-2 space-y-4">
         <div className="space-y-1">
           <label htmlFor="settings-business-name" className="text-sm font-medium">
             What&rsquo;s your business called?
@@ -114,8 +116,8 @@ function BusinessSection({
             ))}
           </datalist>
         </div>
-      </CardContent>
-    </AppCard>
+      </div>
+    </section>
   );
 }
 
@@ -127,11 +129,9 @@ function LookSection({
   update: (patch: SettingsPatch) => void;
 }) {
   return (
-    <AppCard>
-      <CardHeader>
-        <CardTitle>Look</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <section className="panel" aria-label="Look">
+      <CardHeading icon={PaletteIcon} title="Look" />
+      <div className="mt-2 space-y-5">
         <p className="text-sm text-muted-foreground">
           Light and dark follow your computer&apos;s appearance setting.
         </p>
@@ -139,11 +139,7 @@ function LookSection({
           <span id="text-size-label" className="text-sm font-medium">
             Text size
           </span>
-          <div
-            className="flex w-fit rounded-lg border border-border p-1"
-            role="radiogroup"
-            aria-labelledby="text-size-label"
-          >
+          <div className="seg" role="radiogroup" aria-labelledby="text-size-label">
             {TEXT_SIZES.map((s) => {
               const selected = settings.textSize === s.id;
               return (
@@ -153,9 +149,7 @@ function LookSection({
                   role="radio"
                   aria-checked={selected}
                   onClick={() => update({ textSize: s.id })}
-                  className={`rounded-md px-4 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    selected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                  }`}
+                  className={selected ? 'on' : ''}
                 >
                   {s.name}
                 </button>
@@ -163,8 +157,8 @@ function LookSection({
             })}
           </div>
         </div>
-      </CardContent>
-    </AppCard>
+      </div>
+    </section>
   );
 }
 
@@ -177,11 +171,9 @@ function SoundSection({
 }) {
   const percent = Math.round(settings.sound.volume * 100);
   return (
-    <AppCard>
-      <CardHeader>
-        <CardTitle>Sound</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="panel" aria-label="Sound">
+      <CardHeading icon={Volume2Icon} title="Sound" />
+      <div className="mt-2 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <label htmlFor="settings-sound-on" className="text-sm font-medium">
             Play background sound and chimes
@@ -210,8 +202,8 @@ function SoundSection({
           />
           <span className="w-12 shrink-0 text-right text-sm tabular-nums">{percent}%</span>
         </div>
-      </CardContent>
-    </AppCard>
+      </div>
+    </section>
   );
 }
 
@@ -239,11 +231,9 @@ function ThinkingSection() {
   const triage = data?.find((row) => row.role === 'triage');
   const onGlimmer = triage?.provider === 'glimmer' && triage.healthy;
   return (
-    <AppCard>
-      <CardHeader>
-        <CardTitle>Thinking</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <section className="panel" aria-label="Thinking">
+      <CardHeading icon={BrainIcon} title="Thinking" />
+      <div className="mt-2">
         {data === undefined && !isError && (
           <p className="text-muted-foreground">Checking which model handles what…</p>
         )}
@@ -266,8 +256,8 @@ function ThinkingSection() {
               ))}
           </div>
         )}
-      </CardContent>
-    </AppCard>
+      </div>
+    </section>
   );
 }
 
@@ -333,11 +323,9 @@ function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
   const navigate = useNavigate();
   const resetData = useDataReset();
   return (
-    <AppCard>
-      <CardHeader>
-        <CardTitle>Reset</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <section className="panel" aria-label="Reset">
+      <CardHeading icon={RotateCcwIcon} title="Reset" />
+      <div className="mt-2 space-y-5">
         <div className="space-y-2">
           <p className="text-sm">
             Reset data erases all chores, lists, files and settings, and starts over from the
@@ -365,8 +353,8 @@ function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
             }}
           />
         </div>
-      </CardContent>
-    </AppCard>
+      </div>
+    </section>
   );
 }
 

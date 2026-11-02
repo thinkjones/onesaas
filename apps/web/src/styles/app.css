@@ -22,6 +22,10 @@
   --color-warning: var(--warning);
   --color-success: var(--success);
   --color-info: hsl(var(--info));
+  --color-accent-soft: var(--accent-soft);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-success-soft: var(--success-soft);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --color-border: var(--border);
@@ -169,6 +173,108 @@
     font-size: 0.88rem;
     text-align: center;
     padding: 1.25rem 0.5rem;
+  }
+  /* ---- Prompt §8 list rows (inside .panel cards). */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.65rem 0.75rem;
+    margin: 0 -0.75rem;
+    border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.2s var(--ease);
+  }
+  a.row {
+    text-decoration: none;
+    color: inherit;
+  }
+  .row + .row {
+    border-top-color: var(--border);
+    border-radius: 0;
+  }
+  /* Rows wrapped one level deep (e.g. the Explain boundary div): the divider
+     moves to the wrapped row. */
+  .rows > * + * .row {
+    border-top-color: var(--border);
+    border-radius: 0;
+  }
+  .row:hover,
+  .row:focus-visible {
+    background: var(--bg-hover);
+    border-radius: var(--radius-s);
+  }
+  .row.selected {
+    background: var(--accent-soft);
+    border-radius: var(--radius-s);
+  }
+  .row .body {
+    flex: 1;
+    min-width: 0;
+  }
+  .row .t {
+    font-weight: 600;
+  }
+  .row .dim {
+    color: var(--text-dim);
+    font-size: 0.82rem;
+  }
+  .row .when {
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* ---- Prompt §9 segmented control. Plain buttons; the selected one carries
+     .on (and aria-pressed/aria-checked to taste). */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--bg-well);
+    border-radius: var(--radius-pill);
+    padding: 2px;
+  }
+  .seg > button {
+    border-color: transparent;
+    box-shadow: none;
+    background: transparent;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    padding: 0.3rem 0.8rem;
+  }
+  .seg > button:hover {
+    border-color: transparent;
+    color: var(--text);
+  }
+  .seg > button.on {
+    background: var(--bg-raised);
+    color: var(--text);
+    box-shadow: var(--shadow-float);
+  }
+  /* ---- Prompt §9 field tile (key and value). */
+  .tile {
+    background: var(--bg-well);
+    border-radius: var(--radius-s);
+    padding: 0.6rem 0.75rem;
+    min-width: 0;
+  }
+  .tile .k {
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  .tile .v {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tile .v.empty {
+    color: var(--text-dim);
+    font-weight: 400;
   }
 }
 

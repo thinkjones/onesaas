@@ -1,9 +1,9 @@
-/** One pinned number: the value large, its title underneath. */
+/** One pinned number as a Craft field tile (§9): key above, value below. */
 export default function StatView({ title, value }: { title: string; value: number }) {
   return (
-    <div className="flex flex-col gap-1 rounded-[var(--radius)] border p-4">
-      <span className="text-5xl font-bold">{value}</span>
-      <span className="text-base text-muted-foreground">{title}</span>
+    <div className="tile">
+      <div className="k">{title}</div>
+      <div className="v text-5xl">{value}</div>
     </div>
   );
 }

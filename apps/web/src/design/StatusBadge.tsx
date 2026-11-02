@@ -19,11 +19,11 @@ const STATUS_LABEL: Record<StepRunStatus, string> = {
 };
 
 const STATUS_TINT: Record<StepRunStatus, string> = {
-  pending: 'border-transparent bg-muted text-muted-foreground',
-  running: 'motion-safe:animate-pulse border-info/40 bg-info/15 text-foreground',
-  waiting: 'border-warning/40 bg-warning/15 text-foreground',
-  done: 'border-success/40 bg-success/15 text-foreground',
-  failed: 'border-destructive/40 bg-destructive/15 text-foreground',
+  pending: 'bg-muted text-muted-foreground',
+  running: 'motion-safe:animate-pulse bg-accent-soft text-primary',
+  waiting: 'bg-warning-soft text-warning',
+  done: 'bg-success-soft text-success',
+  failed: 'bg-danger-soft text-destructive',
   skipped: 'border-dashed border-muted-foreground/50 bg-muted text-muted-foreground',
 };
 
@@ -32,7 +32,7 @@ export default function StatusBadge({ status }: { status: StepRunStatus }) {
     <span
       data-status={status}
       className={cn(
-        'inline-flex w-fit shrink-0 items-center justify-center gap-1 rounded-full border px-2.5 py-0.5 text-sm font-medium whitespace-nowrap',
+        'inline-flex w-fit shrink-0 items-center justify-center gap-1 rounded-full border border-transparent px-[0.55rem] py-[0.1rem] text-[0.72rem] font-semibold whitespace-nowrap',
         STATUS_TINT[status],
       )}
     >

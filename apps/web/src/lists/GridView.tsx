@@ -6,6 +6,8 @@ import {
   type ColumnDef,
   type SortingState,
 } from '@tanstack/react-table';
+import ChevronDownIcon from 'lucide-react/icons/chevron-down';
+import ChevronUpIcon from 'lucide-react/icons/chevron-up';
 import { useMemo, useState } from 'react';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
@@ -61,13 +63,15 @@ export default function GridView({
                       type="button"
                       onClick={header.column.getToggleSortingHandler()}
                       aria-label={`Sort by ${String(header.column.columnDef.header)}`}
+                      className="inline-flex items-center gap-1 rounded-[var(--radius-s)] border-transparent bg-transparent p-1 font-semibold shadow-none hover:bg-accent"
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getIsSorted() === 'asc'
-                        ? ' ▲'
-                        : header.column.getIsSorted() === 'desc'
-                          ? ' ▼'
-                          : ''}
+                      {header.column.getIsSorted() === 'asc' && (
+                        <ChevronUpIcon size={13} strokeWidth={2} aria-hidden />
+                      )}
+                      {header.column.getIsSorted() === 'desc' && (
+                        <ChevronDownIcon size={13} strokeWidth={2} aria-hidden />
+                      )}
                     </button>
                     <Explain target={target} label={label} />
                   </span>

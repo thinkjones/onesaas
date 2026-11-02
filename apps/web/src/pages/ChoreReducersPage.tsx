@@ -1,12 +1,13 @@
 import type { Workflow } from '@dad/shared';
+import BotIcon from 'lucide-react/icons/bot';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useCreateWorkflow, useRuns, useWorkflows } from '../api.ts';
-import { Badge } from '../components/ui/badge.tsx';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
+import CardHeading from '../design/CardHeading.tsx';
+import Pill from '../design/Pill.tsx';
 
 /**
  * A blank reducer starts untitled with no description; Dad (or the agent,
@@ -15,7 +16,7 @@ import AppButton from '../design/AppButton.tsx';
  */
 export const UNTITLED_CHORE_REDUCER = 'Untitled chore reducer';
 
-function WorkflowCard({ workflow }: { workflow: Workflow }) {
+function WorkflowRow({ workflow }: { workflow: Workflow }) {
   // N+1 scaffold: one GET /api/runs?workflowId= per card. Acceptable until a
   // summary endpoint exists; runs lists are small in M2.
   const { data: runs } = useRuns(workflow.id);
@@ -27,26 +28,22 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <Link
-            to={`/reducers/${workflow.id}`}
-            className="text-primary underline-offset-4 hover:underline"
-          >
-            {workflow.name}
-          </Link>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Switch checked={workflow.status === 'on'} aria-label={`${workflow.name} enabled`} />
-          <span>{workflow.status === 'on' ? 'On' : 'Off'}</span>
-        </div>
-        <p>Last run: {lastRun ?? 'never'}</p>
-        {waiting > 0 && <Badge variant="secondary">{waiting} waiting</Badge>}
-      </CardContent>
-    </Card>
+    <div className="row cursor-default">
+      <span className="body">
+        <Link
+          to={`/reducers/${workflow.id}`}
+          className="t block truncate text-primary underline-offset-4 hover:underline"
+        >
+          {workflow.name}
+        </Link>
+        <span className="dim block">Last run: {lastRun ?? 'never'}</span>
+      </span>
+      {waiting > 0 && <Pill tone="waiting">{waiting} waiting</Pill>}
+      <span className="flex items-center gap-2">
+        <Switch checked={workflow.status === 'on'} aria-label={`${workflow.name} enabled`} />
+        <span className="dim w-7">{workflow.status === 'on' ? 'On' : 'Off'}</span>
+      </span>
+    </div>
   );
 }
 
@@ -82,11 +79,18 @@ export default function ChoreReducersPage() {
           Couldn&apos;t create a chore reducer. Try again.
         </p>
       )}
-      <div className="grid gap-4">
-        {workflows.map((w) => (
-          <WorkflowCard key={w.id} workflow={w} />
-        ))}
-      </div>
+      <section className="panel" aria-label="Chore reducers">
+        <CardHeading icon={BotIcon} title="Chore reducers" count={workflows.length} />
+        {workflows.length === 0 ? (
+          <p className="empty-state">No chore reducers yet — create one above.</p>
+        ) : (
+          <div className="flex flex-col">
+            {workflows.map((w) => (
+              <WorkflowRow key={w.id} workflow={w} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

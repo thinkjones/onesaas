@@ -1,3 +1,5 @@
+import PinIcon from 'lucide-react/icons/pin';
+import TableIcon from 'lucide-react/icons/table';
 import { useState } from 'react';
 import {
   useBusinessTimezone,
@@ -9,6 +11,7 @@ import {
   useViews,
 } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
+import CardHeading from '../design/CardHeading.tsx';
 import CardsView from './CardsView.tsx';
 import GridView from './GridView.tsx';
 import StatView from './StatView.tsx';
@@ -165,46 +168,57 @@ export default function ListsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-6">
-        <nav aria-label="Lists" className="flex w-48 shrink-0 flex-col gap-1">
-          {lists.data.map((t) => (
-            <AppButton
-              key={t.name}
-              variant={t.name === table.name ? 'default' : 'outline'}
-              onClick={() => {
-                setSelected(t.name);
-                setPinning(false);
-              }}
-            >
-              {t.label} ({t.count})
-            </AppButton>
-          ))}
+        <nav aria-label="Lists" className="flex w-48 shrink-0 flex-col gap-px">
+          {lists.data.map((t) => {
+            const selected = t.name === table.name;
+            return (
+              <button
+                key={t.name}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setSelected(t.name);
+                  setPinning(false);
+                }}
+                className={`rounded-[var(--radius-s)] border border-transparent px-2.5 py-1.5 text-left text-[0.93rem] shadow-none ${
+                  selected ? 'bg-accent font-medium' : 'bg-transparent font-normal hover:bg-accent'
+                }`}
+              >
+                {t.label} ({t.count})
+              </button>
+            );
+          })}
         </nav>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold">{table.label}</h2>
-            <div className="ml-auto flex gap-2">
-              <AppButton
-                variant={mode === 'grid' ? 'default' : 'outline'}
+        <section className="panel min-w-0 flex-1" aria-label={table.label}>
+          <CardHeading icon={TableIcon} title={table.label} count={table.count} />
+          <div className="mt-2 mb-3 flex flex-wrap items-center gap-2">
+            <div className="seg" role="group" aria-label="Layout">
+              <button
+                type="button"
+                aria-pressed={mode === 'grid'}
+                className={mode === 'grid' ? 'on' : ''}
                 onClick={() => setMode('grid')}
               >
                 Grid
-              </AppButton>
-              <AppButton
-                variant={mode === 'cards' ? 'default' : 'outline'}
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === 'cards'}
+                className={mode === 'cards' ? 'on' : ''}
                 onClick={() => setMode('cards')}
               >
                 Cards
-              </AppButton>
-              <AppButton variant="outline" onClick={() => setPinning((p) => !p)}>
-                Pin a number
-              </AppButton>
+              </button>
             </div>
+            <AppButton variant="outline" onClick={() => setPinning((p) => !p)}>
+              Pin a number
+            </AppButton>
           </div>
           {pinning && <PinNumberForm table={table} onDone={() => setPinning(false)} />}
           {pinned.length > 0 && (
-            <section aria-label="Pinned numbers" className="flex flex-col gap-2">
-              <h3 className="text-lg font-semibold">Pinned numbers</h3>
-              <div className="flex flex-wrap gap-3">
+            <section aria-label="Pinned numbers" className="mt-3 flex flex-col gap-2">
+              <CardHeading icon={PinIcon} title="Pinned numbers" />
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-[0.4rem]">
                 {pinned.map((view) => (
                   <PinnedStat key={view.id} view={view} />
                 ))}
@@ -237,7 +251,7 @@ export default function ListsPage() {
               )}
             </>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );
