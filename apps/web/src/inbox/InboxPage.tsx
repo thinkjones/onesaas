@@ -7,7 +7,7 @@ import CardHeading from '../design/CardHeading.tsx';
 import StatusBadge from '../design/StatusBadge.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
-import { formatRunListTime, runDisplayName } from '../runtime/format.ts';
+import { formatDateTime, formatRunListTime, runDisplayName } from '../runtime/format.ts';
 
 /**
  * Inbox (Bug #3): everything the chore reducers have done, newest first —
@@ -29,7 +29,9 @@ function InboxRow({ run, reducerName }: { run: Run; reducerName: string }) {
   return (
     <div data-explain={dataExplainValue(target, label)} className="flex items-center gap-1">
       <Link to={`/reducers/${run.workflowId}?run=${run.id}`} className="row min-w-0 flex-1">
-        <span className="when">{formatRunListTime(run.startedAt)}</span>
+        <span className="when" title={formatDateTime(run.startedAt)}>
+          {formatRunListTime(run.startedAt)}
+        </span>
         <span className="body">
           <span className="t block truncate">{reducerName}</span>
           <span className="dim block truncate" title={line}>

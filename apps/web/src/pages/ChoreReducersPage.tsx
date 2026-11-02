@@ -8,6 +8,7 @@ import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
 import CardHeading from '../design/CardHeading.tsx';
 import Pill from '../design/Pill.tsx';
+import { formatDateTime, formatRunListTime } from '../runtime/format.ts';
 
 /**
  * A blank reducer starts untitled with no description; Dad (or the agent,
@@ -36,7 +37,14 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
         >
           {workflow.name}
         </Link>
-        <span className="dim block">Last run: {lastRun ?? 'never'}</span>
+        <span className="dim block">
+          Last run:{' '}
+          {lastRun === undefined ? (
+            'never'
+          ) : (
+            <span title={formatDateTime(lastRun)}>{formatRunListTime(lastRun)}</span>
+          )}
+        </span>
       </span>
       {waiting > 0 && <Pill tone="waiting">{waiting} waiting</Pill>}
       <span className="flex items-center gap-2">

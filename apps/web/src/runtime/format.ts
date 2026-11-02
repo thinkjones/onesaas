@@ -34,9 +34,19 @@ export function formatRunListTime(iso: string): string {
   }
 }
 
-/** Full stamp for the inspector meta block: "Oct 28, 10:42 AM"-style. */
+/**
+ * Full stamp for the inspector meta block and relative-date title attributes:
+ * "Oct 28, 10:42 AM"-style. Falls back to the raw string on garbage input
+ * (like formatRunListTime — one corrupt stamp must not kill the list).
+ */
 export function formatDateTime(iso: string): string {
-  return dateTimeFmt.format(new Date(iso));
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return dateTimeFmt.format(d);
+  } catch {
+    return iso;
+  }
 }
 
 /** Plan-exact money: costUsd 0.0012 renders "$0.0012". */

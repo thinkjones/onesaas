@@ -7,7 +7,7 @@ import { ApiError, getRuns, useWorkflows, useWorkflowOp } from '../api.ts';
 import { Switch } from '../components/ui/switch.tsx';
 import CardHeading from '../design/CardHeading.tsx';
 import Pill from '../design/Pill.tsx';
-import { formatRunListTime } from '../runtime/format.ts';
+import { formatDateTime, formatRunListTime } from '../runtime/format.ts';
 
 // "Your chore reducers" (M5 Task 6): one row per workflow with a working
 // on/off switch (the setStatus op, like DesignView's Turn on), the last run,
@@ -46,7 +46,12 @@ function ReducerRow({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
           {workflow.name}
         </Link>
         <span className="dim block">
-          Last run: {lastRun === undefined ? 'never' : formatRunListTime(lastRun)}
+          Last run:{' '}
+          {lastRun === undefined ? (
+            'never'
+          ) : (
+            <span title={formatDateTime(lastRun)}>{formatRunListTime(lastRun)}</span>
+          )}
         </span>
       </span>
       {waiting.length > 0 && (

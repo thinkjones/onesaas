@@ -3,7 +3,7 @@ import { cn } from 'cn';
 import StatusBadge from '../design/StatusBadge.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
-import { formatRunListTime, runDisplayName } from './format.ts';
+import { formatDateTime, formatRunListTime, runDisplayName } from './format.ts';
 
 export interface RunsListProps {
   runs: Run[];
@@ -29,7 +29,7 @@ export default function RunsList({
   lastLineByRunId,
 }: RunsListProps) {
   return (
-    <div role="listbox" aria-label="Runs" className="flex flex-col gap-2">
+    <div role="listbox" aria-label="Runs" className="rows flex flex-col">
       {runs.map((run) => {
         const selected = run.id === selectedRunId;
         const lastLine = lastLineByRunId?.[run.id];
@@ -49,27 +49,21 @@ export default function RunsList({
               }
             }}
             data-explain={dataExplainValue(target, label)}
-            className={cn(
-              'min-h-10 cursor-pointer rounded-[var(--radius)] border border-border bg-card p-3 shadow-sm',
-              selected && 'ring-2 ring-ring',
-            )}
+            className={cn('row', selected && 'selected')}
           >
-            <div className="flex items-center gap-1">
-              <p className="min-w-0 flex-1 text-base font-medium">
-                <span>{formatRunListTime(run.startedAt)}</span>
-                {' · '}
-                <span>{runDisplayName(run.triggerPayload)}</span>
-              </p>
-              <Explain target={target} label={label} />
-            </div>
-            <div className="mt-1.5">
-              <StatusBadge status={run.status} />
-            </div>
-            {lastLine !== undefined && lastLine !== '' && (
-              <p className="mt-1.5 truncate text-base text-muted-foreground" title={lastLine}>
-                {lastLine}
-              </p>
-            )}
+            <span className="when" title={formatDateTime(run.startedAt)}>
+              {formatRunListTime(run.startedAt)}
+            </span>
+            <span className="body">
+              <span className="t block truncate">{runDisplayName(run.triggerPayload)}</span>
+              {lastLine !== undefined && lastLine !== '' && (
+                <span className="dim block truncate" title={lastLine}>
+                  {lastLine}
+                </span>
+              )}
+            </span>
+            <StatusBadge status={run.status} />
+            <Explain target={target} label={label} />
           </div>
         );
       })}

@@ -184,7 +184,7 @@ export default function ListsPage() {
                   selected ? 'bg-accent font-medium' : 'bg-transparent font-normal hover:bg-accent'
                 }`}
               >
-                {t.label} ({t.count})
+                {t.label} · {t.count}
               </button>
             );
           })}
