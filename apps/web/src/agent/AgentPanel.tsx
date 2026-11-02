@@ -1,4 +1,4 @@
-import { PanelRightClose } from 'lucide-react';
+import PanelRightClose from 'lucide-react/icons/panel-right-close';
 import { useEffect, useRef, useState } from 'react';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';

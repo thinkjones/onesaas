@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getPairingStatus, revokePairing, startPairing } from './api.ts';
 import AppButton from './design/AppButton.tsx';
 import CardHeading from './design/CardHeading.tsx';
+import CheckIcon from 'lucide-react/icons/check';
 import PuzzleIcon from 'lucide-react/icons/puzzle';
 
 interface PairingStatus {
@@ -101,7 +102,9 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
         <p>Checking connection…</p>
       ) : status.paired ? (
         <>
-          <p>Connected ✓</p>
+          <p className="flex items-center gap-1.5">
+            Connected <CheckIcon size={13} strokeWidth={2} aria-hidden className="text-success" />
+          </p>
           {status.connected ? (
             <p>
               Open a Gmail thread and click &apos;Save as lead &amp; reply&apos; to start a run.

@@ -1,7 +1,9 @@
 import type { StepInstance, StepKind, StepRunStatus } from '@dad/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { cn } from 'cn';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import Pencil from 'lucide-react/icons/pencil';
+import Plus from 'lucide-react/icons/plus';
+import Trash2 from 'lucide-react/icons/trash-2';
 import { motion } from 'motion/react';
 import type { ReactNode, SyntheticEvent } from 'react';
 import AppCard from '../design/AppCard.tsx';

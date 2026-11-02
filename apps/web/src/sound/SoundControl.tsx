@@ -1,4 +1,5 @@
-import { Volume2, VolumeX } from 'lucide-react';
+import Volume2 from 'lucide-react/icons/volume-2';
+import VolumeX from 'lucide-react/icons/volume-x';
 import { useSettings } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 

@@ -26,6 +26,9 @@
   --color-danger-soft: var(--danger-soft);
   --color-warning-soft: var(--warning-soft);
   --color-success-soft: var(--success-soft);
+  --color-scrim: var(--scrim);
+  --color-term-bg: var(--term-bg);
+  --color-term-text: var(--term-text);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --color-border: var(--border);

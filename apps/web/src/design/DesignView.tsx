@@ -1,6 +1,6 @@
 import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@dad/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { TriangleAlert } from 'lucide-react';
+import TriangleAlert from 'lucide-react/icons/triangle-alert';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';

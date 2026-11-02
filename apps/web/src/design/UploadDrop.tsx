@@ -1,4 +1,4 @@
-import { ImagePlus } from 'lucide-react';
+import ImagePlus from 'lucide-react/icons/image-plus';
 import { useRef, useState } from 'react';
 
 export interface UploadDropProps {

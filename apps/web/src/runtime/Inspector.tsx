@@ -1,4 +1,5 @@
 import type { StepRun } from '@dad/shared';
+import BoxIcon from 'lucide-react/icons/box';
 import { useState } from 'react';
 import type { ExplainTarget } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
@@ -39,7 +40,7 @@ function FileThumb({ url }: { url: string }) {
           role="dialog"
           aria-label="Full-size photo"
           onClick={() => setFullSize(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-term-bg/85 p-4"
         >
           <img
             src={url}
@@ -168,13 +169,17 @@ export default function Inspector({
         if (!isOpen) onClose();
       }}
     >
-      <SheetContent side="right" className="sm:max-w-md" aria-label={`Details for ${title}`}>
+      <SheetContent side="right" aria-label={`Details for ${title}`}>
         <SheetHeader
-          className="text-left"
+          className="p-0 text-left"
           data-explain={
             explain ? dataExplainValue(explain.target, explain.label) : undefined
           }
         >
+          <p className="flex items-center gap-1 text-[0.75rem] font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+            <BoxIcon size={14} strokeWidth={1.75} aria-hidden />
+            Step
+          </p>
           <div className="flex items-center gap-1">
             <SheetTitle className="flex-1 text-xl">{title}</SheetTitle>
             {explain && <Explain target={explain.target} label={explain.label} />}
@@ -183,7 +188,7 @@ export default function Inspector({
             <StatusBadge status={stepRun?.status ?? 'pending'} />
           </div>
         </SheetHeader>
-        <ScrollArea className="flex-1 px-4 pb-4">
+        <ScrollArea className="min-h-0 flex-1">
           {stepRun === undefined ? (
             <p className="text-base text-muted-foreground">This step hasn&apos;t run yet.</p>
           ) : (

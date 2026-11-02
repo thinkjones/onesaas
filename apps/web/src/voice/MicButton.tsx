@@ -1,4 +1,4 @@
-import { Mic } from 'lucide-react';
+import Mic from 'lucide-react/icons/mic';
 import { useEffect, useRef, useState } from 'react';
 import { useVoice, type UseVoiceResult } from './useVoice.ts';
 

@@ -1,6 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 import type { Run, StepRun } from '@dad/shared';
-import { History, TriangleAlert } from 'lucide-react';
+import History from 'lucide-react/icons/history';
+import TriangleAlert from 'lucide-react/icons/triangle-alert';
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
 import { getRun, useRun, useRuns, useSettings } from '../api.ts';

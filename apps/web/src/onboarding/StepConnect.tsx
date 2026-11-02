@@ -1,3 +1,4 @@
+import CheckIcon from 'lucide-react/icons/check';
 import { useCallback, useState } from 'react';
 import Pairing from '../Pairing.tsx';
 import AppButton from '../design/AppButton.tsx';
@@ -8,7 +9,7 @@ const EXTENSION_INSTALL_URL =
 
 /**
  * M5 Task 5 screen 4: the install link and the reused M1 pairing card (code
- * card, unpacked-extension instructions), with a big ✓ once the same paired
+ * card, unpacked-extension instructions), with a big check once the same paired
  * state Pairing reports flips true. Skipping is always available; both paths
  * finish onboarding.
  */
@@ -33,12 +34,8 @@ export default function StepConnect({ onFinish }: { onFinish(): void }) {
         </a>
       </p>
       {paired && (
-        <p
-          role="img"
-          aria-label="Chrome extension paired"
-          className="mt-6 text-center font-display text-7xl text-primary"
-        >
-          ✓
+        <p role="img" aria-label="Chrome extension paired" className="mt-6 text-center">
+          <CheckIcon size={72} strokeWidth={2} aria-hidden className="inline text-success" />
         </p>
       )}
       <div className="mt-6">

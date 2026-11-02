@@ -1,6 +1,6 @@
 import type { Workflow } from '@dad/shared';
 import BotIcon from 'lucide-react/icons/bot';
-import { Plus } from 'lucide-react';
+import Plus from 'lucide-react/icons/plus';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useCreateWorkflow, useRuns, useWorkflows } from '../api.ts';

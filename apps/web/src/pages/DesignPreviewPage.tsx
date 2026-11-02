@@ -1,5 +1,6 @@
 import type { StepRunStatus } from '@dad/shared';
-import { Inbox, ListChecks } from 'lucide-react';
+import Inbox from 'lucide-react/icons/inbox';
+import ListChecks from 'lucide-react/icons/list-checks';
 import { useState } from 'react';
 import { CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import AppButton from '../design/AppButton.tsx';

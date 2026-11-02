@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { PanelRightOpen, SearchX, TriangleAlert } from 'lucide-react';
+import PanelRightOpen from 'lucide-react/icons/panel-right-open';
+import SearchX from 'lucide-react/icons/search-x';
+import TriangleAlert from 'lucide-react/icons/triangle-alert';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import ActivityLog, { type ActivityEntry } from '../agent/ActivityLog.tsx';

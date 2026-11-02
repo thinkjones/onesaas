@@ -29,7 +29,7 @@ test('start shows the 6-digit code', async () => {
   unmount();
 });
 
-test('poll reaching paired shows Connected ✓', async () => {
+test('poll reaching paired shows Connected', async () => {
   // Mount check reports unpaired (so the button renders); the first 2s poll
   // reports paired.
   let statusCalls = 0;
@@ -50,7 +50,7 @@ test('poll reaching paired shows Connected ✓', async () => {
   fireEvent.click(await screen.findByText('Connect Chrome'));
   await screen.findByText('123456');
   // Real 2s poll interval; the first poll reports paired.
-  expect(await screen.findByText('Connected ✓', {}, { timeout: 5000 })).toBeDefined();
+  expect(await screen.findByText('Connected', {}, { timeout: 5000 })).toBeDefined();
   unmount();
 });
 
@@ -68,7 +68,7 @@ test('shows connected state on load when already paired, without starting pairin
   });
   vi.stubGlobal('fetch', fetchMock);
   const { unmount } = render(<Pairing />);
-  expect(await screen.findByText('Connected ✓')).toBeDefined();
+  expect(await screen.findByText('Connected')).toBeDefined();
   expect(await screen.findByText(/Open a Gmail thread/)).toBeDefined();
   expect(fetchMock).not.toHaveBeenCalledWith('/api/pairing/start', expect.anything());
   unmount();
@@ -118,7 +118,7 @@ test('keeps polling while connected and reflects a server-side revoke', async ()
     }),
   );
   const { unmount } = render(<Pairing />);
-  await screen.findByText('Connected ✓');
+  await screen.findByText('Connected');
   // Real 2s poll interval; the second poll reports revoked.
   expect(
     await screen.findByText(/Load the extension in Chrome/, {}, { timeout: 5000 }),
@@ -147,7 +147,7 @@ test('revoke after pairing clears the dead code back to the start view', async (
   const { unmount } = render(<Pairing />);
   fireEvent.click(await screen.findByText('Connect Chrome'));
   await screen.findByText('123456');
-  await screen.findByText('Connected ✓', {}, { timeout: 5000 });
+  await screen.findByText('Connected', {}, { timeout: 5000 });
   // Real 2s poll interval; a later poll reports revoked.
   expect(
     await screen.findByText(/Load the extension in Chrome/, {}, { timeout: 8000 }),

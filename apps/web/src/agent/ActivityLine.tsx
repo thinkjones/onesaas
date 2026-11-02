@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react';
+import Loader2 from 'lucide-react/icons/loader-2';
 
 export interface ActivityLineProps {
   text: string;

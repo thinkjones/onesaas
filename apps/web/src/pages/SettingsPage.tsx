@@ -1,5 +1,6 @@
 import BrainIcon from 'lucide-react/icons/brain';
 import BriefcaseIcon from 'lucide-react/icons/briefcase';
+import CheckIcon from 'lucide-react/icons/check';
 import PaletteIcon from 'lucide-react/icons/palette';
 import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
 import Volume2Icon from 'lucide-react/icons/volume-2';
@@ -242,10 +243,15 @@ function ThinkingSection() {
         )}
         {data !== undefined && (
           <div className="space-y-1">
-            <p>
-              {onGlimmer
-                ? 'Inbox sorting runs on this computer (Muse Glimmer) ✓'
-                : "Inbox sorting is using Muse Spark (Glimmer isn't running on this computer)."}
+            <p className="flex items-center gap-1.5">
+              {onGlimmer ? (
+                <>
+                  Inbox sorting runs on this computer (Muse Glimmer)
+                  <CheckIcon size={13} strokeWidth={2} aria-hidden className="text-success" />
+                </>
+              ) : (
+                "Inbox sorting is using Muse Spark (Glimmer isn't running on this computer)."
+              )}
             </p>
             {data
               .filter((row) => row.role !== 'triage')

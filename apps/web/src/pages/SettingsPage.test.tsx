@@ -84,7 +84,7 @@ test('healthy glimmer shows the on-this-computer sentence plus one line per role
     ),
   );
   expect(
-    await screen.findByText('Inbox sorting runs on this computer (Muse Glimmer) ✓'),
+    await screen.findByText(/Inbox sorting runs on this computer/),
   ).toBeDefined();
   expect(await screen.findByText('Building chore reducers: Muse Spark')).toBeDefined();
   expect(await screen.findByText('Big plans: Muse Wonder')).toBeDefined();
