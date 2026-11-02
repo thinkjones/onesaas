@@ -1,8 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-// Self-hosted variable fonts (M5): Inter for the interface, Nunito for headings.
-import '@fontsource-variable/inter'
-import '@fontsource-variable/nunito'
+// System fonts only (Craft §1): --font-ui/--font-heading in styles/tokens.css.
 import './styles/app.css'
 import App from './App.tsx'
 import DesktopGate from './shell/DesktopGate.tsx'

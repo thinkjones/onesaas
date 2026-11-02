@@ -1,47 +1,152 @@
-/* Self-hosted variable fonts (M5 Task 1), loaded in main.tsx. */
+/* Craft design tokens — design-system-prompt §2, values verbatim.
+ * Light/dark follows the OS (prefers-color-scheme); there is no in-app theme
+ * switcher. System fonts only — no web-font imports (see main.tsx).
+ *
+ * Three layers (design-system skill): the §2 block below is primitives +
+ * semantic; the alias block after it re-expresses the SAME values under the
+ * Tailwind/shadcn pipeline names (triplets feed the `hsl(var(--x))` mappings
+ * in app.css @theme). Keep both layers value-identical.
+ */
 :root {
-  --font-sans:
-    'Inter Variable', system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'Nunito Variable', 'Inter Variable', system-ui, sans-serif;
+  color-scheme: light dark;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-ui);
+  --bg: hsl(210 20% 98.5%);
+  --bg-well: hsl(214 22% 95%);
+  --bg-raised: hsl(0 0% 100%);
+  --bg-hover: hsl(214 20% 92%);
+  --bg-window: hsl(214 14% 91%);
+  --bg-sidebar: hsl(210 20% 97.5%);
+  --bg-canvas: linear-gradient(180deg, hsl(203 60% 93%) 0%, hsl(206 45% 96.5%) 240px, var(--bg) 520px);
+  --bg-input: hsl(214 25% 95%);
+  --border: hsl(214 18% 89%);
+  --border-strong: hsl(214 14% 80%);
+  --text: hsl(220 10% 12%);
+  --text-dim: hsl(218 8% 45%);
+  --accent: hsl(213 88% 53%);
+  --accent-soft: hsl(213 88% 53% / 0.11);
+  --on-accent: hsl(0 0% 100%);
+  --danger: hsl(4 72% 48%);
+  --danger-soft: hsl(4 72% 50% / 0.10);
+  --warning: hsl(32 90% 38%);
+  --warning-soft: hsl(38 92% 50% / 0.15);
+  --success: hsl(145 55% 32%);
+  --success-soft: hsl(145 50% 40% / 0.12);
+  --term-bg: hsl(220 14% 12%);
+  --term-text: hsl(214 20% 90%);
+  --scrim: hsl(215 30% 20% / 0.16);
+  --shadow-card: 0 1px 2px hsl(215 30% 20% / 0.05), 0 3px 10px hsl(215 30% 20% / 0.05);
+  --shadow-float: 0 1px 2px hsl(215 30% 20% / 0.06), 0 2px 6px hsl(215 30% 20% / 0.05);
+  --shadow-dialog: 0 18px 48px hsl(215 30% 20% / 0.16), 0 2px 8px hsl(215 30% 20% / 0.06);
+  --radius: 14px;
+  --radius-s: 8px;
+  --radius-pill: 999px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: hsl(220 13% 10%);
+    --bg-well: hsl(220 12% 13.5%);
+    --bg-raised: hsl(220 11% 16%);
+    --bg-hover: hsl(220 10% 21%);
+    --bg-window: hsl(220 14% 6%);
+    --bg-sidebar: hsl(220 12% 12%);
+    --bg-canvas: linear-gradient(180deg, hsl(212 30% 15%) 0%, hsl(215 20% 12%) 240px, var(--bg) 520px);
+    --bg-input: hsl(220 10% 19%);
+    --border: hsl(220 9% 21%);
+    --border-strong: hsl(220 8% 30%);
+    --text: hsl(214 20% 93%);
+    --text-dim: hsl(216 9% 64%);
+    --accent: hsl(213 92% 63%);
+    --accent-soft: hsl(213 92% 63% / 0.16);
+    --on-accent: hsl(220 30% 8%);
+    --danger: hsl(4 80% 67%);
+    --danger-soft: hsl(4 80% 60% / 0.16);
+    --warning: hsl(38 92% 62%);
+    --warning-soft: hsl(38 92% 55% / 0.16);
+    --success: hsl(145 48% 60%);
+    --success-soft: hsl(145 45% 50% / 0.16);
+    --term-bg: hsl(220 14% 7%);
+    --scrim: hsl(220 30% 3% / 0.5);
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.35);
+    --shadow-float: 0 1px 2px hsl(0 0% 0% / 0.4);
+    --shadow-dialog: 0 18px 48px hsl(0 0% 0% / 0.55);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
-/* Morning theme tokens. Values ported from the me-personal-crm Craft system
-   (Bug #2) — cool sky-tinted surfaces, blue accent — mapped onto our shadcn
-   token names. Fonts stay Inter/Nunito per the M5 spec. */
-:root[data-theme='morning'] {
+/* ---- Alias layer: the same values under Tailwind/shadcn pipeline names.
+ * Names the §2 block already owns (--border, --accent, --warning, --success
+ * as full values) are NOT redefined here — app.css @theme maps those straight
+ * from §2. NOTE the one deliberate name clash: shadcn `accent` is a hover
+ * FILL (= §2 --bg-hover), while §2 --accent is the blue (shadcn `primary`).
+ * `--info` (the "Working…" running blue) has no §2 token: it aliases the
+ * blue accent in both schemes. */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --background: 210 20% 98.5%;
   --foreground: 220 10% 12%;
   --card: 0 0% 100%;
+  --card-foreground: 220 10% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 10% 12%;
   --primary: 213 88% 53%;
   --primary-foreground: 0 0% 100%;
+  --secondary: 214 22% 95%;
+  --secondary-foreground: 220 10% 12%;
   --muted: 214 22% 95%;
-  --accent: 214 20% 92%;
+  --muted-foreground: 218 8% 45%;
+  --accent-foreground: 220 10% 12%;
   --destructive: 4 72% 48%;
-  --warning: 32 90% 38%;
-  --success: 145 55% 32%;
-  --radius: 0.875rem;
-
-  /* Floating-shell surfaces (CRM look): window backdrop, sidebar panel. */
+  --destructive-foreground: 0 0% 100%;
+  --info: 213 88% 53%;
+  --input: 214 25% 95%;
+  --ring: 213 88% 53%;
   --window: 214 14% 91%;
   --sidebar: 210 20% 97.5%;
   --canvas: linear-gradient(
     180deg,
     hsl(203 60% 93%) 0%,
     hsl(206 45% 96.5%) 240px,
-    hsl(var(--background)) 520px
+    hsl(210 20% 98.5%) 520px
   );
-
-  /* shadcn companions, derived from the Morning palette (not in the plan, but
-     required by the shadcn components Task 3 installs). */
-  --card-foreground: 220 10% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 10% 12%;
-  --secondary: 214 22% 95%;
-  --secondary-foreground: 220 10% 12%;
-  --muted-foreground: 218 8% 45%;
-  --accent-foreground: 220 10% 12%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 214 18% 89%;
-  --input: 214 25% 95%;
-  --ring: 213 88% 53%;
+  --shadow-sm: 0 1px 2px hsl(215 30% 20% / 0.05), 0 3px 10px hsl(215 30% 20% / 0.05);
+  --shadow-md: 0 18px 48px hsl(215 30% 20% / 0.16), 0 2px 8px hsl(215 30% 20% / 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 220 13% 10%;
+    --foreground: 214 20% 93%;
+    --card: 220 11% 16%;
+    --card-foreground: 214 20% 93%;
+    --popover: 220 11% 16%;
+    --popover-foreground: 214 20% 93%;
+    --primary: 213 92% 63%;
+    --primary-foreground: 220 30% 8%;
+    --secondary: 220 12% 13.5%;
+    --secondary-foreground: 214 20% 93%;
+    --muted: 220 12% 13.5%;
+    --muted-foreground: 216 9% 64%;
+    --accent-foreground: 214 20% 93%;
+    --destructive: 4 80% 67%;
+    --destructive-foreground: 0 0% 100%;
+    --info: 213 92% 63%;
+    --input: 220 10% 19%;
+    --ring: 213 92% 63%;
+    --window: 220 14% 6%;
+    --sidebar: 220 12% 12%;
+    --canvas: linear-gradient(
+      180deg,
+      hsl(212 30% 15%) 0%,
+      hsl(215 20% 12%) 240px,
+      hsl(220 13% 10%) 520px
+    );
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.35);
+    --shadow-md: 0 18px 48px hsl(0 0% 0% / 0.55);
+  }
 }

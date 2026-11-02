@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @import './tokens.css';
-@import '../design/tokens.css';
 
 @theme inline {
   --color-background: hsl(var(--background));
@@ -15,22 +14,23 @@
   --color-secondary-foreground: hsl(var(--secondary-foreground));
   --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
+  /* shadcn `accent` is a hover fill = §2 --bg-hover (NOT the §2 blue). */
+  --color-accent: var(--bg-hover);
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-warning: hsl(var(--warning));
-  --color-success: hsl(var(--success));
+  --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-info: hsl(var(--info));
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
-  --color-border: hsl(var(--border));
+  --color-border: var(--border);
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
   --color-sidebar: hsl(var(--sidebar));
   --color-window: hsl(var(--window));
   /* Bare `border` utilities use the theme border color, not currentColor. */
-  --default-border-color: hsl(var(--border));
+  --default-border-color: var(--border);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -38,26 +38,144 @@
 
 @layer base {
   html {
-    /* Overridden at runtime by ThemeProvider (theme + text size). */
+    /* Overridden at runtime by TextSizeProvider (text size only). */
     font-size: 17px;
   }
+  /* ---- Prompt §2 base element styles (adapted notes inline). */
+  /* Body is 0.875rem (= 14px at a 16px root, per §2) so it scales with the
+     text-size setting while keeping §2 proportions. */
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-sans);
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
   }
-  /* Tight display tracking, like the CRM reference (Bug #2). */
+  button {
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-float);
+    padding: 0.4rem 0.95rem;
+    transition:
+      border-color 0.2s var(--ease),
+      background 0.2s var(--ease);
+  }
+  button:hover {
+    border-color: var(--border-strong);
+  }
+  button:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--on-accent);
+    font-weight: 600;
+    box-shadow: none;
+  }
+  button.primary:hover {
+    border-color: transparent;
+    filter: brightness(1.06);
+  }
+  button.link {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: inherit;
+  }
+  button.link:hover {
+    border-color: transparent;
+    text-decoration: underline;
+  }
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  /* Range/checkbox/radio keep native styling (the app styles sliders itself). */
+  input:not([type='range']):not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    padding: 0.45rem 0.7rem;
+    box-sizing: border-box;
+  }
+  input:not([type='range']):not([type='checkbox']):not([type='radio']):focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--accent);
+    background: var(--bg-raised);
+  }
+  input::placeholder {
+    color: var(--text-dim);
+  }
   h1,
   h2,
   h3,
   h4 {
+    font-family: var(--font-heading);
+    font-weight: 700;
     letter-spacing: -0.01em;
+  }
+  h2 {
+    margin: 0.4rem 0;
+    font-size: 1.35rem;
+  }
+  h3 {
+    margin: 1.25rem 0 0.4rem;
+    font-size: 1.05rem;
+  }
+  h4 {
+    margin: 0.5rem 0 0.25rem;
+    font-size: 0.85rem;
+  }
+  /* Every card heading leads with an icon. */
+  .panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 1rem 1.15rem;
+  }
+  .panel > h3:first-child {
+    margin-top: 0;
+  }
+  .panel h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .panel h3 > svg {
+    flex-shrink: 0;
+    color: var(--text-dim);
+  }
+  .empty-state {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 1.25rem 0.5rem;
   }
 }
 
 @layer utilities {
-  /* Nunito for headings, the home prompt and onboarding (M5). */
+  /* Display headings (M5) — now the §2 system heading stack, not Nunito. */
   .font-display {
-    font-family: var(--font-display);
+    font-family: var(--font-heading);
   }
   /* Sky canvas gradient behind the main panel (Bug #2, CRM look). */
   .bg-canvas {
