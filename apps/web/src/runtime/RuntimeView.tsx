@@ -37,7 +37,7 @@ function RuntimeShell({
 }) {
   return (
     <div className="flex gap-4">
-      <div className="w-[300px] shrink-0">
+      <div className="w-[340px] shrink-0">
         <RunsList
           runs={runs}
           selectedRunId={selectedRunId}
