@@ -98,6 +98,7 @@ export function createApp(deps: AppDeps): Hono {
   const gateway = deps.gateway as Gateway | undefined;
   const voice = deps.voice as VoiceProxyOptions | undefined;
   const image = deps.image as ImageModels | undefined;
+  const resetData = deps.resetData as (() => void) | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -192,6 +193,16 @@ export function createApp(deps: AppDeps): Hono {
     // Timezone goes through setTimezone so live AI steps see it immediately.
     if (timezone !== undefined) setTimezone(timezone);
     return c.json(appSettings.get());
+  });
+
+  // The Settings page's Reset-data button: wipe the live store back to
+  // fresh-install state (dataReset.ts; DELETEs through the open handle, so no
+  // restart is needed). The client then re-reads settings and lands on
+  // /welcome via the onboarding gate.
+  app.post('/api/data/reset', (c) => {
+    if (!resetData) return c.json({ error: 'Server not configured' }, 500);
+    resetData();
+    return c.json({ ok: true });
   });
 
   // Mood backgrounds (M5 Task 4). POST draws Dad's business in the

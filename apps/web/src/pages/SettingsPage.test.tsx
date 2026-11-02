@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { ModelStatus } from '../api.ts';
 import SettingsPage from './SettingsPage.tsx';
@@ -30,10 +32,17 @@ const SPARK_ROWS: ModelStatus[] = [
   { role: 'vision', provider: 'meta', model: 'muse-spark-1.3', healthy: true },
 ];
 
-function renderSettings(models: ModelStatus[] | 'hang') {
-  const fetch = vi.fn(async (input: string | URL | Request) => {
+function renderSettings(models: ModelStatus[] | 'hang', onNavigate?: (path: string) => void) {
+  let settings: Record<string, unknown> = { ...SETTINGS };
+  const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (url === '/api/settings') return ok(SETTINGS);
+    if (url === '/api/settings') {
+      if (init?.method === 'PUT') {
+        settings = { ...settings, ...JSON.parse(String(init.body)) };
+      }
+      return ok(settings);
+    }
+    if (url === '/api/data/reset' && init?.method === 'POST') return ok({ ok: true });
     if (url === '/api/models/status') {
       if (models === 'hang') return new Promise<Response>(() => {});
       return ok(models);
@@ -43,15 +52,27 @@ function renderSettings(models: ModelStatus[] | 'hang') {
   });
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function LocationProbe() {
+    const location = useLocation();
+    useEffect(() => {
+      onNavigate?.(location.pathname);
+    }, [location.pathname]);
+    return null;
+  }
   render(
     <QueryClientProvider client={client}>
-      <SettingsPage />
+      <MemoryRouter initialEntries={['/settings']}>
+        <LocationProbe />
+        <SettingsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { fetch };
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -133,4 +154,46 @@ test('unknown future roles render the raw role id', async () => {
     },
   ]);
   expect(await screen.findByText('scheduler: Muse Spark')).toBeDefined();
+});
+
+test('reset data posts only on the second tap, then lands on welcome', async () => {
+  const seen: string[] = [];
+  const { fetch } = renderSettings(SPARK_ROWS, (path) => seen.push(path));
+  const button = await screen.findByRole('button', { name: 'Reset data' });
+  fireEvent.click(button);
+  expect(await screen.findByRole('button', { name: 'Yes, reset data' })).toBeDefined();
+  expect(fetch.mock.calls.some(([url]) => String(url) === '/api/data/reset')).toBe(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, reset data' }));
+  await screen.findByRole('button', { name: 'Reset data' });
+  expect(
+    fetch.mock.calls.some(
+      ([url, init]) => String(url) === '/api/data/reset' && (init as RequestInit).method === 'POST',
+    ),
+  ).toBe(true);
+  expect(seen.at(-1)).toBe('/welcome');
+});
+
+test('reset onboarding flips onboarded off, then lands on welcome', async () => {
+  const seen: string[] = [];
+  const { fetch } = renderSettings(SPARK_ROWS, (path) => seen.push(path));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reset onboarding' }));
+  expect(await screen.findByRole('button', { name: 'Yes, reset onboarding' })).toBeDefined();
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, reset onboarding' }));
+  await screen.findByRole('button', { name: 'Reset onboarding' });
+  const puts = fetch.mock.calls.filter(
+    ([url, init]) => String(url) === '/api/settings' && (init as RequestInit | undefined)?.method === 'PUT',
+  );
+  expect(puts).toHaveLength(1);
+  expect(JSON.parse(String((puts[0]![1] as RequestInit).body))).toEqual({ onboarded: false });
+  expect(seen.at(-1)).toBe('/welcome');
+});
+
+test('an armed reset button disarms after five seconds', async () => {
+  renderSettings(SPARK_ROWS);
+  await screen.findByRole('button', { name: 'Reset data' });
+  vi.useFakeTimers();
+  fireEvent.click(screen.getByRole('button', { name: 'Reset data' }));
+  expect(screen.getByRole('button', { name: 'Yes, reset data' })).toBeDefined();
+  act(() => vi.advanceTimersByTime(5000));
+  expect(screen.getByRole('button', { name: 'Reset data' })).toBeDefined();
 });

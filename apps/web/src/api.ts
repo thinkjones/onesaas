@@ -206,6 +206,29 @@ export function putSettings(patch: SettingsPatch): Promise<Settings> {
   return putJson('/api/settings', patch);
 }
 
+/** POST /api/data/reset: wipe the store back to fresh-install state. */
+export function postDataReset(): Promise<{ ok: boolean }> {
+  return postJson('/api/data/reset');
+}
+
+/**
+ * The Settings Reset-data button: after the wipe every cached query is stale
+ * (workflows, lists, views, settings…), so all of them are invalidated and the
+ * caller navigates to /welcome. A failure toasts and navigates nowhere.
+ */
+export function useDataReset() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: postDataReset,
+    onSuccess: () => {
+      void client.invalidateQueries();
+    },
+    onError: () => {
+      toast('Could not reset the data.');
+    },
+  });
+}
+
 /**
  * The settings document plus an optimistic `update(patch)`: the UI (theme,
  * text size) applies instantly and rolls back with a toast if the PUT fails.

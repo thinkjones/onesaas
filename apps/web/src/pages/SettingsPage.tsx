@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
 import {
+  useDataReset,
   useModelStatus,
   useSettings,
   type ModelStatus,
@@ -10,6 +12,7 @@ import {
 } from '../api.ts';
 import { CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
+import AppButton from '../design/AppButton.tsx';
 import AppCard from '../design/AppCard.tsx';
 import type { TextSize, Theme } from '../theme/ThemeProvider.tsx';
 
@@ -310,6 +313,105 @@ function ThinkingSection() {
   );
 }
 
+/** How long an armed reset button stays armed before standing down. */
+const ARM_MS = 5000;
+
+/**
+ * A destructive button that needs two taps: the first tap arms it (label
+ * switches to the confirm text), the second fires. Arming expires after
+ * ARM_MS so a stray first tap never sits loaded.
+ */
+function ArmableButton({
+  label,
+  confirmLabel,
+  onConfirm,
+  disabled,
+}: {
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  disabled?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+  if (!armed) {
+    return (
+      <AppButton
+        type="button"
+        variant="destructive"
+        disabled={disabled}
+        onClick={() => {
+          setArmed(true);
+          timer.current = window.setTimeout(() => setArmed(false), ARM_MS);
+        }}
+      >
+        {label}
+      </AppButton>
+    );
+  }
+  return (
+    <AppButton
+      type="button"
+      variant="destructive"
+      disabled={disabled}
+      onClick={() => {
+        if (timer.current !== null) clearTimeout(timer.current);
+        setArmed(false);
+        onConfirm();
+      }}
+    >
+      {confirmLabel}
+    </AppButton>
+  );
+}
+
+function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
+  const navigate = useNavigate();
+  const resetData = useDataReset();
+  return (
+    <AppCard>
+      <CardHeader>
+        <CardTitle>Reset</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-2">
+          <p className="text-sm">
+            Reset data erases all chores, lists, files and settings, and starts over from the
+            welcome screens.
+          </p>
+          <ArmableButton
+            label="Reset data"
+            confirmLabel="Yes, reset data"
+            disabled={resetData.isPending}
+            onConfirm={() => {
+              resetData.mutate(undefined, { onSuccess: () => navigate('/welcome') });
+            }}
+          />
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm">
+            Reset onboarding goes through the welcome screens again. Your chores and data stay put.
+          </p>
+          <ArmableButton
+            label="Reset onboarding"
+            confirmLabel="Yes, reset onboarding"
+            onConfirm={() => {
+              update({ onboarded: false });
+              navigate('/welcome');
+            }}
+          />
+        </div>
+      </CardContent>
+    </AppCard>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, update } = useSettings();
   if (!settings) {
@@ -330,6 +432,7 @@ export default function SettingsPage() {
         <Pairing />
       </section>
       <ThinkingSection />
+      <ResetSection update={update} />
     </div>
   );
 }

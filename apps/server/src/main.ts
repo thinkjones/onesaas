@@ -1,8 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { Workflow, catalog } from '@dad/shared';
+import { catalog } from '@dad/shared';
 import OpenAI from 'openai';
+import { resetDataToFreshInstall, seedFreshInstall } from './dataReset.js';
 import { createConversationStore } from './agent/conversations.js';
 import { createBuilderAgent, type BuilderAgent } from './agent/loop.js';
 import { createApp } from './app.js';
@@ -16,7 +17,6 @@ import { createFileStore } from './files/store.js';
 import { GLIMMER_DOWN_NOTE, createGateway } from './models/gateway.js';
 import { createImageModels } from './models/image.js';
 import { createSettingsStore } from './settings/store.js';
-import flow1 from './seed/flow1.json' with { type: 'json' };
 import { migrateFlow1Seed } from './seed/migrate.js';
 import { executors } from './steps/registry.js';
 import { createTableStore } from './tables/store.js';
@@ -174,26 +174,13 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     testRun,
   });
 
-  // Seed flow 1 only into an empty workflow store (never overwrite user edits).
-  // Workflow.parse fails loud on a broken seed file.
-  if (repo.listWorkflows().length === 0) repo.saveWorkflow(Workflow.parse(flow1));
+  // Fresh-install seed, shared with the in-app data reset so a boot into an
+  // empty store and POST /api/data/reset land in the same state (flow 1 +
+  // the customers table) and never touch user data.
+  seedFreshInstall({ repo, tables });
   // Existing installs whose flow-1 predates the approval step move to the new
   // definition as the next version (no-op for fresh seeds and migrated DBs).
   migrateFlow1Seed(repo);
-  if (!tables.getTable('customers')) {
-    tables.createTable({
-      name: 'customers',
-      label: 'Customers',
-      columns: [
-        { name: 'name', label: 'Name', type: 'text' },
-        { name: 'email', label: 'Email', type: 'email' },
-        { name: 'need', label: 'Need', type: 'text' },
-        { name: 'urgency', label: 'Urgency', type: 'text' },
-      ],
-      displayField: 'name',
-      keyField: 'email',
-    });
-  }
 
   // AppDeps grows with the shared ops + agent + test runner; app.ts casts on
   // read per style. The test route reuses this SAME runner (never a second
@@ -214,6 +201,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string }): {
     setTimezone,
     files,
     image,
+    resetData: () => resetDataToFreshInstall({ db, filesDir, repo, tables, setTimezone }),
     // The voice proxy holds the key server-side; the browser never sees it.
     voice: { apiKey },
   });
