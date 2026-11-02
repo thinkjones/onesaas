@@ -225,7 +225,6 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">{workflowQuery.data.name}</h1>
       <ModeSwitch mode={mode} onModeChange={handleModeChange} />
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-[2]">

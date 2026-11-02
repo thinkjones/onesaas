@@ -89,8 +89,9 @@ describe('InboxPage', () => {
       run('run-old', 'wf-2', '2026-10-20T09:00:00.000Z', 'done'),
       run('run-new', 'wf-1', '2026-10-30T10:42:00.000Z', 'waiting'),
     ]);
-    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined();
-    const rows = await screen.findAllByRole('link');
+    // Wait for the per-row story queries before asserting row contents.
+    await screen.findByText('Drafted a reply for approval');
+    const rows = screen.getAllByRole('link');
     expect(rows.map((r) => r.textContent)).toHaveLength(2);
     // Newest first, with the story's last line; older row falls back to the sender.
     expect(rows[0]!.textContent).toContain('Leads');

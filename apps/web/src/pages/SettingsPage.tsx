@@ -375,14 +375,12 @@ export default function SettingsPage() {
   if (!settings) {
     return (
       <div className="mx-auto max-w-3xl space-y-6 p-6">
-        <h1 className="font-display text-3xl">Settings</h1>
         <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
-      <h1 className="font-display text-3xl">Settings</h1>
       <BusinessSection settings={settings} update={update} />
       <LookSection settings={settings} update={update} />
       <SoundSection settings={settings} update={update} />

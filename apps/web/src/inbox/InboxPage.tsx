@@ -60,7 +60,6 @@ export default function InboxPage() {
   const sorted = [...runs.data].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Inbox</h1>
       {sorted.length === 0 ? (
         <p className="text-base text-muted-foreground">
           Nothing has happened yet — describe a chore in{' '}

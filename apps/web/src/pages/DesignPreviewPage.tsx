@@ -23,7 +23,6 @@ export default function DesignPreviewPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-10">
       <div>
-        <h1 className="text-2xl font-bold">Design primitives</h1>
         <p className="text-base text-muted-foreground">
           Every primitive in every state. If a change breaks the look, it shows here first.
         </p>

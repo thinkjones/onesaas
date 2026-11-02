@@ -71,8 +71,7 @@ export default function ChoreReducersPage() {
   if (error) return <p>Couldn&apos;t load chore reducers.</p>;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Chore reducers</h1>
+      <div className="flex items-center justify-end gap-3">
         <AppButton onClick={handleNew} disabled={create.isPending}>
           <Plus />
           {create.isPending ? 'Creating…' : 'New chore reducer'}

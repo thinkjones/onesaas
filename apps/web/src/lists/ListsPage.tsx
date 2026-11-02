@@ -164,7 +164,6 @@ export default function ListsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Lists</h1>
       <div className="flex gap-6">
         <nav aria-label="Lists" className="flex w-48 shrink-0 flex-col gap-1">
           {lists.data.map((t) => (

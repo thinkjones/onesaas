@@ -66,6 +66,11 @@ function stubFetch(
       if (url === '/api/pairing/status') {
         return { ok: true, json: async () => pairing } as Response;
       }
+      // TopBar badges + Automate prompt (AppShell-level in the /settings and
+      // finish-path tests): empty runs, healthy models, no chores.
+      if (url === '/api/runs' || url === '/api/models/status' || url === '/api/workflows') {
+        return { ok: true, json: async () => [] } as Response;
+      }
       throw new Error(`unexpected fetch: ${url} ${init?.method}`);
     }),
   );

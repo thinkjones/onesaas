@@ -15,6 +15,10 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
       if (String(input) === '/api/settings') {
         return { ok: true, status: 200, json: async () => ({ onboarded: true }) };
       }
+      // TopBar badges: no runs, healthy models.
+      if (String(input) === '/api/runs' || String(input) === '/api/models/status') {
+        return { ok: true, status: 200, json: async () => [] };
+      }
       throw new Error(`unexpected fetch: ${String(input)}`);
     }),
   );
@@ -48,7 +52,9 @@ describe('AppShell', () => {
     const { container } = renderShell();
     expect(screen.getByText('page body')).toBeDefined();
     expect(screen.getByRole('link', { name: 'Inbox' })).toBeDefined();
-    expect(container.querySelector('[data-tauri-drag-region]')).toBeNull();
+    // The TopBar carries an inert data-tauri-drag-region (per §6); only the
+    // sidebar strip is Tauri-only.
+    expect(container.querySelector('.drag')).toBeNull();
   });
 
   test('renders a drag strip under the Tauri overlay title bar', () => {

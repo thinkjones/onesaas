@@ -467,14 +467,15 @@ describe('WorkflowPage agent switch seam', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    await screen.findByText('Test flow');
+    // The workflow name now lives in the TopBar crumb (not rendered here);
+    // the mode switch proves the page loaded.
+    await screen.findByRole('button', { name: 'Design' });
     expect(path).toBe('/reducers/flow-1');
 
     listed = [workflow(), photoWorkflow()];
     await act(async () => {
       emitAgentEvent('flow-1', { type: 'switched', workflowId: 'wf-photo' });
     });
-    await screen.findByText('Photo posts');
-    expect(path).toBe('/reducers/wf-photo?mode=design');
+    await waitFor(() => expect(path).toBe('/reducers/wf-photo?mode=design'));
   });
 });
