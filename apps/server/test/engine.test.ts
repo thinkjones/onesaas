@@ -694,3 +694,39 @@ test('diamond fan-in executes the join step exactly once', async () => {
   const d = repo.getRun(run.id)!.steps.find((s) => s.stepId === 'd')!;
   expect(d.status).toBe('done');
 });
+
+test('hyphenated step ids resolve whole-output refs (agent slug-nanoid ids)', async () => {
+  const { repo, ctxBase } = setup();
+  const executors: Record<string, Executor> = {
+    'trigger.manual': echoExecutor([], 'trigger'),
+    'ai.extract': async () => ({ output: { ok: true }, why: 'Extracted.' }),
+    'table.upsert': async (_config, input) => {
+      // Before the bindings fix this arrived as { row: NaN } (jexl read the
+      // hyphens as subtraction) and failed input validation.
+      expect(input).toEqual({ row: { ok: true } });
+      return { output: { id: 1, created: true }, why: 'Saved.' };
+    },
+  };
+  const engine = createEngine({ repo, executors, ctx: ctxBase });
+  repo.saveWorkflow(
+    mkWorkflow({
+      steps: [
+        mkStep('extract-details-XhfhTM', 'ai.extract', {
+          config: EXTRACT_CONFIG,
+          inputs: { text: 'hello there' },
+        }),
+        mkStep('save-to-customers-M6Iw6', 'table.upsert', {
+          config: { table: 'customers', keyField: 'email' },
+          inputs: { row: '{{extract-details-XhfhTM}}' },
+        }),
+      ],
+      edges: [
+        { from: 'trigger', to: 'extract-details-XhfhTM' },
+        { from: 'extract-details-XhfhTM', to: 'save-to-customers-M6Iw6' },
+      ],
+    }),
+  );
+
+  const run = await engine.start('wf1', { payload: { note: 'hi' } });
+  expect(run.status).toBe('done');
+});

@@ -4,7 +4,29 @@ const jexlInstance = new jexl.Jexl();
 
 const TEMPLATE_PATTERN = /\{\{(.+?)\}\}/g;
 
+// A plain data path: `step`, `step.field`, `step.items[0].name`. Step ids are
+// slug-nanoid (`extract-details-XhfhTM`), and jexl reads `-` as subtraction,
+// so plain paths NEVER go through jexl — anything else (operators, calls) is
+// a real expression and does. Missing segments resolve to undefined.
+const PLAIN_PATH = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+|\[\d+\])*$/;
+
+function lookupPath(expr: string, ctx: Record<string, unknown>): unknown {
+  const segments: (string | number)[] = [];
+  for (const part of expr.split('.')) {
+    const head = part.slice(0, part.indexOf('[') === -1 ? undefined : part.indexOf('['));
+    if (head !== '') segments.push(head);
+    for (const m of part.matchAll(/\[(\d+)\]/g)) segments.push(Number(m[1]));
+  }
+  let cur: unknown = ctx;
+  for (const seg of segments) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = (cur as Record<string | number, unknown>)[seg];
+  }
+  return cur;
+}
+
 async function evalExpr(expr: string, ctx: Record<string, unknown>): Promise<unknown> {
+  if (PLAIN_PATH.test(expr)) return lookupPath(expr, ctx);
   try {
     return (await jexlInstance.eval(expr, ctx)) as unknown;
   } catch {
@@ -38,9 +60,10 @@ export async function resolveBindings(
   return out;
 }
 
-/** Evaluate a branch condition against `ctx`. Returns false when the expression errors, so a broken condition skips the branch. */
+/** Evaluate a branch condition against `ctx`. Plain hyphenated paths resolve directly (see above); anything else goes through jexl. Returns false when the expression errors, so a broken condition skips the branch. */
 export async function evalCondition(expr: string, ctx: Record<string, unknown>): Promise<boolean> {
   try {
+    if (PLAIN_PATH.test(expr.trim())) return Boolean(lookupPath(expr.trim(), ctx));
     return Boolean(await jexlInstance.eval(expr, ctx));
   } catch {
     return false;

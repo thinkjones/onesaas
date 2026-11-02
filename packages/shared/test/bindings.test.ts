@@ -35,3 +35,40 @@ test('evalCondition returns true or false from ctx', async () => {
   await expect(evalCondition('classify.isBooking == true', { classify: { isBooking: true } })).resolves.toBe(true);
   await expect(evalCondition('classify.isBooking == true', { classify: { isBooking: false } })).resolves.toBe(false);
 });
+
+test('resolveBindings resolves a whole hyphenated step id (not jexl subtraction)', async () => {
+  const output = { name: 'Nicolas', email: 'n@example.com' };
+  const out = await resolveBindings({ row: '{{extract-details-XhfhTM}}' }, { 'extract-details-XhfhTM': output });
+  expect(out['row']).toBe(output);
+});
+
+test('resolveBindings resolves dotted paths off a hyphenated step id', async () => {
+  const out = await resolveBindings(
+    { email: '{{extract-details-XhfhTM.email}}' },
+    { 'extract-details-XhfhTM': { email: 'n@example.com' } },
+  );
+  expect(out).toEqual({ email: 'n@example.com' });
+});
+
+test('resolveBindings interpolates hyphenated refs inside mixed text', async () => {
+  const out = await resolveBindings(
+    { greeting: 'Hi {{my-step.name}}!' },
+    { 'my-step': { name: 'Sarah' } },
+  );
+  expect(out).toEqual({ greeting: 'Hi Sarah!' });
+});
+
+test('resolveBindings resolves a missing hyphenated path to undefined', async () => {
+  const out = await resolveBindings({ v: '{{my-step.missing}}' }, { 'my-step': { name: 'x' } });
+  expect(out).toEqual({ v: undefined });
+});
+
+test('resolveBindings still evaluates real jexl expressions', async () => {
+  const out = await resolveBindings({ n: '{{count + 1}}' }, { count: 1 });
+  expect(out).toEqual({ n: 2 });
+});
+
+test('evalCondition resolves a plain hyphenated path', async () => {
+  await expect(evalCondition('my-step', { 'my-step': true })).resolves.toBe(true);
+  await expect(evalCondition('my-step.ok', { 'my-step': { ok: false } })).resolves.toBe(false);
+});
