@@ -59,7 +59,6 @@ const DETAIL: WorkflowDetail = { ...WF, problems: [] };
 
 const SETTINGS: Settings = {
   timezone: 'UTC',
-  theme: 'morning',
   textSize: 'normal',
   sound: { on: false, volume: 0.5 },
   onboarded: true,

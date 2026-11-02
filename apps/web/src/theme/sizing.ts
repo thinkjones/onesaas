@@ -1,7 +1,6 @@
-import type { TextSize, Theme } from './ThemeProvider.tsx';
+import type { TextSize } from './TextSizeProvider.tsx';
 
-/** Root font size: 17/19/21px by text size, and Workshop adds 3px. */
-export function rootFontSize(theme: Theme, textSize: TextSize): number {
-  const base = textSize === 'normal' ? 17 : textSize === 'large' ? 19 : 21;
-  return base + (theme === 'workshop' ? 3 : 0);
+/** Root font size: 17/19/21px by text size. */
+export function rootFontSize(textSize: TextSize): number {
+  return textSize === 'normal' ? 17 : textSize === 'large' ? 19 : 21;
 }

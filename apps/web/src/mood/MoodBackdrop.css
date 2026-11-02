@@ -1,4 +1,4 @@
-/* M5 Task 4 backdrop: Global Constraints opacity (0.16, Evening 0.10), a
+/* M5 Task 4 backdrop: Global Constraints opacity (0.16, dark 0.10), a
    60 s slow drift, a 600 ms fade on visible toggle. The layer sits behind
    the canvas (negative z-index, so flow internals always paint above it)
    and never intercepts pointer events. */
@@ -14,12 +14,13 @@
   transition: opacity 600ms ease;
 }
 
-:root[data-theme='evening'] .mood-backdrop {
-  opacity: 0.1;
+@media (prefers-color-scheme: dark) {
+  .mood-backdrop {
+    opacity: 0.1;
+  }
 }
 
-.mood-backdrop.mood-backdrop-hidden,
-:root[data-theme='evening'] .mood-backdrop.mood-backdrop-hidden {
+.mood-backdrop.mood-backdrop-hidden {
   opacity: 0;
 }
 

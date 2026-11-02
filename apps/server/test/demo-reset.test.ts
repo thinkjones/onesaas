@@ -59,7 +59,6 @@ async function seedLivedIn(dataDir: string): Promise<{ moodId: string }> {
       businessName: "Dad's Hardware",
       businessWhat: 'a family hardware store',
       timezone: 'America/New_York',
-      theme: 'evening',
       textSize: 'large',
       sound: { on: true, volume: 0.25 },
       onboarded: true,
@@ -118,7 +117,7 @@ describe('saveDemoProfile + demoReset --keep-profile', () => {
     {
       const db = openDb(dbFileFor(dataDir));
       try {
-        createSettingsStore(db).update({ businessName: 'Trashed', theme: 'morning' });
+        createSettingsStore(db).update({ businessName: 'Trashed', textSize: 'xlarge' });
       } finally {
         db.close();
       }
@@ -130,7 +129,6 @@ describe('saveDemoProfile + demoReset --keep-profile', () => {
     expect(settings.businessName).toBe("Dad's Hardware");
     expect(settings.businessWhat).toBe('a family hardware store');
     expect(settings.timezone).toBe('America/New_York');
-    expect(settings.theme).toBe('evening');
     expect(settings.textSize).toBe('large');
     expect(settings.onboarded).toBe(true);
     expect(settings.moodFileIds).toEqual([moodId]);
@@ -161,7 +159,7 @@ describe('saveDemoProfile + demoReset --keep-profile', () => {
     expect(fresh.workflowIds).toEqual([]);
     // A bare reset is factory-default settings (profile untouched: none saved).
     expect(fresh.settings.businessName).toBeUndefined();
-    expect(fresh.settings.theme).toBe('morning');
+    expect(fresh.settings.textSize).toBe('normal');
   });
 
   test('a bare reset wipes the db and files but leaves the rest of the data dir alone', async () => {
@@ -208,8 +206,8 @@ describe('corrupt demo profiles fail loudly and delete nothing', () => {
       corrupt: (p) => ({ ...p, settings: 'evening' }),
     },
     {
-      name: 'bad theme',
-      corrupt: (p) => ({ ...p, settings: { ...p.settings, theme: 'noon' } }),
+      name: 'bad textSize',
+      corrupt: (p) => ({ ...p, settings: { ...p.settings, textSize: 'huge' } }),
     },
     {
       name: 'bad moodFileIds type',
@@ -399,7 +397,7 @@ describe('runDemoResetCli argv validation', () => {
     }
     const fresh = readFresh(dataDir);
     expect(fresh.workflowIds).toEqual([]);
-    expect(fresh.settings.theme).toBe('morning');
+    expect(fresh.settings.textSize).toBe('normal');
   });
 
   test('--save-profile through the CLI entry snapshots and returns 0', async () => {

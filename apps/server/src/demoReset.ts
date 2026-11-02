@@ -8,7 +8,7 @@
 //
 // Usage: pnpm demo:reset [--keep-profile] [--with-flow1] [--save-profile]
 //   [--data-dir DIR]   (run with the server STOPPED; default data dir `data`)
-//   --keep-profile  restore business profile, theme and mood images from
+//   --keep-profile  restore business profile and mood images from
 //                   data/demo-profile.json (fails loudly if it is missing)
 //   --with-flow1    seed the flow-1 fixture; without it the fresh DB holds NO
 //                   workflows (flows 2 and 4 are always built live in the demo)
@@ -132,16 +132,8 @@ export function parseDemoProfile(raw: string, source: string): DemoProfile {
   }
   const settings = parsed['settings'];
   if (!isRecord(settings)) throw new Error(`Cannot use ${source}: settings must be an object`);
-  // Theme allowlist mirrors the Theme union in settings/store.ts — update both
-  // when adding a theme, or saved profiles using it become unloadable.
-  if (
-    settings['theme'] !== undefined &&
-    settings['theme'] !== 'morning' &&
-    settings['theme'] !== 'evening' &&
-    settings['theme'] !== 'workshop'
-  ) {
-    throw new Error(`Cannot use ${source}: settings.theme is not a known theme`);
-  }
+  // Legacy `theme` keys in old profiles are ignored (the store coerces to
+  // the themeless Settings shape); only the live fields validate below.
   // Scalar fields fail loudly on wrong types: the settings store would silently
   // coerce garbage (businessName: 42) to defaults, hiding a corrupt profile.
   for (const key of ['businessName', 'businessWhat', 'timezone'] as const) {
@@ -149,8 +141,7 @@ export function parseDemoProfile(raw: string, source: string): DemoProfile {
       throw new Error(`Cannot use ${source}: settings.${key} must be a string`);
     }
   }
-  // TextSize allowlist mirrors the TextSize union in settings/store.ts (same
-  // rule as theme above).
+  // TextSize allowlist mirrors the TextSize union in settings/store.ts.
   if (
     settings['textSize'] !== undefined &&
     settings['textSize'] !== 'normal' &&
@@ -321,7 +312,7 @@ export interface DemoResetCliOptions {
 export function demoResetHelpText(): string {
   return `Usage: pnpm demo:reset [--keep-profile] [--with-flow1] [--save-profile] [--data-dir DIR] [-h|--help]
 
-  --keep-profile  restore business profile, theme and mood images from
+  --keep-profile  restore business profile and mood images from
                   <data-dir>/demo-profile.json (fails if it is missing)
   --with-flow1    seed the flow-1 fixture; otherwise the fresh DB has no
                   workflows (flows 2 and 4 are always built live)

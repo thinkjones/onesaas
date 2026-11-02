@@ -7,7 +7,6 @@ import {
 
 /** M5 Task 1: the app-wide settings document (business profile, look, sound). */
 
-export type Theme = 'morning' | 'evening' | 'workshop';
 export type TextSize = 'normal' | 'large' | 'xlarge';
 
 export interface Settings {
@@ -15,7 +14,6 @@ export interface Settings {
   businessWhat?: string;
   /** IANA zone; '' until the web app's first-load sync stores the browser zone. */
   timezone: string;
-  theme: Theme;
   textSize: TextSize;
   sound: { on: boolean; volume: number };
   onboarded: boolean;
@@ -30,7 +28,6 @@ export const APP_SETTINGS_KEY = 'app';
 export function defaultSettings(): Settings {
   return {
     timezone: '',
-    theme: 'morning',
     textSize: 'normal',
     sound: { on: true, volume: 0.25 },
     onboarded: false,
@@ -55,7 +52,6 @@ function coerce(stored: unknown, legacyTimezone: string | undefined): Settings {
   pick('businessName', (v) => typeof v === 'string');
   pick('businessWhat', (v) => typeof v === 'string');
   pick('timezone', (v) => typeof v === 'string');
-  pick('theme', (v) => v === 'morning' || v === 'evening' || v === 'workshop');
   pick('textSize', (v) => v === 'normal' || v === 'large' || v === 'xlarge');
   pick('onboarded', (v) => typeof v === 'boolean');
   pick(

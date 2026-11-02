@@ -48,7 +48,7 @@ test('POST /api/data/reset wipes user data back to fresh-install state', async (
     await server.app.request('/api/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ theme: 'evening', onboarded: true, businessName: 'Doomed Co' }),
+      body: JSON.stringify({ textSize: 'large', onboarded: true, businessName: 'Doomed Co' }),
     });
     await server.files.saveGenerated(Buffer.from('fake-bytes'), 'image/png', 'test');
     writeFileSync(join(dir, 'files', 'stray.bin'), 'stray');

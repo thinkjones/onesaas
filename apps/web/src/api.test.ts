@@ -48,7 +48,6 @@ describe('API error surface', () => {
 describe('settings', () => {
   const doc = {
     timezone: 'America/New_York',
-    theme: 'morning',
     textSize: 'normal',
     sound: { on: true, volume: 0.25 },
     onboarded: false,

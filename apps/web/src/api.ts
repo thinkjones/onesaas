@@ -173,7 +173,6 @@ export interface Settings {
   businessWhat?: string;
   /** IANA zone; '' until the first-load sync stores the browser zone. */
   timezone: string;
-  theme: 'morning' | 'evening' | 'workshop';
   textSize: 'normal' | 'large' | 'xlarge';
   sound: { on: boolean; volume: number };
   onboarded: boolean;
@@ -230,8 +229,8 @@ export function useDataReset() {
 }
 
 /**
- * The settings document plus an optimistic `update(patch)`: the UI (theme,
- * text size) applies instantly and rolls back with a toast if the PUT fails.
+ * The settings document plus an optimistic `update(patch)`: the UI (text
+ * size) applies instantly and rolls back with a toast if the PUT fails.
  * `updateAsync` is the same mutation awaitable (onboarding awaits it so the
  * save lands before the mood POST reads the profile). Shares the ['settings']
  * query with useBusinessTimezone below.

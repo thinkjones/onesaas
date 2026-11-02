@@ -130,7 +130,6 @@ test('GET /api/settings returns the default document on a fresh server', async (
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({
     timezone: '',
-    theme: 'morning',
     textSize: 'normal',
     sound: { on: true, volume: 0.25 },
     onboarded: false,
@@ -146,7 +145,7 @@ test('PUT /api/settings merges a patch and GET reads it back', async () => {
     body: JSON.stringify({
       businessName: 'Corner Bakery',
       timezone: 'America/New_York',
-      theme: 'evening',
+      textSize: 'large',
     }),
   });
   expect(put.status).toBe(200);
@@ -154,8 +153,7 @@ test('PUT /api/settings merges a patch and GET reads it back', async () => {
   expect(body).toMatchObject({
     businessName: 'Corner Bakery',
     timezone: 'America/New_York',
-    theme: 'evening',
-    textSize: 'normal',
+    textSize: 'large',
   });
   const get = await app.request('/api/settings');
   expect(await get.json()).toEqual(body);
@@ -209,11 +207,11 @@ test('PUT /api/settings rejects whitespace-only and non-IANA zones and persists 
   ).toBe('Europe/Paris');
 });
 
-test('PUT /api/settings rejects bad theme, text size, sound and unknown keys', async () => {
+test('PUT /api/settings rejects bad text size, sound, legacy theme and unknown keys', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
   const before = await (await app.request('/api/settings')).json();
   for (const body of [
-    '{"theme":"noon"}',
+    '{"theme":"evening"}',
     '{"textSize":"huge"}',
     '{"sound":{"on":true}}',
     '{"sound":{"on":true,"volume":2}}',

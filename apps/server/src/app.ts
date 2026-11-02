@@ -150,14 +150,13 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(appSettings.get());
   });
 
-  // PUT takes a PARTIAL patch ({ theme: 'evening' }); every key is optional
+  // PUT takes a PARTIAL patch ({ textSize: 'large' }); every key is optional
   // but validated when present. An empty object is a valid no-op.
   const settingsPatchBody = z
     .object({
       businessName: z.string().optional(),
       businessWhat: z.string().optional(),
       timezone: z.string().optional(),
-      theme: z.enum(['morning', 'evening', 'workshop']).optional(),
       textSize: z.enum(['normal', 'large', 'xlarge']).optional(),
       sound: z.object({ on: z.boolean(), volume: z.number().min(0).max(1) }).strict().optional(),
       onboarded: z.boolean().optional(),

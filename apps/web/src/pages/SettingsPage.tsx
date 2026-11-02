@@ -14,16 +14,10 @@ import { CardContent, CardHeader, CardTitle } from '../components/ui/card.tsx';
 import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
 import AppCard from '../design/AppCard.tsx';
-import type { TextSize, Theme } from '../theme/ThemeProvider.tsx';
+import type { TextSize } from '../theme/TextSizeProvider.tsx';
 
 const inputClass =
   'w-full rounded-md border border-input bg-background px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring';
-
-const THEMES: { id: Theme; name: string; bg: string; primary: string; ink: string }[] = [
-  { id: 'morning', name: 'Morning', bg: 'hsl(40 33% 97%)', primary: 'hsl(22 80% 52%)', ink: 'hsl(25 20% 15%)' },
-  { id: 'evening', name: 'Evening', bg: 'hsl(30 12% 11%)', primary: 'hsl(28 85% 60%)', ink: 'hsl(40 25% 92%)' },
-  { id: 'workshop', name: 'Workshop', bg: 'hsl(0 0% 100%)', primary: 'hsl(220 90% 40%)', ink: 'hsl(0 0% 5%)' },
-];
 
 const TEXT_SIZES: { id: TextSize; name: string }[] = [
   { id: 'normal', name: 'Normal' },
@@ -138,45 +132,9 @@ function LookSection({
         <CardTitle>Look</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div
-          className="grid grid-cols-1 gap-3 sm:grid-cols-3"
-          role="radiogroup"
-          aria-label="Theme"
-        >
-          {THEMES.map((t) => {
-            const selected = settings.theme === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => update({ theme: t.id })}
-                className={`overflow-hidden rounded-[var(--radius)] border bg-card text-left outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                  selected ? 'border-primary ring-2 ring-ring' : 'border-border'
-                }`}
-              >
-                <span className="flex items-center gap-2 p-3" style={{ background: t.bg }} aria-hidden>
-                  <span
-                    className="inline-block h-5 w-5 shrink-0 rounded-full"
-                    style={{ background: t.primary }}
-                  />
-                  <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="h-2 w-3/4 rounded-full" style={{ background: t.ink }} />
-                    <span
-                      className="h-2 w-1/2 rounded-full opacity-60"
-                      style={{ background: t.ink }}
-                    />
-                  </span>
-                </span>
-                <span className="block px-3 py-2 text-sm font-medium">
-                  {t.name}
-                  {selected && <span className="text-muted-foreground"> ✓</span>}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Light and dark follow your computer&apos;s appearance setting.
+        </p>
         <div className="space-y-1">
           <span id="text-size-label" className="text-sm font-medium">
             Text size

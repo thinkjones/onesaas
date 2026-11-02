@@ -6,7 +6,7 @@ import { Toaster } from './components/ui/sonner.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
 import { AltClickExplainRoot } from './explain/Explain.tsx';
 import AppRoutes from './routes.tsx';
-import ThemeProvider from './theme/ThemeProvider.tsx';
+import TextSizeProvider from './theme/TextSizeProvider.tsx';
 
 const queryClient = new QueryClient();
 
@@ -21,30 +21,26 @@ function TimezoneSync() {
 }
 
 /**
- * Applies the stored look (theme + text size) to <html>. Falls back to
- * Morning/Normal until settings load; the settings page updates it live via
- * the shared ['settings'] query.
+ * Applies the stored text size to <html>. Falls back to Normal until
+ * settings load; the settings page updates it live via the shared
+ * ['settings'] query. Light/dark follows the OS (prefers-color-scheme).
  */
-function SettingsTheme({ children }: { children: ReactNode }) {
+function SettingsTextSize({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
-  return (
-    <ThemeProvider theme={settings?.theme ?? 'morning'} textSize={settings?.textSize ?? 'normal'}>
-      {children}
-    </ThemeProvider>
-  );
+  return <TextSizeProvider textSize={settings?.textSize ?? 'normal'}>{children}</TextSizeProvider>;
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SettingsTheme>
+        <SettingsTextSize>
           <BrowserRouter>
             <LiveEvents />
             <TimezoneSync />
             <AppRoutes />
           </BrowserRouter>
-        </SettingsTheme>
+        </SettingsTextSize>
         <AltClickExplainRoot />
         <Toaster />
       </TooltipProvider>

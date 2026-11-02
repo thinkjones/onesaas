@@ -89,7 +89,6 @@ function renderShell(
     if (url === '/api/settings')
       return ok({
         timezone: 'America/New_York',
-        theme: 'morning',
         textSize: 'normal',
         sound: { on: false, volume: 0.5 },
         onboarded: true,
@@ -284,7 +283,6 @@ describe('TellMeMoreFallback', () => {
       if (url === '/api/settings')
         return ok({
           timezone: 'America/New_York',
-          theme: 'morning',
           textSize: 'normal',
           sound: { on: false, volume: 0.5 },
           onboarded: true,

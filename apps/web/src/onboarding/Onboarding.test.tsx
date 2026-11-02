@@ -22,7 +22,6 @@ function settingsDoc(overrides?: Partial<Settings>): Settings {
     businessName: '',
     businessWhat: '',
     timezone: 'America/Los_Angeles',
-    theme: 'morning',
     textSize: 'normal',
     sound: { on: true, volume: 0.25 },
     onboarded: false,

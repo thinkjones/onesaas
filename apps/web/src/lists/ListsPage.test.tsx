@@ -54,7 +54,6 @@ function renderLists(opts?: {
     if (url === '/api/settings')
       return ok({
         timezone: '',
-        theme: 'morning',
         textSize: 'normal',
         sound: { on: true, volume: 0.25 },
         onboarded: false,

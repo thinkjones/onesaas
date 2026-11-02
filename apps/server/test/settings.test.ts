@@ -3,11 +3,11 @@ import { TIMEZONE_KEY } from '../src/bridge/pairing.js';
 import { openDb } from '../src/db/connection.js';
 import { createSettingsStore, defaultSettings } from '../src/settings/store.js';
 
-test("update({ theme: 'evening' }) persists across a new store instance", () => {
+test("update({ textSize: 'large' }) persists across a new store instance", () => {
   const db = openDb(':memory:');
   try {
-    createSettingsStore(db).update({ theme: 'evening' });
-    expect(createSettingsStore(db).get().theme).toBe('evening');
+    createSettingsStore(db).update({ textSize: 'large' });
+    expect(createSettingsStore(db).get().textSize).toBe('large');
   } finally {
     db.close();
   }
@@ -29,7 +29,7 @@ test('update merges a patch and returns the full settings', () => {
     const next = store.update({ businessName: 'Corner Bakery', textSize: 'large' });
     expect(next.businessName).toBe('Corner Bakery');
     expect(next.textSize).toBe('large');
-    expect(next.theme).toBe('morning');
+    expect(next.onboarded).toBe(false);
     expect(store.get()).toEqual(next);
   } finally {
     db.close();
