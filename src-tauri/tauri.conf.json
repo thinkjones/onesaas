@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "My Dad's AI Agent",
+  "version": "0.1.0",
+  "identifier": "com.thinkjones.dads-ai-agent",
+  "build": {
+    "beforeDevCommand": "pnpm dev:desktop:pre && pnpm dev:desktop",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm build:desktop",
+    "frontendDist": "../apps/web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "My Dad's AI Agent",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 18, "y": 22 }
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["bin/server"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": ["resources/**/*"]
+  }
+}

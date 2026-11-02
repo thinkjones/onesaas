@@ -51,3 +51,9 @@ test-results/
 
 # Working plans stay local; shipped docs (e.g. docs/glimmer.md) are committed.
 docs/plans/
+
+# Tauri build outputs (scaffold, icons, lockfile are committed).
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/
+src-tauri/bin/

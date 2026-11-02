@@ -5,14 +5,22 @@
   "packageManager": "pnpm@9.15.9",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
+    "dev:desktop": "pnpm --filter @dad/server --filter @dad/web --parallel dev",
+    "dev:desktop:pre": "mkdir -p src-tauri/resources && touch src-tauri/resources/dev-placeholder.txt",
     "test": "vitest run",
     "typecheck": "pnpm -r --parallel typecheck",
     "e2e": "pnpm --filter @dad/e2e test",
     "e2e:video": "pnpm --filter @dad/e2e test:video",
-    "demo:reset": "tsx scripts/demo-reset.ts"
+    "demo:reset": "tsx scripts/demo-reset.ts",
+    "build:desktop": "pnpm --filter @dad/web build && pnpm build:desktop-server",
+    "build:desktop-server": "node scripts/build-desktop-server.mjs",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build --bundles app"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
     "openai": "^7.45.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

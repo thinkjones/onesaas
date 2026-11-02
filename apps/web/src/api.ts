@@ -44,6 +44,20 @@ export class ApiError extends Error {
   }
 }
 
+/** True inside the Tauri desktop shell (Bug #6), false in browsers and tests. */
+export function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+/**
+ * Prefixes relative API paths for the desktop shell. Browsers use vite's
+ * /api proxy (relative URLs); the packaged app has no proxy, so it talks
+ * to the bundled sidecar on loopback directly.
+ */
+export function apiUrl(path: string): string {
+  return isTauri() ? `http://127.0.0.1:8787${path}` : path;
+}
+
 // Server failure bodies are `{ error: string }`; surface the message, not raw JSON.
 async function throwApiError(res: Response): Promise<never> {
   const text = await res.text();
@@ -60,13 +74,13 @@ async function throwApiError(res: Response): Promise<never> {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(apiUrl(url));
   if (!res.ok) await throwApiError(res);
   return (await res.json()) as T;
 }
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method: 'POST',
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -76,7 +90,7 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 }
 
 async function putJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -126,7 +140,7 @@ export async function uploadPhoto(
   const form = new FormData();
   form.set('file', file);
   if (note !== undefined) form.set('note', note);
-  const res = await fetch(`/api/workflows/${encodeURIComponent(workflowId)}/upload`, {
+  const res = await fetch(apiUrl(`/api/workflows/${encodeURIComponent(workflowId)}/upload`), {
     method: 'POST',
     body: form,
   });
@@ -135,7 +149,7 @@ export async function uploadPhoto(
 }
 
 export async function startPairing(): Promise<{ code: string }> {
-  const res = await fetch('/api/pairing/start', { method: 'POST' });
+  const res = await fetch(apiUrl('/api/pairing/start'), { method: 'POST' });
   if (!res.ok) await throwApiError(res);
   return (await res.json()) as { code: string };
 }
@@ -145,7 +159,7 @@ export function getPairingStatus(): Promise<{ paired: boolean; connected: boolea
 }
 
 export async function revokePairing(): Promise<{ revoked: boolean }> {
-  const res = await fetch('/api/pairing/revoke', { method: 'POST' });
+  const res = await fetch(apiUrl('/api/pairing/revoke'), { method: 'POST' });
   if (!res.ok) await throwApiError(res);
   return (await res.json()) as { revoked: boolean };
 }
@@ -303,7 +317,7 @@ export function useDeleteView() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (id: string): Promise<void> => {
-      const res = await fetch(`/api/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const res = await fetch(apiUrl(`/api/views/${encodeURIComponent(id)}`), { method: 'DELETE' });
       if (!res.ok) await throwApiError(res);
     },
     onSuccess: () => {
@@ -351,7 +365,7 @@ export function useEvents(onEvent: (e: EngineEvent) => void): void {
   useEffect(() => {
     // No EventSource outside browsers (e.g. jsdom tests): skip, don't crash.
     if (typeof EventSource === 'undefined') return;
-    const es = new EventSource('/api/events');
+    const es = new EventSource(apiUrl('/api/events'));
     es.onmessage = (msg: MessageEvent) => ref.current(JSON.parse(msg.data) as EngineEvent);
     return () => es.close();
   }, []);
@@ -610,7 +624,7 @@ export function useAgentEvents(workflowId: string, onEvent: (e: AgentEvent) => v
   useEffect(() => {
     if (typeof EventSource === 'undefined') return;
     if (!sharedAgentSource) {
-      const es = new EventSource('/api/events');
+      const es = new EventSource(apiUrl('/api/events'));
       es.onmessage = (msg: MessageEvent) => {
         const data = JSON.parse(msg.data) as {
           type?: unknown;
@@ -705,7 +719,7 @@ export function useLiveEvents(): void {
     };
     const connect = () => {
       if (closed) return;
-      es = new EventSource('/api/events');
+      es = new EventSource(apiUrl('/api/events'));
       es.onmessage = onMessage;
       es.onerror = () => {
         es?.close();
