@@ -3,6 +3,7 @@ import { createNodeWebSocket } from '@hono/node-ws';
 import type { Workflow } from '@dad/shared';
 import { catalog } from '@dad/shared';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
@@ -50,6 +51,34 @@ export function injectAppWebSocket(app: Hono, server: ServerType): void {
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
+  // The Tauri desktop shell (Bug #6) calls this loopback server cross-origin
+  // (dev window at localhost:* / packaged app at tauri.localhost), so CORS
+  // must pass for our own origins. Deliberately NOT '*' — any website the
+  // user visits could otherwise drive the agent API.
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => {
+        if (origin === '') return '*';
+        try {
+          const url = new URL(origin);
+          if (
+            url.hostname === 'localhost' ||
+            url.hostname === '127.0.0.1' ||
+            url.hostname === 'tauri.localhost' ||
+            url.protocol === 'tauri:'
+          ) {
+            return origin;
+          }
+        } catch {
+          return null;
+        }
+        return null;
+      },
+      allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Content-Type'],
+    }),
+  );
   // Deps arrive via the Task 1 index-signature shape; cast on read.
   const pairing = deps.pairing as Pairing | undefined;
   const bridge = deps.bridge as FullBridge | undefined;
