@@ -1,6 +1,7 @@
 import PinIcon from 'lucide-react/icons/pin';
 import TableIcon from 'lucide-react/icons/table';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   useBusinessTimezone,
   useCreateView,
@@ -148,16 +149,17 @@ function PinNumberForm({ table, onDone }: { table: ListSummary; onDone: () => vo
 
 /** Lists: left, every list with its count; right, the selected list as an
  * automatic grid (no saved view needed), with a cards toggle, pinned numbers
- * and a "Pin a number" button. */
+ * and a "Pin a number" button. Selection lives in ?table= so sidebar rows
+ * deep-link here; a missing or unknown value falls back to the first list. */
 export default function ListsPage() {
   const lists = useLists();
-  const [selected, setSelected] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
   const [mode, setMode] = useState<'grid' | 'cards'>('grid');
   const [pinning, setPinning] = useState(false);
   const timezone = useBusinessTimezone();
   const views = useViews();
   const table: ListSummary | undefined =
-    lists.data?.find((t) => t.name === selected) ?? lists.data?.[0];
+    lists.data?.find((t) => t.name === params.get('table')) ?? lists.data?.[0];
   const rows = useListRows(table?.name ?? null, { limit: 200 });
   const pinned = (views.data ?? []).filter((v) => v.table === table?.name && v.pinned && v.kind === 'stat');
 
@@ -177,7 +179,7 @@ export default function ListsPage() {
                 type="button"
                 aria-pressed={selected}
                 onClick={() => {
-                  setSelected(t.name);
+                  setParams({ table: t.name });
                   setPinning(false);
                 }}
                 className={`rounded-[var(--radius-s)] border border-transparent px-2.5 py-1.5 text-left text-[0.93rem] shadow-none ${

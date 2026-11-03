@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ListsPage from './ListsPage.tsx';
 import type { ListSummary, ViewDef } from './types.ts';
@@ -10,6 +11,14 @@ const TABLE: ListSummary = {
   columns: [{ name: 'name', label: 'Name', type: 'text' }],
   displayField: 'name',
   count: 5,
+};
+
+const ORDERS: ListSummary = {
+  name: 'orders',
+  label: 'Orders',
+  columns: [{ name: 'name', label: 'Name', type: 'text' }],
+  displayField: 'name',
+  count: 2,
 };
 
 const PIN: ViewDef = {
@@ -34,18 +43,26 @@ function err(status: number, message: string): Response {
   } as Response;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="loc-search">{location.search}</span>;
+}
+
 function renderLists(opts?: {
   views?: ViewDef[];
   viewData?: (id: string) => Response;
   rows?: Record<string, unknown>[];
   total?: number;
+  tables?: ListSummary[];
+  entry?: string;
 }) {
+  const tables = opts?.tables ?? [TABLE];
   const rows = opts?.rows ?? [{ id: 1, name: 'A' }];
   const total = opts?.total ?? rows.length;
   const fetch = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
-    if (url === '/api/lists') return ok([TABLE]);
-    if (url.startsWith('/api/lists/customers/rows')) return ok({ rows, total });
+    if (url === '/api/lists') return ok(tables);
+    if (url.startsWith('/api/lists/') && url.includes('/rows')) return ok({ rows, total });
     if (url === '/api/views') return ok(opts?.views ?? []);
     if (url.startsWith('/api/views/') && url.endsWith('/data')) {
       const id = url.slice('/api/views/'.length, -'/data'.length);
@@ -65,7 +82,10 @@ function renderLists(opts?: {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ListsPage />
+      <MemoryRouter initialEntries={[opts?.entry ?? '/lists']}>
+        <ListsPage />
+        <LocationProbe />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -108,5 +128,24 @@ describe('ListsPage', () => {
     });
     await screen.findByText('A');
     expect(screen.queryByText(/Showing \d+ of \d+/)).toBeNull();
+  });
+
+  test('?table= selects that table on landing', async () => {
+    renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=orders' });
+    expect(await screen.findByRole('region', { name: 'Orders' })).toBeDefined();
+    expect(screen.queryByRole('region', { name: 'Customers' })).toBeNull();
+  });
+
+  test('an unknown ?table= falls back to the first table', async () => {
+    renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=nope' });
+    expect(await screen.findByRole('region', { name: 'Customers' })).toBeDefined();
+  });
+
+  test('clicking a list writes ?table= to the URL', async () => {
+    renderLists({ tables: [TABLE, ORDERS] });
+    expect(await screen.findByRole('region', { name: 'Customers' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Orders · 2' }));
+    expect(await screen.findByRole('region', { name: 'Orders' })).toBeDefined();
+    expect(screen.getByTestId('loc-search').textContent).toBe('?table=orders');
   });
 });
