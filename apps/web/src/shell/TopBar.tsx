@@ -88,7 +88,7 @@ export default function TopBar() {
 
   const path = location.pathname;
   let crumbs: Crumb[];
-  if (path === '/') crumbs = [{ label: 'Inbox' }];
+  if (path === '/') crumbs = [{ label: 'Activity' }];
   else if (path === '/automate') crumbs = [{ label: 'Automate' }];
   else if (path === '/reducers') crumbs = [{ label: 'Chore reducers' }];
   else if (reducerMatch?.params.workflowId !== undefined) {
@@ -134,7 +134,7 @@ export default function TopBar() {
         </span>
       )}
       {failedCount > 0 && (
-        <span className="warn" title="Failed runs are listed in the Inbox.">
+        <span className="warn" title="Failed runs are listed in Activity.">
           <TriangleAlertIcon size={13} strokeWidth={2} aria-hidden />
           {failedCount === 1 ? '1 needs a look' : `${failedCount} need a look`}
         </span>

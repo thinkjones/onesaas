@@ -51,7 +51,7 @@ describe('AppShell', () => {
   test('renders nav and page with no desktop drag strip in a browser', () => {
     const { container } = renderShell();
     expect(screen.getByText('page body')).toBeDefined();
-    expect(screen.getByRole('link', { name: 'Inbox' })).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Activity' })).toBeDefined();
     // The TopBar carries an inert data-tauri-drag-region (per §6); only the
     // sidebar strip is Tauri-only.
     expect(container.querySelector('.drag')).toBeNull();
@@ -68,12 +68,12 @@ describe('AppShell', () => {
   test('hides the nav rail on first-time Automate (no chores yet)', async () => {
     renderShell({ path: '/automate', workflows: [] });
     expect(await screen.findByText('automate body')).toBeDefined();
-    expect(screen.queryByRole('link', { name: 'Inbox' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Activity' })).toBeNull();
   });
 
   test('shows the nav rail on Automate once a chore exists', async () => {
     renderShell({ path: '/automate', workflows: [{ id: 'wf-1' }] });
     expect(await screen.findByText('automate body')).toBeDefined();
-    expect(await screen.findByRole('link', { name: 'Inbox' })).toBeDefined();
+    expect(await screen.findByRole('link', { name: 'Activity' })).toBeDefined();
   });
 });

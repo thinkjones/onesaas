@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 test.each([
-  ['/', 'Inbox'],
+  ['/', 'Activity'],
   ['/automate', 'Automate'],
   ['/reducers', 'Chore reducers'],
   ['/lists', 'Data'],
@@ -133,7 +133,7 @@ test('failed runs show a warning badge; model errors show an error badge', async
 
 test('no badges when nothing failed and models are fine', async () => {
   renderTopBar({ runs: [{ id: 'r1', status: 'done' }] });
-  expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeDefined();
+  expect(await screen.findByRole('heading', { name: 'Activity' })).toBeDefined();
   expect(screen.queryByText('Models unavailable')).toBeNull();
   expect(screen.queryByText(/needs? a look/)).toBeNull();
 });

@@ -1,4 +1,4 @@
-import InboxIcon from 'lucide-react/icons/inbox';
+import ActivityIcon from 'lucide-react/icons/activity';
 import PlusIcon from 'lucide-react/icons/plus';
 import SettingsIcon from 'lucide-react/icons/settings';
 import SparklesIcon from 'lucide-react/icons/sparkles';
@@ -16,11 +16,11 @@ interface NavItem {
   label: string;
   end?: boolean;
   explainId: string;
-  Icon: typeof InboxIcon;
+  Icon: typeof ActivityIcon;
 }
 
 const LINKS: NavItem[] = [
-  { to: '/', label: 'Inbox', end: true, explainId: 'nav-inbox', Icon: InboxIcon },
+  { to: '/', label: 'Activity', end: true, explainId: 'nav-activity', Icon: ActivityIcon },
   { to: '/automate', label: 'Automate', end: true, explainId: 'nav-automate', Icon: SparklesIcon },
   { to: '/lists', label: 'Data', end: true, explainId: 'nav-data', Icon: TableIcon },
 ];
