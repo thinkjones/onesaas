@@ -207,7 +207,7 @@ describe('pairing', () => {
     await flush();
     expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(replyP).resolves.toEqual({ ok: true });
+    await expect(replyP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     expect(t.store['dadExtToken']).toBe('newtok');
     expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'newtok' });
     bg.dispose();
@@ -239,7 +239,7 @@ describe('pairing', () => {
     await flush();
     expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
     lastSocket().receive({ type: 'paired', token: 'tok' });
-    await expect(replyP).resolves.toEqual({ ok: true });
+    await expect(replyP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     bg.dispose();
   });
 });
@@ -256,6 +256,7 @@ describe('unpair', () => {
       paired: false,
       connected: true,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     bg.dispose();
   });
@@ -279,12 +280,14 @@ describe('status', () => {
       paired: false,
       connected: false,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     lastSocket().open();
     expect(await t.runtimeMessage({ action: 'status' })).toEqual({
       paired: false,
       connected: true,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     bg.dispose();
 
@@ -296,12 +299,14 @@ describe('status', () => {
       paired: true,
       connected: true,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     lastSocket().close();
     expect(await t2.runtimeMessage({ action: 'status' })).toEqual({
       paired: true,
       connected: false,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     bg2.dispose();
   });
@@ -989,7 +994,7 @@ describe('mutual ping', () => {
     const replyP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
     await flush();
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(replyP).resolves.toEqual({ ok: true });
+    await expect(replyP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     expect(sentJson(lastSocket())).toContainEqual({
       type: 'hello',
       token: 'newtok',
@@ -1100,6 +1105,7 @@ describe('stale token + pair race', () => {
       paired: true,
       connected: false,
       lastPingAt: null,
+      workerId: expect.any(String),
     });
     bg.dispose();
   });
@@ -1116,7 +1122,7 @@ describe('stale token + pair race', () => {
     await flush();
     expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(pairP).resolves.toEqual({ ok: true });
+    await expect(pairP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     bg.dispose();
   });
 
@@ -1137,7 +1143,7 @@ describe('stale token + pair race', () => {
     await flush();
     expect(sentJson(lastSocket())).toEqual([{ type: 'pair', code: '123456' }]);
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(pairP).resolves.toEqual({ ok: true });
+    await expect(pairP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     // ...and the new token hellos normally.
     expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'newtok' });
     bg.dispose();
@@ -1155,7 +1161,7 @@ describe('stale token + pair race', () => {
     lastSocket().open();
     await flush();
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(pairP).resolves.toEqual({ ok: true });
+    await expect(pairP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     // Plain close after a good pairing: backoff reconnects and re-hellos.
     lastSocket().close();
     await vi.advanceTimersByTimeAsync(1000);
@@ -1205,7 +1211,7 @@ describe('debug log', () => {
     lastSocket().receive({ type: 'ready', buttons: [] });
     await flush();
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(pairP).resolves.toEqual({ ok: true });
+    await expect(pairP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
     const msgs = await debugLog(t);
     expect(msgs.join('\n')).toMatch(
       /boot done.*pair received.*hello settled \(acked\).*pair sent.*paired ok/s,
@@ -1280,7 +1286,34 @@ describe('debug log extras', () => {
     expect(msgs).toContain('probe: ok');
     expect(msgs).toContain('pair: previous attempt superseded');
     lastSocket().receive({ type: 'paired', token: 'newtok' });
-    await expect(p2).resolves.toEqual({ ok: true });
+    await expect(p2).resolves.toEqual({ ok: true, workerId: expect.any(String) });
+    bg.dispose();
+  });
+});
+
+describe('worker identity correlation', () => {
+  it('tags status, log, and pair-ok with the same per-boot workerId', async () => {
+    const t = makeBrowser({});
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const status = (await t.runtimeMessage({ action: 'status' })) as { workerId: unknown };
+    expect(typeof status.workerId).toBe('string');
+    expect((status.workerId as string).length).toBeGreaterThan(0);
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<{
+      ok: boolean;
+      workerId: unknown;
+    }>;
+    await flush();
+    lastSocket().receive({ type: 'paired', token: 'tok' });
+    expect((await pairP).workerId).toBe(status.workerId);
+    const log = (await t.runtimeMessage({ action: 'getDebugLog' } as never)) as {
+      workerId: unknown;
+      events: Array<{ t: string; msg: string }>;
+    };
+    expect(log.workerId).toBe(status.workerId);
+    const boot = log.events.find((e) => e.msg.startsWith('boot done'));
+    expect(boot?.msg).toContain(`worker ${status.workerId as string}`);
     bg.dispose();
   });
 });

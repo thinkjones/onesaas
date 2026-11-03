@@ -131,7 +131,7 @@ export interface BgDebugEvent {
 const MAX_DEBUG_EVENTS = 100;
 
 interface PendingPair {
-  resolve: (reply: { ok: true } | { ok: false; error: string }) => void;
+  resolve: (reply: { ok: true; workerId: string } | { ok: false; error: string }) => void;
   timer: unknown;
 }
 
@@ -164,6 +164,10 @@ export function createBackground(deps: {
   // 4401-loop forever (every open resets the backoff) and race pair().
   // Cleared only by a successful pair. Browsers never see this flag.
   let tokenRejected = false;
+  // Per-instance id stamped on every popup-facing response: if the popup's
+  // pair-ok and its status ever disagree, matching ids prove one confused
+  // worker and differing ids prove two responders racing.
+  const workerId = Math.random().toString(36).slice(2, 8);
   // This socket's auto-hello outcome, for serializing pair() after it.
   let helloOutcome: 'acked' | 'rejected' | null = null;
   let helloSettledWaiters: Array<() => void> = [];
@@ -396,7 +400,7 @@ export function createBackground(deps: {
         pendingPair = null;
         if (pending) {
           timers.clearTimeout(pending.timer);
-          pending.resolve({ ok: true });
+          pending.resolve({ ok: true, workerId });
         }
         break;
       }
@@ -577,7 +581,9 @@ export function createBackground(deps: {
     }
   }
 
-  async function pair(code: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function pair(
+    code: string,
+  ): Promise<{ ok: true; workerId: string } | { ok: false; error: string }> {
     debug(`pair received (socket: ${socket === null ? 'none' : isOpen() ? 'open' : 'connecting'})`);
     connect();
     const opened = await waitForOpen(PAIR_TIMEOUT_MS);
@@ -706,10 +712,10 @@ export function createBackground(deps: {
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
     if (msg['action'] === 'unpair') return unpair();
     if (msg['action'] === 'status') {
-      return { paired: token !== null, connected: isOpen(), lastPingAt };
+      return { paired: token !== null, connected: isOpen(), lastPingAt, workerId };
     }
     if (msg['action'] === 'ping') return pingProbe();
-    if (msg['action'] === 'getDebugLog') return { events: [...debugLog] };
+    if (msg['action'] === 'getDebugLog') return { events: [...debugLog], workerId };
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload. The inbox watcher sends
@@ -739,7 +745,9 @@ export function createBackground(deps: {
       } catch {
         // Unknown profile: hello goes out bare and the app shows it as unknown.
       }
-      debug(`boot done (token: ${token !== null ? 'yes' : 'no'}, profile: ${profileEmail !== null ? 'known' : 'unknown'})`);
+      debug(
+        `boot done (worker ${workerId}, token: ${token !== null ? 'yes' : 'no'}, profile: ${profileEmail !== null ? 'known' : 'unknown'})`,
+      );
       connect();
     },
     dispose(): void {

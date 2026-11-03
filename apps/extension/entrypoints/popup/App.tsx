@@ -6,11 +6,13 @@ interface Status {
   paired: boolean;
   connected: boolean;
   lastPingAt: string | null;
+  workerId?: string;
 }
 
 interface PairReply {
   ok: boolean;
   error?: string;
+  workerId?: string;
 }
 
 // One popup-side journal line (debug mode for the Pair button).
@@ -87,7 +89,10 @@ function App() {
     }
   };
 
-  const refresh = async () => {
+  // logOutcome journals which worker answered (pair-ok carries its own id):
+  // matching ids prove one worker, differing ids prove two responders. Only
+  // the post-pair refresh logs — the 2s tick would flood the journal.
+  const refresh = async (logOutcome = false) => {
     const s = (await browser.runtime.sendMessage({ action: 'status' })) as Partial<Status>;
     const paired = !!s?.paired;
     setStatus({
@@ -95,13 +100,20 @@ function App() {
       connected: !!s?.connected,
       lastPingAt: typeof s?.lastPingAt === 'string' ? s.lastPingAt : null,
     });
+    let bgWorker = '?';
     try {
       const log = (await browser.runtime.sendMessage({ action: 'getDebugLog' })) as
-        | { events?: BgDebugEvent[] }
+        | { events?: BgDebugEvent[]; workerId?: string }
         | undefined;
       if (Array.isArray(log?.events)) setBgLog(log.events.slice(-30));
+      bgWorker = typeof log?.workerId === 'string' ? log.workerId : '?';
     } catch {
       // The log is a bonus view; a dead worker already surfaces via status.
+      bgWorker = 'failed';
+    }
+    if (logOutcome) {
+      const sid = typeof s?.workerId === 'string' ? s.workerId : '?';
+      logPop(`status: paired=${paired} worker=${sid} (bg log worker=${bgWorker})`);
     }
     if (paired) await probe();
   };
@@ -146,8 +158,10 @@ function App() {
     try {
       const res = await sendPair(code);
       if (res?.ok) {
-        logPop(`pair ok (${Date.now() - started}ms)`);
-        await refresh();
+        logPop(
+          `pair ok (${Date.now() - started}ms${typeof res.workerId === 'string' ? `, worker ${res.workerId}` : ''})`,
+        );
+        await refresh(true);
       } else {
         logPop(`pair failed: ${res?.error ?? 'unknown'} (${Date.now() - started}ms)`);
         setError(res?.error ?? 'Pairing failed.');

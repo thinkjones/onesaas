@@ -52,15 +52,18 @@ beforeEach(() => {
   status = { paired: false, connected: false, lastPingAt: null };
   pingOk = true;
   sendMessage = vi.fn(async (msg: { action: string; code?: string }) => {
-    if (msg.action === 'status') return { ...status };
+    if (msg.action === 'status') return { ...status, workerId: 'wkr123' };
     if (msg.action === 'ping') return { ok: pingOk };
     if (msg.action === 'getDebugLog') {
-      return { events: [{ t: '2026-05-01T12:00:00.000Z', msg: 'pair sent' }] };
+      return {
+        events: [{ t: '2026-05-01T12:00:00.000Z', msg: 'pair sent' }],
+        workerId: 'wkr123',
+      };
     }
     if (msg.action === 'pair') {
       if (/^\d{6}$/.test(msg.code ?? '')) {
         status = { paired: true, connected: true, lastPingAt: null };
-        return { ok: true };
+        return { ok: true, workerId: 'wkr123' };
       }
       return { ok: false, error: 'Bad code.' };
     }
@@ -409,5 +412,21 @@ describe('popup pair logging + retry', () => {
     await renderPopup();
     const log = container.querySelector('details')!.textContent ?? '';
     expect(log).toContain('[bg 12:00:00] pair sent');
+  });
+});
+
+describe('popup worker correlation', () => {
+  test('post-pair log shows the pair, status, and bg-log worker ids', async () => {
+    await renderPopup();
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+    });
+    await flush();
+    const log = container.querySelector('details')!.textContent ?? '';
+    expect(log).toContain('pair ok');
+    expect(log).toContain('worker wkr123');
+    expect(log).toContain('status: paired=true worker=wkr123 (bg log worker=wkr123)');
   });
 });
