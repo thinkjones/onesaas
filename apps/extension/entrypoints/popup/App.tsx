@@ -23,6 +23,18 @@ interface PopupLogEntry {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Post-pair agreement: re-read status until the worker that redeemed answers
+// (a phantom responder may be winning the race transiently). 10 reads, half
+// a second apart — then name the split instead of freezing silently.
+const PAIR_MATCH_POLL_MS = 500;
+const PAIR_MATCH_ATTEMPTS = 10;
+
+interface StatusRead {
+  paired: boolean;
+  sid: string;
+  lid: string;
+}
+
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
 // SAME string as the background's WS_URL (lib/background.ts) and the app's
@@ -67,6 +79,9 @@ function App() {
   // Debug mode: the popup's own journal plus the background worker's log.
   const [popLog, setPopLog] = useState<PopupLogEntry[]>([]);
   const [bgLog, setBgLog] = useState<BgDebugEvent[]>([]);
+  // Set when pair-ok and status provably come from different workers; cleared
+  // by any later paired read (the ticks heal it if the phantom yields).
+  const [unmatched, setUnmatched] = useState<string | null>(null);
 
   const logPop = (msg: string) => {
     setPopLog((l) => [...l.slice(-29), { t: new Date().toISOString(), msg }]);
@@ -89,10 +104,8 @@ function App() {
     }
   };
 
-  // logOutcome journals which worker answered (pair-ok carries its own id):
-  // matching ids prove one worker, differing ids prove two responders. Only
-  // the post-pair refresh logs — the 2s tick would flood the journal.
-  const refresh = async (logOutcome = false) => {
+  // One status+log read: updates the view/journal, returns who answered.
+  const readStatus = async (): Promise<StatusRead> => {
     const s = (await browser.runtime.sendMessage({ action: 'status' })) as Partial<Status>;
     const paired = !!s?.paired;
     setStatus({
@@ -100,22 +113,50 @@ function App() {
       connected: !!s?.connected,
       lastPingAt: typeof s?.lastPingAt === 'string' ? s.lastPingAt : null,
     });
-    let bgWorker = '?';
+    if (paired) setUnmatched(null);
+    let lid = '?';
     try {
       const log = (await browser.runtime.sendMessage({ action: 'getDebugLog' })) as
         | { events?: BgDebugEvent[]; workerId?: string }
         | undefined;
       if (Array.isArray(log?.events)) setBgLog(log.events.slice(-30));
-      bgWorker = typeof log?.workerId === 'string' ? log.workerId : '?';
+      lid = typeof log?.workerId === 'string' ? log.workerId : '?';
     } catch {
       // The log is a bonus view; a dead worker already surfaces via status.
-      bgWorker = 'failed';
+      lid = 'failed';
     }
-    if (logOutcome) {
-      const sid = typeof s?.workerId === 'string' ? s.workerId : '?';
-      logPop(`status: paired=${paired} worker=${sid} (bg log worker=${bgWorker})`);
+    return { paired, sid: typeof s?.workerId === 'string' ? s.workerId : '?', lid };
+  };
+
+  const refresh = async () => {
+    const read = await readStatus();
+    if (read.paired) await probe();
+  };
+
+  // Re-read until the pairing worker answers its own name, then journal one
+  // summary line. Persistent disagreement names the workers on screen instead
+  // of freezing on the code box.
+  const matchPairWorker = async (pid: string) => {
+    let last: StatusRead = { paired: false, sid: '?', lid: '?' };
+    for (let attempt = 0; attempt < PAIR_MATCH_ATTEMPTS; attempt++) {
+      last = await readStatus();
+      if (last.sid === pid || last.paired) break;
+      if (attempt < PAIR_MATCH_ATTEMPTS - 1) await sleep(PAIR_MATCH_POLL_MS);
     }
-    if (paired) await probe();
+    if (last.sid === pid || last.paired) {
+      logPop(
+        `status: paired=${last.paired} worker=${last.sid} (bg log worker=${last.lid}) — matches pair ✓`,
+      );
+      if (last.paired) await probe();
+    } else {
+      const q = last.sid === '?' ? 'an unknown worker' : `worker ${last.sid}`;
+      setUnmatched(
+        `Paired with worker ${pid}, but status keeps coming from ${q}. This view is stale.`,
+      );
+      logPop(
+        `status: UNMATCHED (pair worker=${pid}, status worker=${last.sid}, bg log worker=${last.lid})`,
+      );
+    }
   };
 
   useEffect(() => {
@@ -153,15 +194,21 @@ function App() {
     pairing.current = true;
     setBusy(true);
     setError('');
+    setUnmatched(null);
     const started = Date.now();
     logPop('pair attempt');
     try {
       const res = await sendPair(code);
       if (res?.ok) {
-        logPop(
-          `pair ok (${Date.now() - started}ms${typeof res.workerId === 'string' ? `, worker ${res.workerId}` : ''})`,
-        );
-        await refresh(true);
+        const pid = typeof res.workerId === 'string' ? res.workerId : null;
+        logPop(`pair ok (${Date.now() - started}ms${pid !== null ? `, worker ${pid}` : ''})`);
+        // Old workers stamp no id: single refresh, as before. New workers get
+        // the agreement loop so a phantom can't freeze the view silently.
+        if (pid === null) {
+          await refresh();
+        } else {
+          await matchPairWorker(pid);
+        }
       } else {
         logPop(`pair failed: ${res?.error ?? 'unknown'} (${Date.now() - started}ms)`);
         setError(res?.error ?? 'Pairing failed.');
@@ -353,6 +400,7 @@ function App() {
           )}
         </button>
         {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
+        {unmatched !== null && <p style={{ color: '#b00020' }}>{unmatched}</p>}
         {connectionInfo}
         {debugLog}
       </div>
@@ -377,6 +425,7 @@ function App() {
         Unpair
       </button>
       {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
+      {unmatched !== null && <p style={{ color: '#b00020' }}>{unmatched}</p>}
       {debugLog}
     </div>
   );

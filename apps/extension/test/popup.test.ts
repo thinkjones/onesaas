@@ -430,3 +430,99 @@ describe('popup worker correlation', () => {
     expect(log).toContain('status: paired=true worker=wkr123 (bg log worker=wkr123)');
   });
 });
+
+describe('popup pair/status correlation', () => {
+  test('post-pair status from a phantom retries until the pair worker answers', async () => {
+    await renderPopup();
+    const orig = sendMessage.getMockImplementation()!;
+    let statusReads = 0;
+    sendMessage.mockImplementation(async (msg) => {
+      if (msg.action === 'status') {
+        statusReads += 1;
+        // First read: the phantom — idless, unpaired. Then the real worker.
+        if (statusReads === 1) return { paired: false, connected: false, lastPingAt: null };
+        return { paired: true, connected: true, lastPingAt: null, workerId: 'wkr123' };
+      }
+      if (msg.action === 'getDebugLog' && statusReads <= 1) {
+        return { events: [] };
+      }
+      return orig(msg);
+    });
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+      await new Promise((r) => setTimeout(r, 1500));
+    });
+    await flush();
+    expect(container.textContent ?? '').toContain('Paired ✓');
+    const log = container.querySelector('details')!.textContent ?? '';
+    expect(log).toContain('matches pair');
+  });
+
+  test('persistent mismatch names the workers instead of flipping silently', async () => {
+    await renderPopup();
+    const orig = sendMessage.getMockImplementation()!;
+    sendMessage.mockImplementation(async (msg) => {
+      if (msg.action === 'status') return { paired: false, connected: false, lastPingAt: null };
+      if (msg.action === 'getDebugLog') return { events: [] };
+      return orig(msg);
+    });
+    vi.useFakeTimers();
+    try {
+      const input = container.querySelector('input')!;
+      act(() => setInput(input, '123456'));
+      await act(async () => {
+        buttonByText('Pair').click();
+        await vi.advanceTimersByTimeAsync(6000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(container.textContent ?? '').not.toContain('Paired ✓');
+      expect(container.textContent ?? '').toContain(
+        'Paired with worker wkr123, but status keeps coming from an unknown worker. This view is stale.',
+      );
+      const log = container.querySelector('details')!.textContent ?? '';
+      expect(log).toContain('status: UNMATCHED (pair worker=wkr123, status worker=?, bg log worker=?)');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a later paired read clears the stale-view warning', async () => {
+    await renderPopup();
+    const orig = sendMessage.getMockImplementation()!;
+    let phantom = true;
+    sendMessage.mockImplementation(async (msg) => {
+      if (msg.action === 'status') {
+        if (phantom) return { paired: false, connected: false, lastPingAt: null };
+        return { paired: true, connected: true, lastPingAt: null, workerId: 'wkr123' };
+      }
+      if (msg.action === 'getDebugLog') {
+        return phantom ? { events: [] } : { events: [], workerId: 'wkr123' };
+      }
+      return orig(msg);
+    });
+    vi.useFakeTimers();
+    try {
+      const input = container.querySelector('input')!;
+      act(() => setInput(input, '123456'));
+      await act(async () => {
+        buttonByText('Pair').click();
+        await vi.advanceTimersByTimeAsync(6000);
+      });
+      expect(container.textContent ?? '').toContain('This view is stale.');
+      phantom = false;
+    } finally {
+      vi.useRealTimers();
+    }
+    // The 2s tick was armed on real timers at mount: give it a real window.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 2600));
+    });
+    await flush();
+    expect(container.textContent ?? '').toContain('Paired ✓');
+    expect(container.textContent ?? '').not.toContain('This view is stale.');
+  });
+});
