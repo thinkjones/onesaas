@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatPingAge } from '@dad/shared';
 import type { BgDebugEvent } from '../../lib/background.js';
+import { SITE_CAPABILITIES, siteOfUrl, type PanelSite } from '../../lib/sites.js';
 
 interface Status {
   paired: boolean;
@@ -43,7 +44,8 @@ const BRIDGE_URL = 'ws://127.0.0.1:8787/ext';
 // Desktop focus first (works in dev and production: the Tauri webview holds
 // a tagged SSE stream); the settings page in a browser tab is the fallback.
 const FOCUS_URL = 'http://127.0.0.1:8787/api/app/focus';
-const APP_SETTINGS_URL = 'http://localhost:5173/settings#chrome-extension';
+// Browser-tab fallback origin (dev): desktop focus is tried first.
+const APP_ORIGIN = 'http://localhost:5173';
 
 // The signed-in address of the Chrome profile this panel runs in — which is
 // the profile the pairing belongs to. Null when Chrome isn't signed in (or
@@ -85,6 +87,8 @@ function App() {
   // Settings toggle (paired view): Pair again / Unpair hide behind it so the
   // connected panel just shows status.
   const [showSettings, setShowSettings] = useState(false);
+  // The supported site in the active tab (null = elsewhere or unknown).
+  const [site, setSite] = useState<PanelSite | null>(null);
 
   const logPanel = (msg: string) => {
     setPopLog((l) => [...l.slice(-29), { t: new Date().toISOString(), msg }]);
@@ -131,9 +135,28 @@ function App() {
     return { paired, sid: typeof s?.workerId === 'string' ? s.workerId : '?', lid };
   };
 
+  // Active-tab site for "On this page", re-read on the same tick as
+  // status so switching tabs updates the panel within 2s. Guarded like
+  // profileEmail: tab lookup is bonus context, never a failure.
+  const readTab = async () => {
+    try {
+      const query = (
+        browser as unknown as {
+          tabs?: { query?: (q: { active: boolean; currentWindow: boolean }) => Promise<{ url?: string }[]> };
+        }
+      ).tabs?.query;
+      if (typeof query !== 'function') return;
+      const tabs = await query({ active: true, currentWindow: true });
+      setSite(siteOfUrl(tabs[0]?.url));
+    } catch {
+      // The panel works without tab context; leave the last known site.
+    }
+  };
+
   const refresh = async () => {
     const read = await readStatus();
     if (read.paired) await probe();
+    await readTab();
   };
 
   // Re-read until the pairing worker answers its own name, then journal one
@@ -287,14 +310,14 @@ function App() {
   );
 
   // Opens the DESKTOP app (dev and production): the server focuses a
-  // listening Tauri window and navigates it to this card. With no desktop
+  // listening Tauri window and navigates it to the path. With no desktop
   // listening — or no server at all — a browser tab is the fallback.
-  const openApp = async () => {
+  const openApp = async (path: string, hash?: string) => {
     try {
       const res = await fetch(FOCUS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: '/settings', hash: 'chrome-extension' }),
+        body: JSON.stringify(hash === undefined ? { path } : { path, hash }),
       });
       const data = (await res.json().catch(() => null)) as { focused?: boolean } | null;
       if (res.ok && data?.focused) {
@@ -304,14 +327,14 @@ function App() {
     } catch {
       // Unreachable server: fall through to the browser tab.
     }
-    window.open(APP_SETTINGS_URL, '_blank');
+    window.open(`${APP_ORIGIN}${path}${hash === undefined ? '' : `#${hash}`}`, '_blank');
   };
 
   const manageLink = (
     <p>
       <button
         type="button"
-        onClick={() => void openApp()}
+        onClick={() => void openApp('/settings', 'chrome-extension')}
         style={{
           background: 'none',
           border: 'none',
@@ -325,6 +348,37 @@ function App() {
         Open the app to manage →
       </button>
     </p>
+  );
+
+  // What the extension can do in the active tab, in BOTH views — plus the
+  // way to create or change the automations behind it.
+  const onThisPage =
+    site === null ? (
+      <p style={{ color: '#555' }}>
+        Open Gmail, Google Calendar, or Meta Business Suite in a tab to see what I can do
+        there.
+      </p>
+    ) : (
+      <div>
+        <h2 style={{ fontSize: 15, margin: '12px 0 4px' }}>On this page</h2>
+        <p style={{ margin: '0 0 4px', fontWeight: 600 }}>{SITE_CAPABILITIES[site].label}</p>
+        <ul style={{ margin: '0 0 4px', paddingLeft: 20 }}>
+          {SITE_CAPABILITIES[site].items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    );
+
+  const automationButtons = (
+    <>
+      <button onClick={() => void openApp('/automate')} style={buttonStyle}>
+        Create an automation for this page
+      </button>
+      <button onClick={() => void openApp('/reducers')} style={buttonStyle}>
+        Change an existing automation
+      </button>
+    </>
   );
 
   // Border spinner for the in-flight Pair click (the panel has no stylesheet,
@@ -384,7 +438,9 @@ function App() {
         <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
         {info}
         {manageLink}
-        <p style={{ marginTop: 0 }}>Enter the 6-digit code from the app:</p>
+        {onThisPage}
+        {automationButtons}
+        <p style={{ marginTop: 12 }}>Enter the 6-digit code from the app:</p>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -421,6 +477,8 @@ function App() {
       <p style={{ margin: '0 0 8px' }}>Chrome profile: {email ?? 'not signed in'}</p>
       {info}
       {manageLink}
+      {onThisPage}
+      {automationButtons}
       <button
         onClick={() => setShowSettings((s) => !s)}
         aria-expanded={showSettings}

@@ -19,6 +19,7 @@ interface FakeStatus {
 let status: FakeStatus;
 let pingOk: boolean;
 let focusResult: { focused: boolean };
+let activeTabUrl: string | undefined;
 let sendMessage: ReturnType<typeof vi.fn>;
 let getProfileUserInfo: ReturnType<typeof vi.fn>;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -94,9 +95,14 @@ beforeEach(() => {
     }
     return { ok: true };
   });
+  activeTabUrl = undefined;
+  const tabsQuery = vi.fn(async () =>
+    activeTabUrl === undefined ? [] : [{ id: 7, url: activeTabUrl }],
+  );
   vi.stubGlobal('browser', {
     runtime: { sendMessage },
     identity: { getProfileUserInfo },
+    tabs: { query: tabsQuery },
   });
   vi.stubGlobal('fetch', fetchMock);
   container = document.createElement('div');
@@ -546,5 +552,90 @@ describe('sidepanel pair/status correlation', () => {
     await flush();
     expect(container.textContent ?? '').toContain('Paired ✓');
     expect(container.textContent ?? '').not.toContain('This view is stale.');
+  });
+});
+
+describe('sidepanel on this page', () => {
+  test('a Gmail tab lists what the extension can do there', async () => {
+    status = { paired: true, connected: true, lastPingAt: null };
+    activeTabUrl = 'https://mail.google.com/mail/u/0/#inbox';
+    await renderPanel();
+    const text = container.textContent ?? '';
+    expect(text).toContain('On this page');
+    expect(text).toContain('Gmail');
+    expect(text).toContain('Read the email you have open');
+    expect(text).toContain('Watch for new mail');
+  });
+
+  test('an unsupported tab shows where to go instead', async () => {
+    status = { paired: true, connected: true, lastPingAt: null };
+    activeTabUrl = 'https://example.com/';
+    await renderPanel();
+    expect(container.textContent ?? '').toContain(
+      'Open Gmail, Google Calendar, or Meta Business Suite in a tab to see what I can do there.',
+    );
+  });
+
+  test('the unpaired view also shows the current page capabilities', async () => {
+    activeTabUrl = 'https://calendar.google.com/calendar/u/0/r/day';
+    await renderPanel();
+    const text = container.textContent ?? '';
+    expect(container.querySelector('input')).not.toBeNull();
+    expect(text).toContain('Google Calendar');
+    expect(text).toContain('Create events');
+  });
+});
+
+describe('sidepanel automation buttons', () => {
+  let opened: string[];
+
+  beforeEach(() => {
+    opened = [];
+    vi.spyOn(window, 'open').mockImplementation(((url?: string | URL) => {
+      opened.push(String(url));
+      return null;
+    }) as typeof window.open);
+    vi.spyOn(window, 'close').mockImplementation(() => {});
+  });
+
+  test('create opens the desktop app at Automate', async () => {
+    focusResult = { focused: true };
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPanel();
+    await act(async () => {
+      buttonByText('Create an automation for this page').click();
+    });
+    await flush();
+    const focusCall = fetchMock.mock.calls.find(
+      ([u]) => u === 'http://127.0.0.1:8787/api/app/focus',
+    )!;
+    expect(JSON.parse(focusCall[1]!.body as string)).toEqual({ path: '/automate' });
+    expect(opened).toHaveLength(0);
+  });
+
+  test('create falls back to the Automate page in a tab', async () => {
+    focusResult = { focused: false };
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPanel();
+    await act(async () => {
+      buttonByText('Create an automation for this page').click();
+    });
+    await flush();
+    expect(opened).toEqual(['http://localhost:5173/automate']);
+  });
+
+  test('change opens the desktop app at the reducer list', async () => {
+    focusResult = { focused: true };
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPanel();
+    await act(async () => {
+      buttonByText('Change an existing automation').click();
+    });
+    await flush();
+    const focusCall = fetchMock.mock.calls.find(
+      ([u]) => u === 'http://127.0.0.1:8787/api/app/focus',
+    )!;
+    expect(JSON.parse(focusCall[1]!.body as string)).toEqual({ path: '/reducers' });
+    expect(opened).toHaveLength(0);
   });
 });
