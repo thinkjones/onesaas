@@ -208,7 +208,7 @@
   - `POST /api/explain` with `{ kind: 'step'|'run'|'table'|'column'|'ui'; id?: string; context?: string }` → `{ text }`.
     - It uses `gateway.chatJson({ role: 'builder' })` with a 2–3 sentence plain-English answer about this business's actual data (step config and last StepRun, run story, table def and count, or the fixed UI descriptions in `explain.ts`, one per `data-explain` key).
     - Results are cached in memory by `(kind, id, workflow version or run status)`.
-  - `<Explain target>` is a small `?` button (24 px visual, 40 px hit area) opening a popover with the text and "Tell me more", which opens the agent panel with "Tell me more about <label>" sent.
+  - `<Explain target>` is a small `?` button (24 px visual, 40 px hit area) opening a popover with the text and "Tell me more", which opens the agent panel with "Tell me more about `<label>`" sent.
   - **Alt-click:** a global handler finds the nearest element with `data-explain='{"kind":…,"id":…}'` and opens the same popover at the pointer.
 
 - [ ] **Step 1: Write failing tests.**

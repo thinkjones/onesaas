@@ -16,6 +16,22 @@ items = [
   "copilot-plugin:thinkjones/fs-skills:.agy-plugin/code-architecture",
   "copilot-plugin:thinkjones/fs-skills:.agy-plugin/eng-best-practices",
   "skill:thinkjones/fs-skills:packs/book-factory/skills/diagram-design",
+  "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills/skills/chrome-extension-developer",
+  "plugin:anthropics/claude-plugins-official#chrome-devtools-mcp",
+  "skill:github/awesome-copilot:skills/chrome-devtools",
+  "plugin:anthropics/claude-plugins-official#browser-use",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-extension-builder",
+  "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-extension-builder",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-bridge",
+  "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-bridge",
+  "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills/skills/browser-extension-launch",
+  "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-testing-with-devtools",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-act",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-automation",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-extension-launch",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-extension-reverse",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-harness",
+  "skill:sickn33/agentic-awesome-skills:skills/browser-testing-with-devtools",
 ]
 
 [[packs.vendor-meta-hackathon.installs]]
