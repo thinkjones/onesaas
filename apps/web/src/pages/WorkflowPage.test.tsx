@@ -479,3 +479,13 @@ describe('WorkflowPage agent switch seam', () => {
     await waitFor(() => expect(path).toBe('/reducers/wf-photo?mode=design'));
   });
 });
+
+test('workflow page root is full height for the design workspace', async () => {
+  renderPage(
+    () => {},
+    () => {},
+    { search: '?mode=design' },
+  );
+  const root = await screen.findByTestId('workflow-root');
+  expect(root.className).toContain('h-full');
+});

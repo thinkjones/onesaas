@@ -226,10 +226,10 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   const showUploadDrop = mode === 'runtime' && workflowQuery.data.trigger.type === 'trigger.upload';
 
   return (
-    <div className="flex flex-col gap-4">
+    <div data-testid="workflow-root" className="flex h-full min-h-0 flex-1 flex-col gap-4">
       <ModeSwitch mode={mode} onModeChange={handleModeChange} />
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-[2]">
+      <div className="flex min-h-0 flex-1 items-stretch gap-4">
+        <div className="min-h-0 min-w-0 flex-[2]">
           {mode === 'design' ? (
             <DesignView
               workflowId={workflowQuery.data.id}
@@ -263,7 +263,7 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
             Show chat
           </AppButton>
         ) : (
-          <div className="flex min-w-[300px] flex-[1] shrink-0 flex-col gap-4">
+          <div className="flex min-h-0 min-w-[300px] flex-[1] shrink-0 flex-col gap-4">
             {mode === 'design' && activity.length > 0 && <ActivityLog entries={activity} />}
             <AgentPanel
               agent={agent}

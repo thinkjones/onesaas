@@ -113,7 +113,7 @@ export default function AgentPanel({
   return (
     <section
       aria-label="Chat"
-      className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-4 shadow-sm"
+      className="flex h-full min-h-0 flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-4 shadow-sm"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Chat</h2>
@@ -126,7 +126,7 @@ export default function AgentPanel({
       <div
         ref={scrollRef}
         aria-label="Conversation"
-        className="flex max-h-[55vh] min-h-[280px] flex-col gap-3 overflow-y-auto"
+        className="flex min-h-[280px] flex-1 flex-col gap-3 overflow-y-auto"
       >
         {transcript.map((item, i) => (
           <Message

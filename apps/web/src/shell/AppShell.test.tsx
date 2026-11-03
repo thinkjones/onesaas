@@ -29,6 +29,7 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
           <Route element={<AppShell />}>
             <Route path="/" element={<p>page body</p>} />
             <Route path="/automate" element={<p>automate body</p>} />
+            <Route path="/reducers/:workflowId" element={<p>reducer body</p>} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -75,5 +76,21 @@ describe('AppShell', () => {
     renderShell({ path: '/automate', workflows: [{ id: 'wf-1' }] });
     expect(await screen.findByText('automate body')).toBeDefined();
     expect(await screen.findByRole('link', { name: 'Activity' })).toBeDefined();
+  });
+});
+
+describe('AppShell design-mode full bleed', () => {
+  test('design mode drops content padding and scroll for the full-bleed canvas', async () => {
+    renderShell({ path: '/reducers/wf-1?mode=design' });
+    const content = await screen.findByTestId('shell-content');
+    expect(content.className).toContain('overflow-hidden');
+    expect(content.className).not.toContain('px-8');
+  });
+
+  test('runtime mode keeps the padded scrolling content', async () => {
+    renderShell({ path: '/reducers/wf-1?mode=runtime' });
+    const content = await screen.findByTestId('shell-content');
+    expect(content.className).toContain('overflow-y-auto');
+    expect(content.className).toContain('px-8');
   });
 });

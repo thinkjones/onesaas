@@ -22,6 +22,12 @@ export default function AppShell() {
   const hideNav =
     location.pathname === '/automate' &&
     (workflowsQuery.data === undefined || workflowsQuery.data.length === 0);
+  // Design mode owns the whole content area: no padding, no shell scroll —
+  // the canvas fills 100% w/h and the chat stretches full height. Runtime
+  // (the default, including a missing ?mode=) keeps the padded scroll column.
+  const fullBleed =
+    /^\/reducers\/[^/]+$/.test(location.pathname) &&
+    new URLSearchParams(location.search).get('mode') === 'design';
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-window">
       <div className="flex min-h-0 flex-1 gap-2 p-2">
@@ -31,7 +37,14 @@ export default function AppShell() {
         {!hideNav && <Sidebar />}
         <main className="bg-canvas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border shadow-sm">
           {!hideNav && <TopBar />}
-          <div className="min-w-0 flex-1 overflow-y-auto px-8 pt-3 pb-8">
+          <div
+            data-testid="shell-content"
+            className={
+              fullBleed
+                ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                : 'min-w-0 flex-1 overflow-y-auto px-8 pt-3 pb-8'
+            }
+          >
             <Outlet />
           </div>
         </main>
