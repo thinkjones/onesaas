@@ -15,8 +15,8 @@ interface PairReply {
   workerId?: string;
 }
 
-// One popup-side journal line (debug mode for the Pair button).
-interface PopupLogEntry {
+// One panel-side journal line (debug mode for the Pair button).
+interface PanelLogEntry {
   t: string;
   msg: string;
 }
@@ -45,7 +45,7 @@ const BRIDGE_URL = 'ws://127.0.0.1:8787/ext';
 const FOCUS_URL = 'http://127.0.0.1:8787/api/app/focus';
 const APP_SETTINGS_URL = 'http://localhost:5173/settings#chrome-extension';
 
-// The signed-in address of the Chrome profile this popup runs in — which is
+// The signed-in address of the Chrome profile this panel runs in — which is
 // the profile the pairing belongs to. Null when Chrome isn't signed in (or
 // the lookup fails); needs the `identity` manifest permission.
 async function profileEmail(): Promise<string | null> {
@@ -62,8 +62,8 @@ async function profileEmail(): Promise<string | null> {
   }
 }
 
-// Pairing popup (Bug #5): status, Chrome profile, what/why info, a link to
-// manage the app, and unpair/re-pair. Covered by test/popup.test.ts.
+// Pairing panel (Bug #5): status, Chrome profile, what/why info, a link to
+// manage the app, and unpair/re-pair. Covered by test/panel.test.ts.
 function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [live, setLive] = useState<boolean | null>(null);
@@ -76,14 +76,14 @@ function App() {
   // Pairs serialize on a ref, not `busy`: state lags a tick, so two same-tick
   // clicks would both pass and double-submit the single-use code.
   const pairing = useRef(false);
-  // Debug mode: the popup's own journal plus the background worker's log.
-  const [popLog, setPopLog] = useState<PopupLogEntry[]>([]);
+  // Debug mode: the panel's own journal plus the background worker's log.
+  const [panelLog, setPopLog] = useState<PanelLogEntry[]>([]);
   const [bgLog, setBgLog] = useState<BgDebugEvent[]>([]);
   // Set when pair-ok and status provably come from different workers; cleared
   // by any later paired read (the ticks heal it if the phantom yields).
   const [unmatched, setUnmatched] = useState<string | null>(null);
 
-  const logPop = (msg: string) => {
+  const logPanel = (msg: string) => {
     setPopLog((l) => [...l.slice(-29), { t: new Date().toISOString(), msg }]);
   };
 
@@ -144,7 +144,7 @@ function App() {
       if (attempt < PAIR_MATCH_ATTEMPTS - 1) await sleep(PAIR_MATCH_POLL_MS);
     }
     if (last.sid === pid || last.paired) {
-      logPop(
+      logPanel(
         `status: paired=${last.paired} worker=${last.sid} (bg log worker=${last.lid}) — matches pair ✓`,
       );
       if (last.paired) await probe();
@@ -153,7 +153,7 @@ function App() {
       setUnmatched(
         `Paired with worker ${pid}, but status keeps coming from ${q}. This view is stale.`,
       );
-      logPop(
+      logPanel(
         `status: UNMATCHED (pair worker=${pid}, status worker=${last.sid}, bg log worker=${last.lid})`,
       );
     }
@@ -171,7 +171,7 @@ function App() {
         // retries, so don't clobber the view with an error.
       });
     }, 2000);
-    // The profile can't change while the popup is open; fetch once.
+    // The profile can't change while the panel is open; fetch once.
     void profileEmail().then((e) => setEmail(e));
     return () => clearInterval(timer);
   }, []);
@@ -183,7 +183,7 @@ function App() {
     try {
       return (await browser.runtime.sendMessage({ action: 'pair', code: c })) as PairReply;
     } catch {
-      logPop('pair send failed (worker waking?) — retrying…');
+      logPanel('pair send failed (worker waking?) — retrying…');
       await sleep(500);
       return (await browser.runtime.sendMessage({ action: 'pair', code: c })) as PairReply;
     }
@@ -196,12 +196,12 @@ function App() {
     setError('');
     setUnmatched(null);
     const started = Date.now();
-    logPop('pair attempt');
+    logPanel('pair attempt');
     try {
       const res = await sendPair(code);
       if (res?.ok) {
         const pid = typeof res.workerId === 'string' ? res.workerId : null;
-        logPop(`pair ok (${Date.now() - started}ms${pid !== null ? `, worker ${pid}` : ''})`);
+        logPanel(`pair ok (${Date.now() - started}ms${pid !== null ? `, worker ${pid}` : ''})`);
         // Old workers stamp no id: single refresh, as before. New workers get
         // the agreement loop so a phantom can't freeze the view silently.
         if (pid === null) {
@@ -210,11 +210,11 @@ function App() {
           await matchPairWorker(pid);
         }
       } else {
-        logPop(`pair failed: ${res?.error ?? 'unknown'} (${Date.now() - started}ms)`);
+        logPanel(`pair failed: ${res?.error ?? 'unknown'} (${Date.now() - started}ms)`);
         setError(res?.error ?? 'Pairing failed.');
       }
     } catch {
-      logPop(`pair failed: background unreachable (${Date.now() - started}ms)`);
+      logPanel(`pair failed: background unreachable (${Date.now() - started}ms)`);
       setError('No answer from the app. Is it running?');
     } finally {
       pairing.current = false;
@@ -240,7 +240,7 @@ function App() {
   };
 
   // Full reset: revoke the server token, then forget the local one. Best
-  // effort on the server half — a down server must not trap the popup.
+  // effort on the server half — a down server must not trap the panel.
   const unpair = async () => {
     setBusy(true);
     setError('');
@@ -324,7 +324,7 @@ function App() {
     </p>
   );
 
-  // Border spinner for the in-flight Pair click (the popup has no stylesheet,
+  // Border spinner for the in-flight Pair click (the panel has no stylesheet,
   // so the keyframes ride along in a style tag).
   const spinner = (
     <>
@@ -361,13 +361,13 @@ function App() {
   );
 
   // Debug mode, in BOTH views: everything the Pair button did plus the
-  // background worker's own journal, newest last, popup lines first.
+  // background worker's own journal, newest last, panel lines first.
   const debugLog = (
     <details style={{ marginTop: 8 }}>
       <summary style={{ cursor: 'pointer' }}>Connection log</summary>
       <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 160, overflowY: 'auto' }}>
         {[
-          ...popLog.map((e) => `[popup ${e.t.slice(11, 19)}] ${e.msg}`),
+          ...panelLog.map((e) => `[panel ${e.t.slice(11, 19)}] ${e.msg}`),
           ...bgLog.map((e) => `[bg ${e.t.slice(11, 19)}] ${e.msg}`),
         ].join('\n') || 'No events yet.'}
       </pre>

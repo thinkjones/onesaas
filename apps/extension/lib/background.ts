@@ -164,7 +164,7 @@ export function createBackground(deps: {
   // 4401-loop forever (every open resets the backoff) and race pair().
   // Cleared only by a successful pair. Browsers never see this flag.
   let tokenRejected = false;
-  // Per-instance id stamped on every popup-facing response: if the popup's
+  // Per-instance id stamped on every panel-facing response: if the panel's
   // pair-ok and its status ever disagree, matching ids prove one confused
   // worker and differing ids prove two responders racing.
   const workerId = Math.random().toString(36).slice(2, 8);
@@ -194,7 +194,7 @@ export function createBackground(deps: {
   }
 
   // --- Debug ring ------------------------------------------------------------
-  // Timestamped lifecycle log for the popup's Connection log + the SW console.
+  // Timestamped lifecycle log for the panel's Connection log + the SW console.
   // The Pair button's journey (socket state, hello settle, pair sent, paired /
   // timeout) is fully visible here.
   const debugLog: BgDebugEvent[] = [];
@@ -594,7 +594,7 @@ export function createBackground(deps: {
     if (token !== null && !tokenRejected) {
       // Let the auto-hello settle before sending pair: a pair sent on a
       // socket the server is about to 4401 loses its 'paired' reply on the
-      // closing socket (the redeem lands, the popup hears nothing). After a
+      // closing socket (the redeem lands, the panel hears nothing). After a
       // rejection, reconnect clean — the fresh socket skips the dead hello.
       const settled = await waitForHelloSettled(HELLO_SETTLE_MS);
       debug(`pair: hello settled (${settled})`);
@@ -608,8 +608,8 @@ export function createBackground(deps: {
         }
       }
     }
-    // Single-flight by replacement: one user, one popup; a second pair
-    // supersedes the first (unreachable from the popup, which disables Pair
+    // Single-flight by replacement: one user, one panel; a second pair
+    // supersedes the first (unreachable from the panel, which disables Pair
     // while busy — the stale caller gets told to retry, never hangs).
     if (pendingPair) {
       debug('pair: previous attempt superseded');
@@ -631,7 +631,7 @@ export function createBackground(deps: {
   }
 
   /**
-   * Active liveness probe for the popup ("is the app REALLY there?", asked on
+   * Active liveness probe for the panel ("is the app REALLY there?", asked on
    * open): one bare ping, true on any pong within 2s. A bare pong also
    * answers the 20s keepalive — either way a pong proves the app is alive —
    * and a close mid-probe fails it instead of hanging to the timeout.
@@ -692,8 +692,8 @@ export function createBackground(deps: {
   }
 
   /**
-   * Local half of unpair (the popup calls the server revoke route first):
-   * forget the token so the popup offers pairing again. The socket stays
+   * Local half of unpair (the panel calls the server revoke route first):
+   * forget the token so the panel offers pairing again. The socket stays
    * open but unauthenticated — exactly what the next pair needs.
    */
   async function unpair(): Promise<{ ok: true }> {

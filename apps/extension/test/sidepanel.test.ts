@@ -3,9 +3,9 @@ import { act } from 'react';
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import App from '../entrypoints/popup/App.tsx';
+import App from '../entrypoints/sidepanel/App.tsx';
 
-// Popup harness (Bug #5): the popup was untested by design in M1, but the
+// Panel harness (Bug #5): the panel was untested by design in M1, but the
 // Bug #5 redesign (status, profile, info, link, unpair/re-pair) needs
 // regression cover. No @testing-library here — react-dom createRoot + act
 // with plain DOM queries, and stubbed browser/fetch globals.
@@ -97,7 +97,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderPopup() {
+async function renderPanel() {
   await act(async () => {
     root = createRoot(container);
     root.render(createElement(App));
@@ -105,10 +105,10 @@ async function renderPopup() {
   await flush();
 }
 
-describe('popup paired view', () => {
+describe('sidepanel paired view', () => {
   test('shows status, profile, info, app link, and unpair/re-pair', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     const text = container.textContent ?? '';
     expect(text).toContain("My Dad's AI Agent");
     expect(text).toContain('Paired ✓');
@@ -122,7 +122,7 @@ describe('popup paired view', () => {
 
   test('paired but offline says not connected and still shows the profile', async () => {
     status = { paired: true, connected: false, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     const text = container.textContent ?? '';
     expect(text).toContain('Paired ✓');
     expect(text).toContain('Not connected');
@@ -132,13 +132,13 @@ describe('popup paired view', () => {
   test('a profile lookup failure falls back to not signed in', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
     getProfileUserInfo.mockRejectedValueOnce(new Error('nope'));
-    await renderPopup();
+    await renderPanel();
     expect(container.textContent ?? '').toContain('Chrome profile: not signed in');
   });
 
   test('unpair revokes the server token, forgets local state, shows the code box', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     await act(async () => {
       buttonByText('Unpair').click();
     });
@@ -153,7 +153,7 @@ describe('popup paired view', () => {
 
   test('pair again keeps the server token and shows the code box', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     await act(async () => {
       buttonByText('Pair again').click();
     });
@@ -164,9 +164,9 @@ describe('popup paired view', () => {
   });
 });
 
-describe('popup unpaired view', () => {
+describe('sidepanel unpaired view', () => {
   test('shows the code box plus info and a link to get a code', async () => {
-    await renderPopup();
+    await renderPanel();
     expect(container.querySelector('input')).not.toBeNull();
     buttonByText('Pair');
     const text = container.textContent ?? '';
@@ -175,7 +175,7 @@ describe('popup unpaired view', () => {
   });
 
   test('pairing with a valid code lands on the paired view', async () => {
-    await renderPopup();
+    await renderPanel();
     const input = container.querySelector('input')!;
     act(() => setInput(input, '123456'));
     await act(async () => {
@@ -187,7 +187,7 @@ describe('popup unpaired view', () => {
   });
 
   test('a spinner shows while the pair request is in flight', async () => {
-    await renderPopup();
+    await renderPanel();
     let resolvePair!: (v: unknown) => void;
     sendMessage.mockImplementationOnce(
       () =>
@@ -211,7 +211,7 @@ describe('popup unpaired view', () => {
   });
 });
 
-describe('popup live ping', () => {
+describe('sidepanel live ping', () => {
   test('a failed open-probe reads not connected even when the socket is open', async () => {
     status = {
       paired: true,
@@ -219,7 +219,7 @@ describe('popup live ping', () => {
       lastPingAt: new Date(Date.now() - 8000).toISOString(),
     };
     pingOk = false;
-    await renderPopup();
+    await renderPanel();
     expect(sendMessage).toHaveBeenCalledWith({ action: 'ping' });
     const text = container.textContent ?? '';
     expect(text).toContain('Not connected');
@@ -233,7 +233,7 @@ describe('popup live ping', () => {
       lastPingAt: new Date(Date.now() - 8000).toISOString(),
     };
     pingOk = true;
-    await renderPopup();
+    await renderPanel();
     expect(container.textContent ?? '').toContain('Connected ✓');
   });
 
@@ -243,7 +243,7 @@ describe('popup live ping', () => {
       connected: true,
       lastPingAt: new Date(Date.now() - 8000).toISOString(),
     };
-    await renderPopup();
+    await renderPanel();
     const text = container.textContent ?? '';
     expect(text).toContain('Last ping: 8s ago');
     expect(text).toContain('Talking to: the extension bridge (ws://127.0.0.1:8787/ext)');
@@ -251,12 +251,12 @@ describe('popup live ping', () => {
 
   test('before first contact the last ping reads never', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     expect(container.textContent ?? '').toContain('Last ping: never');
   });
 });
 
-describe('popup open the app', () => {
+describe('sidepanel open the app', () => {
   let opened: string[];
   let closed: number;
 
@@ -272,10 +272,10 @@ describe('popup open the app', () => {
     });
   });
 
-  test('a listening desktop app is focused and the popup closes', async () => {
+  test('a listening desktop app is focused and the panel closes', async () => {
     focusResult = { focused: true };
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     await act(async () => {
       buttonByText('Open the app to manage').click();
     });
@@ -298,7 +298,7 @@ describe('popup open the app', () => {
   test('no desktop listening falls back to the settings page in a tab', async () => {
     focusResult = { focused: false };
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     await act(async () => {
       buttonByText('Open the app to manage').click();
     });
@@ -309,7 +309,7 @@ describe('popup open the app', () => {
 
   test('an unreachable server falls back to the settings page in a tab', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     fetchMock.mockRejectedValueOnce(new Error('down'));
     await act(async () => {
       buttonByText('Open the app to manage').click();
@@ -321,7 +321,7 @@ describe('popup open the app', () => {
 
   test('the unpaired view also opens the desktop app first', async () => {
     focusResult = { focused: true };
-    await renderPopup();
+    await renderPanel();
     await act(async () => {
       buttonByText('Open the app to manage').click();
     });
@@ -335,10 +335,10 @@ describe('popup open the app', () => {
   });
 });
 
-describe('popup unpaired connection info', () => {
+describe('sidepanel unpaired connection info', () => {
   test('the code-box view also shows talking-to and last ping', async () => {
     status = { paired: false, connected: false, lastPingAt: new Date(Date.now() - 8000).toISOString() };
-    await renderPopup();
+    await renderPanel();
     expect(container.querySelector('input')).not.toBeNull();
     const text = container.textContent ?? '';
     expect(text).toContain('Talking to: the extension bridge (ws://127.0.0.1:8787/ext)');
@@ -347,18 +347,18 @@ describe('popup unpaired connection info', () => {
 
   test('the code-box view reads never before first contact', async () => {
     status = { paired: false, connected: false, lastPingAt: null };
-    await renderPopup();
+    await renderPanel();
     expect(container.textContent ?? '').toContain('Last ping: never');
   });
 });
 
-describe('popup pair logging + retry', () => {
+describe('sidepanel pair logging + retry', () => {
   function pairCalls() {
     return sendMessage.mock.calls.filter(([m]) => m.action === 'pair');
   }
 
   test('a first send that dies waking the worker retries once and pairs', async () => {
-    await renderPopup();
+    await renderPanel();
     sendMessage.mockRejectedValueOnce(new Error('Could not establish connection'));
     const input = container.querySelector('input')!;
     act(() => setInput(input, '123456'));
@@ -376,7 +376,7 @@ describe('popup pair logging + retry', () => {
   });
 
   test('two failed sends show the error and log the outcome', async () => {
-    await renderPopup();
+    await renderPanel();
     const orig = sendMessage.getMockImplementation()!;
     sendMessage.mockImplementation(async (msg) => {
       if (msg.action === 'pair') throw new Error('dead worker');
@@ -397,7 +397,7 @@ describe('popup pair logging + retry', () => {
   });
 
   test('rapid double-click sends one pair', async () => {
-    await renderPopup();
+    await renderPanel();
     const input = container.querySelector('input')!;
     act(() => setInput(input, '123456'));
     await act(async () => {
@@ -409,15 +409,15 @@ describe('popup pair logging + retry', () => {
   });
 
   test('connection log shows background events', async () => {
-    await renderPopup();
+    await renderPanel();
     const log = container.querySelector('details')!.textContent ?? '';
     expect(log).toContain('[bg 12:00:00] pair sent');
   });
 });
 
-describe('popup worker correlation', () => {
+describe('sidepanel worker correlation', () => {
   test('post-pair log shows the pair, status, and bg-log worker ids', async () => {
-    await renderPopup();
+    await renderPanel();
     const input = container.querySelector('input')!;
     act(() => setInput(input, '123456'));
     await act(async () => {
@@ -431,9 +431,9 @@ describe('popup worker correlation', () => {
   });
 });
 
-describe('popup pair/status correlation', () => {
+describe('sidepanel pair/status correlation', () => {
   test('post-pair status from a phantom retries until the pair worker answers', async () => {
-    await renderPopup();
+    await renderPanel();
     const orig = sendMessage.getMockImplementation()!;
     let statusReads = 0;
     sendMessage.mockImplementation(async (msg) => {
@@ -461,7 +461,7 @@ describe('popup pair/status correlation', () => {
   });
 
   test('persistent mismatch names the workers instead of flipping silently', async () => {
-    await renderPopup();
+    await renderPanel();
     const orig = sendMessage.getMockImplementation()!;
     sendMessage.mockImplementation(async (msg) => {
       if (msg.action === 'status') return { paired: false, connected: false, lastPingAt: null };
@@ -491,7 +491,7 @@ describe('popup pair/status correlation', () => {
   });
 
   test('a later paired read clears the stale-view warning', async () => {
-    await renderPopup();
+    await renderPanel();
     const orig = sendMessage.getMockImplementation()!;
     let phantom = true;
     sendMessage.mockImplementation(async (msg) => {

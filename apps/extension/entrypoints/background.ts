@@ -36,4 +36,16 @@ export default defineBackground(() => {
     WebSocket: WebSocket as unknown as WebSocketCtor,
   });
   void bg.boot();
+  // The toolbar button opens the side panel (the popup is gone). Chrome-only
+  // API — Firefox serves the same page as sidebar_action and skips this.
+  const setBehavior = (
+    browser as unknown as {
+      sidePanel?: { setPanelBehavior?: (behavior: { openPanelOnActionClick: boolean }) => unknown };
+    }
+  ).sidePanel?.setPanelBehavior;
+  if (typeof setBehavior === 'function') {
+    void Promise.resolve()
+      .then(() => setBehavior({ openPanelOnActionClick: true }))
+      .catch(() => {});
+  }
 });
