@@ -17,13 +17,36 @@ function ok(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as Response;
 }
 
-function renderSidebar(path = '/') {
+const WF1 = { id: 'wf-1', name: 'Morning triage' };
+const WF2 = { id: 'wf-2', name: 'File receipts' };
+
+const CUSTOMERS = {
+  name: 'customers',
+  label: 'Customers',
+  columns: [],
+  displayField: 'name',
+  count: 5,
+};
+const ORDERS = {
+  name: 'orders',
+  label: 'Orders',
+  columns: [],
+  displayField: 'name',
+  count: 2,
+};
+
+function renderSidebar(
+  path = '/',
+  seed?: { workflows?: unknown[]; lists?: unknown[] },
+) {
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/settings') return ok(SETTINGS);
     if (url === '/api/workflows' && init?.method === 'POST') {
       return ok({ id: 'wf-new', name: 'Untitled chore reducer' });
     }
+    if (url === '/api/workflows') return ok(seed?.workflows ?? []);
+    if (url === '/api/lists') return ok(seed?.lists ?? []);
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetch);
@@ -99,4 +122,54 @@ test('each nav link keeps an Explain button outside the link', () => {
     // The accessible name stays exactly the label (icon + ? excluded).
     expect(screen.getByRole('link', { name }).textContent).toBe(name);
   }
+});
+
+test('chore reducers list underneath Automate, before Data', async () => {
+  renderSidebar('/', { workflows: [WF1, WF2], lists: [] });
+  const first = await screen.findByRole('link', { name: 'Morning triage' });
+  expect(first.getAttribute('href')).toBe('/reducers/wf-1');
+  expect(screen.getByRole('link', { name: 'File receipts' }).getAttribute('href')).toBe(
+    '/reducers/wf-2',
+  );
+  // DOM order pins the placement: Automate, then its reducers, then Data.
+  const automate = screen.getByRole('link', { name: 'Automate' });
+  const data = screen.getByRole('link', { name: 'Data' });
+  expect(automate.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(first.compareDocumentPosition(data) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('stored lists show underneath Data as label and count', async () => {
+  renderSidebar('/', { workflows: [], lists: [CUSTOMERS, ORDERS] });
+  const customers = await screen.findByRole('link', { name: 'Customers · 5' });
+  expect(customers.getAttribute('href')).toBe('/lists?table=customers');
+  expect(screen.getByRole('link', { name: 'Orders · 2' }).getAttribute('href')).toBe(
+    '/lists?table=orders',
+  );
+  const data = screen.getByRole('link', { name: 'Data' });
+  expect(data.compareDocumentPosition(customers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('the open reducer row is marked current', async () => {
+  renderSidebar('/reducers/wf-1', { workflows: [WF1, WF2], lists: [] });
+  const current = await screen.findByRole('link', { name: 'Morning triage' });
+  expect(current.getAttribute('aria-current')).toBe('page');
+  expect(current.classList.contains('active')).toBe(true);
+  expect(screen.getByRole('link', { name: 'File receipts' }).getAttribute('aria-current')).toBeNull();
+});
+
+test('the selected list row is marked current', async () => {
+  renderSidebar('/lists?table=orders', { workflows: [], lists: [CUSTOMERS, ORDERS] });
+  const current = await screen.findByRole('link', { name: 'Orders · 2' });
+  expect(current.getAttribute('aria-current')).toBe('page');
+  expect(current.classList.contains('active')).toBe(true);
+  expect(screen.getByRole('link', { name: 'Customers · 5' }).getAttribute('aria-current')).toBeNull();
+});
+
+test('no sublists render when there is nothing to show', async () => {
+  renderSidebar('/', { workflows: [], lists: [] });
+  // Settle: the (empty) queries resolve, so a stray sublist would appear.
+  await screen.findByRole('link', { name: 'Automate' });
+  await screen.findByText('Corner Bakery');
+  expect(screen.queryByTestId('sidebar-reducers')).toBeNull();
+  expect(screen.queryByTestId('sidebar-lists')).toBeNull();
 });
