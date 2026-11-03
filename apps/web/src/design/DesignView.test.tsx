@@ -1,7 +1,7 @@
 import type { StepInstance, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PENDING_BUILT_TIMEOUT_MS, type WorkflowDetail } from '../api.ts';
@@ -85,6 +85,12 @@ function makeAgent(overrides?: Partial<UseAgentResult>): UseAgentResult {
   };
 }
 
+function LocationProbe({ onLocation }: { onLocation: (pathname: string) => void }) {
+  const location = useLocation();
+  onLocation(location.pathname);
+  return null;
+}
+
 function renderDesign(
   initialDetail: WorkflowDetail,
   opts?: {
@@ -94,11 +100,13 @@ function renderDesign(
     fetchHandler?: (url: string, init?: RequestInit) => unknown;
     agent?: UseAgentResult;
     logActivity?: (text: string) => void;
+    onLocation?: (pathname: string) => void;
   },
 ) {
   const fetch = mockFetch(
     opts?.fetchHandler ??
       ((url, init) => {
+        if (url === '/api/workflows/flow-1' && init?.method === 'DELETE') return { deleted: true };
         if (url === '/api/workflows/flow-1') return initialDetail;
         if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
           return { ok: true, workflow: initialDetail, note: 'Done.' };
@@ -122,6 +130,7 @@ function renderDesign(
           onRequestRuntime={onRequestRuntime}
           onBuilt={opts?.onBuilt}
         />
+        {opts?.onLocation && <LocationProbe onLocation={opts.onLocation} />}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -650,13 +659,109 @@ describe('DesignView try it', () => {
 });
 
 describe('DesignView canvas', () => {
-  test('the canvas container has a definite height', async () => {
+  test('the canvas container fills its parent (definite height via the h-full chain)', async () => {
     // ReactFlow sizes itself to 100% of its parent: a min-height-only
     // container collapses it to 0px (an invisible canvas no layout-blind
-    // jsdom test can see). Pin the definite height here.
+    // jsdom test can see). The chain is AppShell content → WorkflowPage →
+    // DesignView root → this wrapper; pin this link here.
     renderDesign(detail());
     await screen.findByText('Pick out the details');
     const container = document.querySelector('.react-flow')?.parentElement;
-    expect(container?.className).toMatch(/(?<![\w-])h-\[\d+px\]/);
+    expect(container?.className).toContain('h-full');
+    expect(container?.className).toContain('w-full');
+  });
+});
+
+describe('DesignView title bar', () => {
+  test('breadcrumbs Automate › Runs › name with exact hrefs', async () => {
+    renderDesign(detail());
+    await screen.findByText('Pick out the details');
+    const bar = screen.getByTestId('design-titlebar');
+    expect(within(bar).getByRole('link', { name: 'Automate' }).getAttribute('href')).toBe(
+      '/automate',
+    );
+    expect(within(bar).getByRole('link', { name: 'Runs' }).getAttribute('href')).toBe(
+      '/reducers/flow-1/runs',
+    );
+    expect(within(bar).getByText('Test flow')).toBeDefined();
+  });
+
+  test('Turn on and Try it live in the title bar', async () => {
+    renderDesign(detail());
+    await screen.findByText('Pick out the details');
+    const bar = screen.getByTestId('design-titlebar');
+    expect(within(bar).getByRole('button', { name: 'Turn on' })).toBeDefined();
+    expect(within(bar).getByRole('button', { name: 'Try it' })).toBeDefined();
+  });
+
+  test('copy button copies name and id, then toasts', async () => {
+    const writeText = vi.fn(async () => {});
+    const orig = Object.getOwnPropertyDescriptor(globalThis.navigator, 'clipboard');
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      renderDesign(detail());
+      await screen.findByText('Pick out the details');
+      fireEvent.click(screen.getByRole('button', { name: 'Copy name and id' }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('Test flow (flow-1)'));
+      expect(await screen.findByText('Copied name and id.')).toBeDefined();
+    } finally {
+      if (orig) Object.defineProperty(globalThis.navigator, 'clipboard', orig);
+      else Reflect.deleteProperty(globalThis.navigator, 'clipboard');
+    }
+  });
+});
+
+describe('DesignView inspector', () => {
+  test('a selected node shows its settings in the overlay panel', async () => {
+    renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
+    const panel = await screen.findByTestId('design-inspector');
+    expect(
+      within(panel).getByRole('heading', { name: 'Settings for Pick out the details' }),
+    ).toBeDefined();
+  });
+
+  test('Close dismisses the inspector', async () => {
+    renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
+    await screen.findByTestId('design-inspector');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByTestId('design-inspector')).toBeNull());
+  });
+});
+
+describe('DesignView delete', () => {
+  test('delete arms, confirms DELETEs, and lands on Automate', async () => {
+    let pathname = '';
+    const { fetch } = renderDesign(detail(), {
+      onLocation: (p) => {
+        pathname = p;
+      },
+    });
+    await screen.findByText('Pick out the details');
+    fireEvent.click(
+      within(screen.getByTestId('design-titlebar')).getByRole('button', { name: 'Delete' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }));
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        '/api/workflows/flow-1',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+    await waitFor(() => expect(pathname).toBe('/automate'));
+  });
+});
+
+describe('DesignView start title bar', () => {
+  test('start screen offers breadcrumbs, copy, and delete but no Try it', async () => {
+    renderDesign(detail([]));
+    await screen.findByRole('heading', { name: 'What should this chore reducer do?' });
+    const bar = screen.getByTestId('design-titlebar');
+    expect(within(bar).getByRole('link', { name: 'Automate' })).toBeDefined();
+    expect(within(bar).getByRole('button', { name: 'Copy name and id' })).toBeDefined();
+    expect(within(bar).getByRole('button', { name: 'Delete' })).toBeDefined();
+    expect(within(bar).queryByRole('button', { name: 'Try it' })).toBeNull();
   });
 });

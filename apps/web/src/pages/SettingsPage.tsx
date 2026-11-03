@@ -6,7 +6,7 @@ import PaletteIcon from 'lucide-react/icons/palette';
 import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
 import ServerIcon from 'lucide-react/icons/server';
 import Volume2Icon from 'lucide-react/icons/volume-2';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
@@ -24,6 +24,7 @@ import {
 } from '../api.ts';
 import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
+import ArmableButton from '../design/ArmableButton.tsx';
 import CardHeading from '../design/CardHeading.tsx';
 import type { TextSize } from '../theme/TextSizeProvider.tsx';
 
@@ -270,64 +271,6 @@ function ThinkingSection() {
         )}
       </div>
     </section>
-  );
-}
-
-/** How long an armed reset button stays armed before standing down. */
-const ARM_MS = 5000;
-
-/**
- * A destructive button that needs two taps: the first tap arms it (label
- * switches to the confirm text), the second fires. Arming expires after
- * ARM_MS so a stray first tap never sits loaded.
- */
-function ArmableButton({
-  label,
-  confirmLabel,
-  onConfirm,
-  disabled,
-}: {
-  label: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  disabled?: boolean;
-}) {
-  const [armed, setArmed] = useState(false);
-  const timer = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (timer.current !== null) clearTimeout(timer.current);
-    },
-    [],
-  );
-  if (!armed) {
-    return (
-      <AppButton
-        type="button"
-        variant="destructive"
-        disabled={disabled}
-        onClick={() => {
-          setArmed(true);
-          timer.current = window.setTimeout(() => setArmed(false), ARM_MS);
-        }}
-      >
-        {label}
-      </AppButton>
-    );
-  }
-  return (
-    <AppButton
-      type="button"
-      variant="destructive"
-      disabled={disabled}
-      onClick={() => {
-        if (timer.current !== null) clearTimeout(timer.current);
-        setArmed(false);
-        onConfirm();
-      }}
-    >
-      {confirmLabel}
-    </AppButton>
   );
 }
 

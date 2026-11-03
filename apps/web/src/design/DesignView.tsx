@@ -1,15 +1,18 @@
 import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@dad/shared';
 import { useQueryClient } from '@tanstack/react-query';
+import CopyIcon from 'lucide-react/icons/copy';
 import TriangleAlert from 'lucide-react/icons/triangle-alert';
+import XIcon from 'lucide-react/icons/x';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import {
   ApiError,
   PENDING_BUILT_TIMEOUT_MS,
   getRun,
   useAgentEvents,
+  useDeleteWorkflow,
   useSettings,
   useTestRun,
   useWorkflowDetail,
@@ -34,6 +37,7 @@ import { sound } from '../sound/sound.ts';
 import SoundControl from '../sound/SoundControl.tsx';
 import { useSound } from '../sound/useSound.ts';
 import AppButton from './AppButton.tsx';
+import ArmableButton from './ArmableButton.tsx';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
 import NodeChat, { type ChatMsg, type ChatPick } from './NodeChat.tsx';
@@ -145,12 +149,14 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
     setChatHistories((prev) => ({ ...prev, [stepId]: [...(prev[stepId] ?? []), msg] }));
   }, []);
   const client = useQueryClient();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const detailQuery = useWorkflowDetail(workflowId);
   const detail = detailQuery.data;
   const op = useWorkflowOp(workflowId);
   const { mutateAsync } = op;
   const testRun = useTestRun(workflowId);
+  const deleteWorkflow = useDeleteWorkflow();
   // Ambient loops while the design screen is mounted; unmounting (e.g.
   // switching to runtime mode) stops them.
   useSound(true);
@@ -327,6 +333,27 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
     },
     [setParams],
   );
+
+  const clearSelectedStep = useCallback(() => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('step');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setParams]);
+
+  const copyNameAndId = useCallback(async () => {
+    if (!detail) return;
+    try {
+      await navigator.clipboard.writeText(`${detail.name} (${workflowId})`);
+      toast.success('Copied name and id.');
+    } catch {
+      toast.error('Could not copy. Select the title instead.');
+    }
+  }, [detail, workflowId]);
 
   const handleUndo = useCallback(
     async (snapshot: StepInstance, incoming: Edge[], outgoing: Edge[]) => {
@@ -630,6 +657,77 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
   const problemCount = detail.problems.length;
   const showStart = detail.steps.length === 0 && !started;
 
+  // Title bar overlay (top-left card over the canvas): breadcrumbs back to
+  // Automate and the run list, the reducer title with a name+id copy button,
+  // the CTAs, and the latest Try-it verdict.
+  const titleBar = (
+    <div
+      data-testid="design-titlebar"
+      className="absolute top-0 left-0 z-10 m-4 max-h-[calc(100%-2rem)] w-max max-w-[calc(100%-2rem)] overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-4 shadow-md"
+    >
+      <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1 text-sm">
+        <Link to="/automate" className="text-primary underline-offset-4 hover:underline">
+          Automate
+        </Link>
+        <span aria-hidden="true">›</span>
+        <Link
+          to={`/reducers/${workflowId}/runs`}
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          Runs
+        </Link>
+        <span aria-hidden="true">›</span>
+        <span className="font-semibold">{detail.name}</span>
+        <button
+          type="button"
+          onClick={() => void copyNameAndId()}
+          aria-label="Copy name and id"
+          title="Copy name and id"
+          className="p-1 text-muted-foreground hover:text-foreground"
+        >
+          <CopyIcon size={14} aria-hidden />
+        </button>
+      </nav>
+      <div className="flex flex-wrap items-center gap-3">
+        {!showStart && (
+          <>
+            {problemCount === 0 ? (
+              <span
+                data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
+                className="inline-flex items-center gap-1"
+              >
+                <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
+                  Turn on
+                </AppButton>
+                <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
+              </span>
+            ) : (
+              <p className="text-base">
+                {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
+              </p>
+            )}
+            <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
+              {testRun.isPending ? 'Trying…' : 'Try it'}
+            </AppButton>
+            <SoundControl />
+          </>
+        )}
+        <ArmableButton
+          label="Delete"
+          confirmLabel="Yes, delete"
+          disabled={deleteWorkflow.isPending}
+          onConfirm={() => {
+            deleteWorkflow.mutate(workflowId, {
+              onSuccess: () => navigate('/automate'),
+              onError: () => toast.error("Couldn't delete this chore reducer."),
+            });
+          }}
+        />
+      </div>
+      {testResult && <TestResults story={testResult.story} />}
+    </div>
+  );
+
   return (
     <MotionConfig reducedMotion="user">
       <AnimatePresence mode="wait" initial={false}>
@@ -640,8 +738,12 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.3 }}
+            className="relative h-full w-full"
           >
-            <DesignStart send={handleStartSubmit} busy={agent.busy} />
+            {titleBar}
+            <div className="flex h-full items-center justify-center overflow-y-auto p-8">
+              <DesignStart send={handleStartSubmit} busy={agent.busy} />
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -650,46 +752,34 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.3 }}
+            className="relative h-full w-full"
           >
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                {problemCount === 0 ? (
-                  <span
-                    data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
-                    className="inline-flex items-center gap-1"
-                  >
-                    <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
-                      Turn on
-                    </AppButton>
-                    <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
-                  </span>
-                ) : (
-                  <p className="text-base">
-                    {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
-                  </p>
-                )}
-                <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
-                  {testRun.isPending ? 'Trying…' : 'Try it'}
-                </AppButton>
-                <SoundControl />
-              </div>
-              {testResult && <TestResults story={testResult.story} />}
-              <div className="relative isolate h-[560px] min-w-0 rounded-[var(--radius)] border border-border bg-card">
-                <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
-                <WorkflowCanvas
-                  workflow={detail}
-                  mode="design"
-                  ghosts={visibleGhosts}
-                  ghostEdges={visibleGhostEdges}
-                  builtIds={builtIds}
-                  selectedStepId={selectedStepId}
-                  onSelectStep={handleSelectStep}
-                  onChange={handleCanvasOp}
-                  renderNodeExtra={renderNodeExtra}
-                  renderNodeDesign={renderNodeDesign}
-                />
-              </div>
-              {selected && (
+            {titleBar}
+            <div className="h-full w-full overflow-hidden">
+              <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
+              <WorkflowCanvas
+                workflow={detail}
+                mode="design"
+                ghosts={visibleGhosts}
+                ghostEdges={visibleGhostEdges}
+                builtIds={builtIds}
+                selectedStepId={selectedStepId}
+                onSelectStep={handleSelectStep}
+                onChange={handleCanvasOp}
+                renderNodeExtra={renderNodeExtra}
+                renderNodeDesign={renderNodeDesign}
+              />
+            </div>
+            {selected && (
+              <div
+                data-testid="design-inspector"
+                className="absolute top-0 right-0 bottom-0 z-10 w-[380px] max-w-[calc(100%-2rem)] overflow-y-auto border-l border-border bg-card p-4 shadow-lg"
+              >
+                <div className="mb-2 flex justify-end">
+                  <AppButton variant="ghost" size="icon" onClick={clearSelectedStep} aria-label="Close">
+                    <XIcon aria-hidden />
+                  </AppButton>
+                </div>
                 <ConfigForm
                   key={selected.id}
                   step={selected}
@@ -697,8 +787,8 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
                   onSave={(patch) => void handleSave(selected.id, patch)}
                   saving={op.isPending}
                 />
-              )}
-            </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
