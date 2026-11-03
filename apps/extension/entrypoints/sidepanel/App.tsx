@@ -287,10 +287,13 @@ function App() {
   };
 
   const box: React.CSSProperties = {
-    width: 280,
+    width: '100%',
+    boxSizing: 'border-box',
     padding: 16,
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'var(--font-ui)',
     fontSize: 14,
+    color: 'var(--text)',
+    background: 'var(--bg-sidebar)',
   };
 
   const buttonStyle: React.CSSProperties = {
@@ -299,10 +302,23 @@ function App() {
     padding: 8,
     fontSize: 14,
     cursor: 'pointer',
+    background: 'var(--bg-raised)',
+    color: 'var(--text)',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 'var(--radius-s)',
+  };
+
+  // Primary actions (Pair, Create) carry the app accent fill.
+  const primaryButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    background: 'var(--accent)',
+    borderColor: 'transparent',
+    color: 'var(--on-accent)',
+    fontWeight: 600,
   };
 
   const info = (
-    <p style={{ color: '#555' }}>
+    <p style={{ color: 'var(--text-dim)' }}>
       This extension connects the app to Gmail in this Chrome profile. It reads the email you
       have open, watches for new mail, and adds the “Save as lead &amp; reply” button. It only
       works while Gmail is open here.
@@ -339,7 +355,7 @@ function App() {
           background: 'none',
           border: 'none',
           padding: 0,
-          color: '#1a73e8',
+          color: 'var(--accent)',
           textDecoration: 'underline',
           cursor: 'pointer',
           fontSize: 14,
@@ -354,7 +370,7 @@ function App() {
   // way to create or change the automations behind it.
   const onThisPage =
     site === null ? (
-      <p style={{ color: '#555' }}>
+      <p style={{ color: 'var(--text-dim)' }}>
         Open Gmail, Google Calendar, or Meta Business Suite in a tab to see what I can do
         there.
       </p>
@@ -372,7 +388,7 @@ function App() {
 
   const automationButtons = (
     <>
-      <button onClick={() => void openApp('/automate')} style={buttonStyle}>
+      <button onClick={() => void openApp('/automate')} style={primaryButtonStyle}>
         Create an automation for this page
       </button>
       <button onClick={() => void openApp('/reducers')} style={buttonStyle}>
@@ -395,8 +411,8 @@ function App() {
           height: 12,
           marginRight: 6,
           verticalAlign: '-1px',
-          border: '2px solid #ccc',
-          borderTopColor: '#333',
+          border: '2px solid var(--border-strong)',
+          borderTopColor: 'var(--text-dim)',
           borderRadius: '50%',
           animation: 'dad-spin 0.8s linear infinite',
         }}
@@ -405,7 +421,7 @@ function App() {
   );
 
   if (status === null) {
-    return <div style={box}>{error ? <p style={{ color: '#b00020' }}>{error}</p> : <p>Loading…</p>}</div>;
+    return <div style={box}>{error ? <p style={{ color: 'var(--danger)' }}>{error}</p> : <p>Loading…</p>}</div>;
   }
 
   // Who we're talking to + when they last answered, in BOTH views: someone
@@ -447,9 +463,18 @@ function App() {
           inputMode="numeric"
           maxLength={6}
           placeholder="123456"
-          style={{ width: '100%', fontSize: 18, padding: 6, boxSizing: 'border-box' }}
+          style={{
+            width: '100%',
+            fontSize: 18,
+            padding: 6,
+            boxSizing: 'border-box',
+            background: 'var(--bg-input)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-s)',
+          }}
         />
-        <button onClick={() => void pair()} disabled={!valid || busy} style={buttonStyle}>
+        <button onClick={() => void pair()} disabled={!valid || busy} style={primaryButtonStyle}>
           {busy ? (
             <>
               {spinner}Pairing…
@@ -458,8 +483,8 @@ function App() {
             'Pair'
           )}
         </button>
-        {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
-        {unmatched !== null && <p style={{ color: '#b00020' }}>{unmatched}</p>}
+        {error !== '' && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+        {unmatched !== null && <p style={{ color: 'var(--danger)' }}>{unmatched}</p>}
         {connectionInfo}
         {debugLog}
       </div>
@@ -496,8 +521,8 @@ function App() {
           </button>
         </>
       )}
-      {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
-      {unmatched !== null && <p style={{ color: '#b00020' }}>{unmatched}</p>}
+      {error !== '' && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+      {unmatched !== null && <p style={{ color: 'var(--danger)' }}>{unmatched}</p>}
       {debugLog}
     </div>
   );

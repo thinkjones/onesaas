@@ -1,0 +1,42 @@
+/* Craft tokens for the extension side panel — §2 semantic subset, values
+ * verbatim from apps/web/src/styles/tokens.css. Light/dark follows the OS
+ * (prefers-color-scheme); no theme switcher. If the app tokens change,
+ * update these to match (test/panel-theme.test.ts pins the token names). */
+:root {
+  color-scheme: light dark;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  --bg-sidebar: hsl(210 20% 97.5%);
+  --bg-raised: hsl(0 0% 100%);
+  --bg-input: hsl(214 25% 95%);
+  --border: hsl(214 18% 89%);
+  --border-strong: hsl(214 14% 80%);
+  --text: hsl(220 10% 12%);
+  --text-dim: hsl(218 8% 45%);
+  --accent: hsl(213 88% 53%);
+  --on-accent: hsl(0 0% 100%);
+  --danger: hsl(4 72% 48%);
+  --radius: 14px;
+  --radius-s: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-sidebar: hsl(220 12% 12%);
+    --bg-raised: hsl(220 11% 16%);
+    --bg-input: hsl(220 10% 19%);
+    --border: hsl(220 9% 21%);
+    --border-strong: hsl(220 8% 30%);
+    --text: hsl(214 20% 93%);
+    --text-dim: hsl(216 9% 64%);
+    --accent: hsl(213 92% 63%);
+    --on-accent: hsl(220 30% 8%);
+    --danger: hsl(4 80% 67%);
+  }
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-sidebar);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
