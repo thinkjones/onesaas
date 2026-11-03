@@ -114,22 +114,18 @@ function renderPage(
   });
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const entry =
+    opts?.search === undefined && opts?.agentPrompt === undefined
+      ? '/reducers/flow-1'
+      : {
+          pathname: '/reducers/flow-1',
+          search: opts?.search ?? '',
+          state: opts?.agentPrompt === undefined ? undefined : { agentPrompt: opts.agentPrompt },
+        };
   render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <MemoryRouter
-          initialEntries={
-            opts?.agentPrompt === undefined
-              ? ['/reducers/flow-1']
-              : [
-                  {
-                    pathname: '/reducers/flow-1',
-                    search: opts.search ?? '',
-                    state: { agentPrompt: opts.agentPrompt },
-                  },
-                ]
-          }
-        >
+        <MemoryRouter initialEntries={[entry]}>
           <LocationProbe onSearch={onSearch} onState={opts?.onState} />
           <Routes>
             <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={onAgentPrefill} />} />
@@ -317,12 +313,15 @@ describe('WorkflowPage chat panel', () => {
     return screen.getByRole('textbox', { name: 'Chat message' });
   }
 
-  test('the panel shows in runtime mode and is still there in design mode', async () => {
+  test('the panel shows in runtime mode', async () => {
     renderPage(() => {}, () => {});
     // Runtime mode (default): the failed run's Fix button plus the chat panel.
     expect(await screen.findByText('Fix this step')).toBeDefined();
     expect(panelInput()).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Design' }));
+  });
+
+  test('the panel shows in design mode', async () => {
+    renderPage(() => {}, () => {}, { search: '?mode=design' });
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
     expect(panelInput()).toBeDefined();
   });
@@ -468,9 +467,10 @@ describe('WorkflowPage agent switch seam', () => {
       </QueryClientProvider>,
     );
     // The workflow name now lives in the TopBar crumb (not rendered here);
-    // the mode switch proves the page loaded.
-    await screen.findByRole('button', { name: 'Design' });
-    expect(path).toBe('/reducers/flow-1');
+    // the failed run's Fix button proves the page loaded (runtime has
+    // auto-selected it into ?run= by then).
+    await screen.findByText('Fix this step');
+    expect(path.startsWith('/reducers/flow-1')).toBe(true);
 
     listed = [workflow(), photoWorkflow()];
     await act(async () => {

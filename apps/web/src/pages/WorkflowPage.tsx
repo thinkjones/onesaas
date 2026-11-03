@@ -13,9 +13,8 @@ import DesignView from '../design/DesignView.tsx';
 import { TELL_ME_MORE_EVENT } from '../explain/useAltClickExplain.ts';
 import EmptyState from '../design/EmptyState.tsx';
 import UploadDrop from '../design/UploadDrop.tsx';
-import { parseModeParam, type WorkflowMode } from '../runtime/params.ts';
+import { parseModeParam } from '../runtime/params.ts';
 import RuntimeView, { type FixStepInfo } from '../runtime/RuntimeView.tsx';
-import ModeSwitch from '../shell/ModeSwitch.tsx';
 
 export interface WorkflowPageProps {
   /**
@@ -27,7 +26,8 @@ export interface WorkflowPageProps {
 }
 
 /**
- * The workflow screen: ModeSwitch on top, design or runtime view below. Param
+ * The workflow screen: design or runtime view below (no in-page switch — run
+ * clicks land in runtime, design icons land in design). Param
  * contract (validated in runtime/params.ts, choices documented there):
  * - ?mode=: 'runtime' default, 'design' for the builder; garbage → runtime.
  * - unknown workflowId: useWorkflow resolves success+undefined → not-found.
@@ -119,17 +119,6 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   );
   useAgentEvents(workflowId ?? '', handleAgentSwitch);
 
-  const handleModeChange = useCallback(
-    (next: WorkflowMode) => {
-      setParams((prev) => {
-        const updated = new URLSearchParams(prev);
-        updated.set('mode', next);
-        return updated;
-      });
-    },
-    [setParams],
-  );
-
   const handleFixStep = useCallback(
     (info: FixStepInfo) => {
       const prefill = `"${info.title}" stopped with: ${info.error}. Can you help me fix it?`;
@@ -145,7 +134,13 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     [onAgentPrefill, setParams],
   );
 
-  const handleRequestRuntime = useCallback(() => handleModeChange('runtime'), [handleModeChange]);
+  const handleRequestRuntime = useCallback(() => {
+    setParams((prev) => {
+      const updated = new URLSearchParams(prev);
+      updated.set('mode', 'runtime');
+      return updated;
+    });
+  }, [setParams]);
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
 
@@ -227,7 +222,6 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   return (
     <div data-testid="workflow-root" className="flex h-full min-h-0 flex-1 flex-col gap-4">
-      <ModeSwitch mode={mode} onModeChange={handleModeChange} />
       <div className="flex min-h-0 flex-1 items-stretch gap-4">
         <div className="min-h-0 min-w-0 flex-[2]">
           {mode === 'design' ? (
