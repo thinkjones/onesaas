@@ -151,7 +151,14 @@ function makeBrowser(
     tabMessages,
     created,
     updated,
-    runtimeMessage: (msg: unknown) => listener?.(msg as never),
+    // Platform contract, proven live (ping came back, status arrived as
+    // undefined): synchronous values are dropped — only Promises, and the
+    // explicit undefined of an uninterested listener, survive delivery.
+    runtimeMessage: (msg: unknown) => {
+      const r = listener?.(msg as never);
+      if (r !== undefined && !(r instanceof Promise)) return undefined;
+      return r;
+    },
   };
 }
 
@@ -898,7 +905,10 @@ describe('getButtons (late-loading Gmail tabs)', () => {
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
-    expect(t.runtimeMessage({ action: 'getButtons' })).toEqual({ type: 'buttons', items: [] });
+    await expect(t.runtimeMessage({ action: 'getButtons' })).resolves.toEqual({
+      type: 'buttons',
+      items: [],
+    });
     bg.dispose();
   });
 
@@ -910,7 +920,7 @@ describe('getButtons (late-loading Gmail tabs)', () => {
     const items = [{ workflowId: 'wf1', label: '✨ Save as lead & reply' }];
     lastSocket().receive({ type: 'buttons', items });
     await flush();
-    const reply = t.runtimeMessage({ action: 'getButtons' }) as {
+    const reply = (await t.runtimeMessage({ action: 'getButtons' })) as {
       type: string;
       items: Array<{ workflowId: string; label: string }>;
     };
@@ -919,7 +929,7 @@ describe('getButtons (late-loading Gmail tabs)', () => {
     // Mutating the reply must not corrupt the cache.
     reply.items.push({ workflowId: 'evil', label: 'evil' });
     reply.items[0]!.label = 'mutated';
-    const reread = t.runtimeMessage({ action: 'getButtons' }) as {
+    const reread = (await t.runtimeMessage({ action: 'getButtons' })) as {
       type: string;
       items: unknown[];
     };
@@ -939,7 +949,10 @@ describe('getButtons (late-loading Gmail tabs)', () => {
     await flush();
     lastSocket().receive({ type: 'buttons', items: [] });
     await flush();
-    expect(t.runtimeMessage({ action: 'getButtons' })).toEqual({ type: 'buttons', items: [] });
+    await expect(t.runtimeMessage({ action: 'getButtons' })).resolves.toEqual({
+      type: 'buttons',
+      items: [],
+    });
     bg.dispose();
   });
   });
@@ -1314,6 +1327,19 @@ describe('worker identity correlation', () => {
     expect(log.workerId).toBe(status.workerId);
     const boot = log.events.find((e) => e.msg.startsWith('boot done'));
     expect(boot?.msg).toContain(`worker ${status.workerId as string}`);
+    bg.dispose();
+  });
+});
+
+describe('sync responses are dropped live', () => {
+  it('answers status, log, and buttons with Promises, not sync values', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    expect(t.runtimeMessage({ action: 'status' })).toBeInstanceOf(Promise);
+    expect(t.runtimeMessage({ action: 'getDebugLog' } as never)).toBeInstanceOf(Promise);
+    expect(t.runtimeMessage({ action: 'getButtons' })).toBeInstanceOf(Promise);
     bg.dispose();
   });
 });

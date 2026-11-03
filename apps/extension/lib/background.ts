@@ -711,11 +711,15 @@ export function createBackground(deps: {
     const msg = (message ?? {}) as Record<string, unknown>;
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
     if (msg['action'] === 'unpair') return unpair();
+    // Promise.resolve, not a bare value: live, synchronous responses are
+    // dropped (status arrived as undefined while ping came back), so every
+    // answered action returns a Promise. The fallthrough below stays a sync
+    // undefined — an uninterested listener must not claim the response.
     if (msg['action'] === 'status') {
-      return { paired: token !== null, connected: isOpen(), lastPingAt, workerId };
+      return Promise.resolve({ paired: token !== null, connected: isOpen(), lastPingAt, workerId });
     }
     if (msg['action'] === 'ping') return pingProbe();
-    if (msg['action'] === 'getDebugLog') return { events: [...debugLog], workerId };
+    if (msg['action'] === 'getDebugLog') return Promise.resolve({ events: [...debugLog], workerId });
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload. The inbox watcher sends
@@ -726,10 +730,10 @@ export function createBackground(deps: {
       // Same shape as the fan-out so the content script reuses its
       // `buttons` handler. Cloned per call so a tab mutating its reply
       // cannot corrupt the cache for other tabs.
-      return {
+      return Promise.resolve({
         type: 'buttons',
         items: lastButtons.map((i) => ({ workflowId: i.workflowId, label: i.label })),
-      };
+      });
     }
     return undefined;
   });
