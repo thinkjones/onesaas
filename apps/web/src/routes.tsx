@@ -5,6 +5,7 @@ import ActivityPage from './activity/ActivityPage.tsx';
 import Onboarding from './onboarding/Onboarding.tsx';
 import ChoreReducersPage from './pages/ChoreReducersPage.tsx';
 import DesignPreviewPage from './pages/DesignPreviewPage.tsx';
+import ReducerRunsPage from './pages/ReducerRunsPage.tsx';
 import HomePage from './pages/HomePage.tsx';
 import ListsPage from './pages/ListsPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
@@ -48,6 +49,7 @@ export default function AppRoutes() {
         <Route path="automate" element={<HomePage />} />
         <Route path="reducers" element={<ChoreReducersPage />} />
         <Route path="reducers/:workflowId" element={<WorkflowPage />} />
+        <Route path="reducers/:workflowId/runs" element={<ReducerRunsPage />} />
         <Route path="lists" element={<ListsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="design" element={<DesignPreviewPage />} />

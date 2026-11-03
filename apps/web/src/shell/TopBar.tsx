@@ -46,13 +46,14 @@ export default function TopBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const reducerMatch = useMatch('/reducers/:workflowId');
+  const runsMatch = useMatch('/reducers/:workflowId/runs');
   const inTauri = isTauri();
 
   // The reducer name for `Chore reducers › <name>`; other routes never fetch.
   const workflowsQuery = useQuery({
     queryKey: ['workflows'],
     queryFn: getWorkflows,
-    enabled: reducerMatch !== null,
+    enabled: reducerMatch !== null || runsMatch !== null,
   });
   // Status badges (conditional): model health + runs needing a look.
   const modelsQuery = useModelStatus();
@@ -91,7 +92,15 @@ export default function TopBar() {
   if (path === '/') crumbs = [{ label: 'Activity' }];
   else if (path === '/automate') crumbs = [{ label: 'Automate' }];
   else if (path === '/reducers') crumbs = [{ label: 'Chore reducers' }];
-  else if (reducerMatch?.params.workflowId !== undefined) {
+  else if (runsMatch?.params.workflowId !== undefined) {
+    const id = runsMatch.params.workflowId;
+    const name = workflowsQuery.data?.find((w) => w.id === id)?.name;
+    crumbs = [
+      { label: 'Chore reducers', to: '/reducers' },
+      { label: name ?? '…', to: `/reducers/${id}` },
+      { label: 'Runs' },
+    ];
+  } else if (reducerMatch?.params.workflowId !== undefined) {
     const name = workflowsQuery.data?.find((w) => w.id === reducerMatch.params.workflowId)?.name;
     crumbs = [{ label: 'Chore reducers', to: '/reducers' }, { label: name ?? '…' }];
   } else if (path === '/lists') crumbs = [{ label: 'Data' }];

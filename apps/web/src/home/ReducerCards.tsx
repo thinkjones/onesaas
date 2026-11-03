@@ -40,7 +40,7 @@ function ReducerRow({ workflow, runs }: { workflow: Workflow; runs: Run[] }) {
     <div className="row cursor-default">
       <span className="body">
         <Link
-          to={`/reducers/${workflow.id}`}
+          to={`/reducers/${workflow.id}/runs`}
           className="t block truncate text-primary underline-offset-4 hover:underline"
         >
           {workflow.name}

@@ -80,6 +80,17 @@ test('reducer detail crumbs Chore reducers › workflow name', async () => {
   );
 });
 
+test('list review crumbs Chore reducers › workflow name › Runs', async () => {
+  renderTopBar({
+    path: '/reducers/wf-9/runs',
+    workflows: [{ id: 'wf-9', name: 'Leads' }],
+  });
+  expect(await screen.findByRole('heading', { name: 'Runs' })).toBeDefined();
+  expect((await screen.findByRole('link', { name: 'Leads' })).getAttribute('href')).toBe(
+    '/reducers/wf-9',
+  );
+});
+
 test('back is disabled at the first entry; forward navigates after back', async () => {
   renderTopBar({ path: '/settings' });
   expect(screen.getByRole('button', { name: 'Back' }).hasAttribute('disabled')).toBe(true);

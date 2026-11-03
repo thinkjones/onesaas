@@ -275,3 +275,9 @@ describe('HomePage', () => {
   });
 
 });
+
+test('a reducer card name links to that reducer list review', async () => {
+  renderHome({ workflows: [mkWorkflow()], runs: [mkRun({})] });
+  const name = await screen.findByRole('link', { name: 'Email helper' });
+  expect(name.getAttribute('href')).toBe('/reducers/wf-1/runs');
+});
