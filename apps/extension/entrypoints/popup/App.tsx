@@ -14,12 +14,13 @@ interface PairReply {
 
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
+// SAME string as the background's WS_URL (lib/background.ts) and the app's
+// Services card: the bridge socket is what the extension is really talking to.
+const BRIDGE_URL = 'ws://127.0.0.1:8787/ext';
 // Desktop focus first (works in dev and production: the Tauri webview holds
 // a tagged SSE stream); the settings page in a browser tab is the fallback.
 const FOCUS_URL = 'http://127.0.0.1:8787/api/app/focus';
 const APP_SETTINGS_URL = 'http://localhost:5173/settings#chrome-extension';
-// The only peer this popup can ever talk to: the app on this machine.
-const APP_HOST = new URL(REVOKE_URL).host;
 
 // The signed-in address of the Chrome profile this popup runs in — which is
 // the profile the pairing belongs to. Null when Chrome isn't signed in (or
@@ -245,7 +246,7 @@ function App() {
   // stuck unpaired (the exact failure mode) needs this more than anyone.
   const connectionInfo = (
     <>
-      <p style={{ margin: '0 0 4px' }}>Talking to: the app on this computer ({APP_HOST})</p>
+      <p style={{ margin: '0 0 4px' }}>Talking to: the extension bridge ({BRIDGE_URL})</p>
       <p style={{ margin: '0 0 4px' }}>Last ping: {formatPingAge(status.lastPingAt)}</p>
     </>
   );

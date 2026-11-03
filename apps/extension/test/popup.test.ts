@@ -240,7 +240,7 @@ describe('popup live ping', () => {
     await renderPopup();
     const text = container.textContent ?? '';
     expect(text).toContain('Last ping: 8s ago');
-    expect(text).toContain('Talking to: the app on this computer (127.0.0.1:8787)');
+    expect(text).toContain('Talking to: the extension bridge (ws://127.0.0.1:8787/ext)');
   });
 
   test('before first contact the last ping reads never', async () => {
@@ -335,7 +335,7 @@ describe('popup unpaired connection info', () => {
     await renderPopup();
     expect(container.querySelector('input')).not.toBeNull();
     const text = container.textContent ?? '';
-    expect(text).toContain('Talking to: the app on this computer (127.0.0.1:8787)');
+    expect(text).toContain('Talking to: the extension bridge (ws://127.0.0.1:8787/ext)');
     expect(text).toContain('Last ping: 8s ago');
   });
 
