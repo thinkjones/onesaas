@@ -81,4 +81,18 @@ describe('StepNode', () => {
     );
     expect(screen.queryByText('Works while Gmail is open in Chrome.')).toBeNull();
   });
+
+  test('an outcome caption renders under the status badge', () => {
+    renderNode({ step: STEP, kind: 'act', status: 'done', outcome: 'Saved the lead.' });
+    const caption = screen.getByText('Saved the lead.');
+    expect(caption.getAttribute('data-outcome')).toBe('true');
+    // The badge comes first in the card: outcome annotates, never replaces.
+    const badge = screen.getByText('Done');
+    expect(badge.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('no caption renders without an outcome', () => {
+    const { container } = renderNode({ step: STEP, kind: 'act', status: 'done' });
+    expect(container.querySelector('[data-outcome]')).toBeNull();
+  });
 });

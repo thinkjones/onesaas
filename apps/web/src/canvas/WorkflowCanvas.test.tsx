@@ -151,3 +151,27 @@ describe('WorkflowCanvas condition editing', () => {
     ).not.toHaveProperty('condition');
   });
 });
+
+describe('WorkflowCanvas node outcomes', () => {
+  test('renderNodeOutcome flows into node data per step', () => {
+    render(
+      <WorkflowCanvas
+        workflow={WF}
+        mode="runtime"
+        onSelectStep={() => {}}
+        renderNodeOutcome={(stepId) => (stepId === 'extract' ? 'Saved the lead.' : undefined)}
+      />,
+    );
+    const nodes = lastFlowProps().nodes!;
+    const extract = nodes.find((n) => n.id === 'extract')!;
+    expect((extract.data as { outcome?: string }).outcome).toBe('Saved the lead.');
+    const trigger = nodes.find((n) => n.id === 'trigger')!;
+    expect((trigger.data as { outcome?: string }).outcome).toBeUndefined();
+  });
+
+  test('nodes carry no outcome without the seam', () => {
+    render(<WorkflowCanvas workflow={WF} mode="runtime" onSelectStep={() => {}} />);
+    const nodes = lastFlowProps().nodes!;
+    expect((nodes.find((n) => n.id === 'extract')!.data as { outcome?: string }).outcome).toBeUndefined();
+  });
+});

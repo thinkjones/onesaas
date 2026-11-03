@@ -9,9 +9,20 @@ import RuntimeView from './RuntimeView.tsx';
 
 // ReactFlow needs ResizeObserver (absent in jsdom), so the canvas is a stub —
 // these tests exercise URL pinning and the list/detail branches, not the graph.
+// The stub surfaces the outcome seam for the extract step so the
+// Watch-it-Run caption wiring is pinned without rendering nodes.
 vi.mock('../canvas/WorkflowCanvas.tsx', () => ({
-  default: ({ workflow }: { workflow: Workflow }) => (
-    <div data-testid="canvas">{workflow.id}</div>
+  default: ({
+    workflow,
+    renderNodeOutcome,
+  }: {
+    workflow: Workflow;
+    renderNodeOutcome?: (stepId: string) => string | undefined;
+  }) => (
+    <div data-testid="canvas">
+      {workflow.id}
+      <span data-testid="extract-outcome">{renderNodeOutcome?.('extract') ?? 'none'}</span>
+    </div>
   ),
 }));
 
@@ -229,6 +240,20 @@ describe('RuntimeView detail branches', () => {
 });
 
 describe('RuntimeView canvas', () => {
+  test("a done step's why reaches the canvas outcome seam", async () => {
+    const client = makeClient();
+    const withWhy: RunDetail = {
+      ...BOB_DETAIL,
+      steps: [{ ...BOB_DETAIL.steps[0]!, why: 'Saved the lead.' }],
+    };
+    seed(client, [BOB, ALICE], [withWhy, ALICE_DETAIL]);
+    renderRuntime(client, '/');
+    await waitFor(() => {
+      expect(screen.getByTestId('pinned-run').textContent).toBe('run-bob');
+    });
+    expect(screen.getByTestId('extract-outcome').textContent).toBe('Saved the lead.');
+  });
+
   test('the canvas container has a definite height', async () => {
     // Same collapse as design mode (see the DesignView canvas test):
     // WorkflowCanvas is mocked here, but the real container div wraps it.

@@ -55,6 +55,8 @@ export interface WorkflowCanvasProps {
   onChange?(op: CanvasOp): void;
   /** Approval / failure cards slot. */
   renderNodeExtra?(stepId: string): ReactNode;
+  /** Per-node outcome caption (Watch-it-Run; mirrors renderNodeExtra). */
+  renderNodeOutcome?(stepId: string): string | undefined;
   /**
    * Design-mode hover actions + node chat (Bug #4). Applied only in design
    * mode; runtime passes nothing and nodes stay clean.
@@ -111,6 +113,7 @@ export default function WorkflowCanvas({
   onSelectStep,
   onChange,
   renderNodeExtra,
+  renderNodeOutcome,
   renderNodeDesign,
 }: WorkflowCanvasProps) {
   // Ghosts join the layout as unpositioned steps, so dagre places them
@@ -146,6 +149,7 @@ export default function WorkflowCanvas({
           kind: kindOf(s.type),
           status: stepRuns?.[s.id]?.status,
           extra: renderNodeExtra?.(s.id),
+          outcome: renderNodeOutcome?.(s.id),
           fresh: builtIds?.includes(s.id) ?? false,
           workflowId: workflow.id,
           design: designMode ? renderNodeDesign?.(s) : undefined,
@@ -165,7 +169,7 @@ export default function WorkflowCanvas({
       });
     }
     return nodes;
-  }, [laid, workflow, mode, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeDesign]);
+  }, [laid, workflow, mode, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeOutcome, renderNodeDesign]);
 
   const initialEdges: (CanvasEdge | CanvasGhostEdge)[] = useMemo(() => {
     const ghostIds = new Set((ghosts ?? []).map((g) => g.id));

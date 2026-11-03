@@ -17,6 +17,11 @@ export interface StepNodeData extends Record<string, unknown> {
   kind: StepKind;
   /** Present in runtime mode when this step has a run record. */
   status?: StepRunStatus;
+  /**
+   * One-line "what happened at that node" caption (Watch-it-Run only —
+   * design never passes it, so design boxes stay clean).
+   */
+  outcome?: string;
   /** Approval / failure card slot (Task 6 via renderNodeExtra). */
   extra?: ReactNode;
   /** A step that just finished building animates in bigger (0.9→1, 300ms). */
@@ -56,7 +61,7 @@ const HANDLE_STYLE = {
  * reducedMotion="user" for prefers-reduced-motion.
  */
 export default function StepNode({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
-  const { step, kind, status, extra, fresh, workflowId, design } = data;
+  const { step, kind, status, outcome, extra, fresh, workflowId, design } = data;
   const { icon: Icon, tint } = stepVisuals[kind];
   const explainTarget =
     workflowId === undefined ? null : { kind: 'step' as const, id: step.id, context: workflowId };
@@ -133,6 +138,11 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
             <div className="mt-3">
               <StatusBadge status={status} />
             </div>
+          )}
+          {outcome && (
+            <p data-outcome="true" className="mt-1 text-sm break-words text-muted-foreground">
+              {outcome}
+            </p>
           )}
         </AppCard>
         {extra && <div className="mt-2 w-[280px]">{extra}</div>}

@@ -11,6 +11,7 @@ import EmptyState from '../design/EmptyState.tsx';
 import ApprovalCard from './ApprovalCard.tsx';
 import FailureCard from './FailureCard.tsx';
 import Inspector from './Inspector.tsx';
+import { outcomeOf } from './outcome.ts';
 import { resolveRunId, resolveStepId } from './params.ts';
 import RunsList from './RunsList.tsx';
 import RunStory from './RunStory.tsx';
@@ -226,6 +227,13 @@ export default function RuntimeView({
     [detail, runId, stepRuns, onFixStep],
   );
 
+  // Per-node "what happened" caption (Watch-it-Run): a useCallback closed
+  // over the step-run map, for the same no-churn reason as renderNodeExtra.
+  const renderNodeOutcome = useCallback(
+    (stepId: string): string | undefined => outcomeOf(stepRuns[stepId]),
+    [stepRuns],
+  );
+
   if (runsQuery.isPending) return <p className="text-base">Loading runs…</p>;
   if (runsQuery.isError || !runs) {
     return (
@@ -300,6 +308,7 @@ export default function RuntimeView({
           selectedStepId={selectedStepId}
           onSelectStep={handleSelectStep}
           renderNodeExtra={renderNodeExtra}
+          renderNodeOutcome={renderNodeOutcome}
         />
       </div>
       {/* Keyed by step so the sheet (incl. the Show-details toggle) resets per selection. */}
