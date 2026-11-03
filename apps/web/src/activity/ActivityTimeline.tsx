@@ -1,5 +1,6 @@
 import type { Run } from '@dad/shared';
 import PencilIcon from 'lucide-react/icons/pencil';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { getRun } from '../api.ts';
@@ -70,8 +71,11 @@ function TimelineRow({
  * design mode for the same run.
  */
 export default function ActivityTimeline({ runs, names, hideReducerName }: ActivityTimelineProps) {
+  // "Now" is fixed per mount (lazy init keeps the render pure): groups never
+  // reshuffle under a slow query settling after midnight.
+  const [now] = useState(() => new Date());
   const sorted = [...runs].sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
-  const groups = groupRunsByTime(sorted, new Date());
+  const groups = groupRunsByTime(sorted, now);
   return (
     <div className="flex flex-col">
       {groups.map((group) => (
