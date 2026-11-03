@@ -755,7 +755,7 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
             className="relative h-full w-full"
           >
             {titleBar}
-            <div className="h-full w-full overflow-hidden">
+            <div className="relative isolate h-full w-full overflow-hidden">
               <MoodBackdrop visible fileIds={settings?.moodFileIds ?? []} />
               <WorkflowCanvas
                 workflow={detail}
