@@ -241,6 +241,15 @@ function App() {
     return <div style={box}>{error ? <p style={{ color: '#b00020' }}>{error}</p> : <p>Loading…</p>}</div>;
   }
 
+  // Who we're talking to + when they last answered, in BOTH views: someone
+  // stuck unpaired (the exact failure mode) needs this more than anyone.
+  const connectionInfo = (
+    <>
+      <p style={{ margin: '0 0 4px' }}>Talking to: the app on this computer ({APP_HOST})</p>
+      <p style={{ margin: '0 0 4px' }}>Last ping: {formatPingAge(status.lastPingAt)}</p>
+    </>
+  );
+
   if (!status.paired) {
     const valid = /^\d{6}$/.test(code);
     return (
@@ -267,6 +276,7 @@ function App() {
           )}
         </button>
         {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
+        {connectionInfo}
       </div>
     );
   }
@@ -278,10 +288,7 @@ function App() {
       <p style={{ margin: '0 0 4px' }}>
         {status.connected && live !== false ? 'Connected ✓' : 'Not connected — is the app running?'}
       </p>
-      <p style={{ margin: '0 0 4px' }}>
-        Talking to: the app on this computer ({APP_HOST})
-      </p>
-      <p style={{ margin: '0 0 4px' }}>Last ping: {formatPingAge(status.lastPingAt)}</p>
+      {connectionInfo}
       <p style={{ margin: '0 0 8px' }}>Chrome profile: {email ?? 'not signed in'}</p>
       {info}
       {manageLink}

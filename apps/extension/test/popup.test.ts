@@ -328,3 +328,20 @@ describe('popup open the app', () => {
     expect(opened).toHaveLength(0);
   });
 });
+
+describe('popup unpaired connection info', () => {
+  test('the code-box view also shows talking-to and last ping', async () => {
+    status = { paired: false, connected: false, lastPingAt: new Date(Date.now() - 8000).toISOString() };
+    await renderPopup();
+    expect(container.querySelector('input')).not.toBeNull();
+    const text = container.textContent ?? '';
+    expect(text).toContain('Talking to: the app on this computer (127.0.0.1:8787)');
+    expect(text).toContain('Last ping: 8s ago');
+  });
+
+  test('the code-box view reads never before first contact', async () => {
+    status = { paired: false, connected: false, lastPingAt: null };
+    await renderPopup();
+    expect(container.textContent ?? '').toContain('Last ping: never');
+  });
+});
