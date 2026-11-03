@@ -122,6 +122,14 @@ const PING_TIMEOUT_MS = 2000;
 /** Auto-hello settle budget inside pair(): localhost answers in ms. */
 const HELLO_SETTLE_MS = 1000;
 
+/** One timestamped background diagnostic line, exposed via getDebugLog. */
+export interface BgDebugEvent {
+  t: string;
+  msg: string;
+}
+
+const MAX_DEBUG_EVENTS = 100;
+
 interface PendingPair {
   resolve: (reply: { ok: true } | { ok: false; error: string }) => void;
   timer: unknown;
@@ -166,19 +174,37 @@ export function createBackground(deps: {
     for (const w of waiters) w();
   }
 
-  function waitForHelloSettled(ms: number): Promise<void> {
-    if (helloOutcome !== null) return Promise.resolve();
+  function waitForHelloSettled(ms: number): Promise<'acked' | 'rejected' | 'timeout'> {
+    if (helloOutcome !== null) return Promise.resolve(helloOutcome);
     return new Promise((resolve) => {
       const timer = timers.setTimeout(() => {
         helloSettledWaiters = helloSettledWaiters.filter((w) => w !== done);
-        resolve();
+        resolve('timeout');
       }, ms);
       const done = () => {
         timers.clearTimeout(timer);
-        resolve();
+        resolve(helloOutcome ?? 'timeout');
       };
       helloSettledWaiters.push(done);
     });
+  }
+
+  // --- Debug ring ------------------------------------------------------------
+  // Timestamped lifecycle log for the popup's Connection log + the SW console.
+  // The Pair button's journey (socket state, hello settle, pair sent, paired /
+  // timeout) is fully visible here.
+  const debugLog: BgDebugEvent[] = [];
+
+  function debug(msg: string): void {
+    debugLog.push({ t: new Date().toISOString(), msg });
+    if (debugLog.length > MAX_DEBUG_EVENTS) {
+      debugLog.splice(0, debugLog.length - MAX_DEBUG_EVENTS);
+    }
+    try {
+      console.log(`[dad-ext] ${msg}`);
+    } catch {
+      // Console unavailable (some test shells): the ring still records.
+    }
   }
   // Chrome profile address for the hello client identity (null when Chrome
   // is signed out or the lookup fails — hello goes out bare, the app shows
@@ -194,6 +220,7 @@ export function createBackground(deps: {
 
   function sendHello(): void {
     if (!token || tokenRejected) return;
+    debug(`hello sent (${profileEmail !== null ? 'client' : 'bare'})`);
     send(
       profileEmail !== null
         ? { type: 'hello', token, client: { profileEmail } }
@@ -244,6 +271,7 @@ export function createBackground(deps: {
       failures = 0;
       clearPing();
       helloOutcome = null;
+      debug('socket open');
       pingTimer = timers.setInterval(() => send({ type: 'ping' }), PING_EVERY_MS);
       sendHello();
       // Waiters survive closes and resolve on ANY future open within budget,
@@ -258,7 +286,9 @@ export function createBackground(deps: {
     ws.onclose = (ev?: { code?: number }) => {
       clearPing();
       helloAcked = false;
+      debug(`socket close code=${ev?.code ?? '?'}`);
       // The probe's socket died: an in-flight ping can never be answered.
+      if (pongWaiters.length > 0) debug('probe: socket closed');
       failPongWaiters();
       // 4401 = the server rejected the token: it is dead, so stop auto-
       // helloing with it and do NOT reconnect — reconnecting would 4401-loop
@@ -268,6 +298,7 @@ export function createBackground(deps: {
         tokenRejected = true;
         helloOutcome = 'rejected';
         drainHelloSettled();
+        debug('hello rejected (4401: token dead, reconnect stopped)');
         return;
       }
       helloOutcome = null;
@@ -353,6 +384,7 @@ export function createBackground(deps: {
         // A fresh token revives everything the 4401 killed.
         tokenRejected = false;
         helloOutcome = null;
+        debug('paired ok (token stored)');
         try {
           await browser.storage.local.set({ [TOKEN_KEY]: token });
         } catch {
@@ -376,6 +408,7 @@ export function createBackground(deps: {
         helloAcked = true;
         helloOutcome = 'acked';
         drainHelloSettled();
+        debug('hello acked (ready)');
         const waiters = readyWaiters;
         readyWaiters = [];
         for (const w of waiters) w();
@@ -545,23 +578,35 @@ export function createBackground(deps: {
   }
 
   async function pair(code: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    debug(`pair received (socket: ${socket === null ? 'none' : isOpen() ? 'open' : 'connecting'})`);
     connect();
     const opened = await waitForOpen(PAIR_TIMEOUT_MS);
-    if (!opened) return { ok: false, error: NO_ANSWER };
+    if (!opened) {
+      debug('pair: open timeout');
+      return { ok: false, error: NO_ANSWER };
+    }
     if (token !== null && !tokenRejected) {
       // Let the auto-hello settle before sending pair: a pair sent on a
       // socket the server is about to 4401 loses its 'paired' reply on the
       // closing socket (the redeem lands, the popup hears nothing). After a
       // rejection, reconnect clean — the fresh socket skips the dead hello.
-      await waitForHelloSettled(HELLO_SETTLE_MS);
-      connect();
-      const reopened = await waitForOpen(PAIR_TIMEOUT_MS);
-      if (!reopened) return { ok: false, error: NO_ANSWER };
+      const settled = await waitForHelloSettled(HELLO_SETTLE_MS);
+      debug(`pair: hello settled (${settled})`);
+      if (!isOpen()) {
+        debug('pair: fresh socket (rejected hello)');
+        connect();
+        const reopened = await waitForOpen(PAIR_TIMEOUT_MS);
+        if (!reopened) {
+          debug('pair: reopen failed');
+          return { ok: false, error: NO_ANSWER };
+        }
+      }
     }
     // Single-flight by replacement: one user, one popup; a second pair
     // supersedes the first (unreachable from the popup, which disables Pair
     // while busy — the stale caller gets told to retry, never hangs).
     if (pendingPair) {
+      debug('pair: previous attempt superseded');
       timers.clearTimeout(pendingPair.timer);
       pendingPair.resolve({ ok: false, error: NO_ANSWER });
     }
@@ -570,10 +615,12 @@ export function createBackground(deps: {
         if (pendingPair?.timer === timer) pendingPair = null;
         // Wrong codes fail silent server-side, so this timeout is also the
         // wrong-code path.
+        debug('pair: no answer (5s timeout)');
         resolve({ ok: false, error: NO_ANSWER });
       }, PAIR_TIMEOUT_MS);
       pendingPair = { resolve, timer };
       send({ type: 'pair', code });
+      debug('pair sent');
     });
   }
 
@@ -584,15 +631,20 @@ export function createBackground(deps: {
    * and a close mid-probe fails it instead of hanging to the timeout.
    */
   function pingProbe(): Promise<{ ok: boolean }> {
-    if (!isOpen()) return Promise.resolve({ ok: false });
+    if (!isOpen()) {
+      debug('probe: no socket');
+      return Promise.resolve({ ok: false });
+    }
     send({ type: 'ping' });
     return new Promise((resolve) => {
       const timer = timers.setTimeout(() => {
         pongWaiters = pongWaiters.filter((w) => w !== done);
+        debug('probe: timeout');
         resolve({ ok: false });
       }, PING_TIMEOUT_MS);
       const done = (alive: boolean) => {
         timers.clearTimeout(timer);
+        debug(`probe: ${alive ? 'ok' : 'socket closed'}`);
         resolve({ ok: alive });
       };
       pongWaiters.push(done);
@@ -657,6 +709,7 @@ export function createBackground(deps: {
       return { paired: token !== null, connected: isOpen(), lastPingAt };
     }
     if (msg['action'] === 'ping') return pingProbe();
+    if (msg['action'] === 'getDebugLog') return { events: [...debugLog] };
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes
       // through untouched as the trigger payload. The inbox watcher sends
@@ -686,6 +739,7 @@ export function createBackground(deps: {
       } catch {
         // Unknown profile: hello goes out bare and the app shows it as unknown.
       }
+      debug(`boot done (token: ${token !== null ? 'yes' : 'no'}, profile: ${profileEmail !== null ? 'known' : 'unknown'})`);
       connect();
     },
     dispose(): void {

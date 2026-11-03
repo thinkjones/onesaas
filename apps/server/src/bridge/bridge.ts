@@ -38,7 +38,13 @@ export interface WSContext {
   send(data: string): void;
   close(code?: number, reason?: string): void;
   onmessage?: ((data: string) => void) | null;
-  onclose?: (() => void) | null;
+  onclose?: ((code?: number) => void) | null;
+}
+
+/** One timestamped bridge diagnostic line, exposed via GET /api/debug/events. */
+export interface BridgeEvent {
+  t: string;
+  msg: string;
 }
 
 export interface Bridge {
@@ -75,6 +81,11 @@ export interface Bridge {
    * last-contact record: survives disconnects, overwritten by each hello.
    */
   connectionInfo(): { lastPingAt: string | null; peer: string | null };
+  /**
+   * Recent diagnostic lines (socket open/close, pair, hello, drops), oldest
+   * first, capped at 200. Powers Settings Diagnostics via /api/debug/events.
+   */
+  recentEvents(): BridgeEvent[];
 }
 
 interface PendingCall {
@@ -96,6 +107,17 @@ export function createBridge(o: {
   const pending = new Map<string, PendingCall>();
   const triggerFns: Array<(t: TriggerMsg) => void> = [];
   const readyFns: Array<() => void> = [];
+
+  // --- Event ring ----------------------------------------------------------
+  const eventLog: BridgeEvent[] = [];
+  const MAX_EVENTS = 200;
+
+  function logEvent(msg: string): void {
+    eventLog.push({ t: new Date().toISOString(), msg });
+    if (eventLog.length > MAX_EVENTS) {
+      eventLog.splice(0, eventLog.length - MAX_EVENTS);
+    }
+  }
 
   function sendTo(ws: WSContext, msg: ServerToExtension): void {
     try {
@@ -188,16 +210,19 @@ export function createBridge(o: {
       case 'pair': {
         // Allowed pre-auth. Failure is ignored: the popup implements its own timeout.
         const token = pairing.redeem(msg.code);
+        logEvent(`pair code=${msg.code} redeemed=${token !== null}`);
         if (token !== null) sendTo(ws, { type: 'paired', token });
         break;
       }
       case 'hello': {
+        logEvent(`hello valid=${pairing.isValid(msg.token)} client=${msg.client?.profileEmail ?? '(bare)'}`);
         if (!pairing.isValid(msg.token)) {
           ws.close(4401, 'Invalid token');
           break;
         }
         // Replacement only: same-socket re-hello must NOT fail pending.
         if (active !== null && active !== ws) {
+          logEvent('socket replaced (old closed 4400)');
           active.close(4400, 'Replaced');
           // The cmd went to a now-dead socket, so its result can never
           // legitimately arrive: fail fast instead of hanging to the timeout.
@@ -271,8 +296,10 @@ export function createBridge(o: {
   }
 
   function attach(ws: WSContext): void {
+    logEvent('socket open');
     ws.onmessage = (data: string) => handleMessage(ws, data);
-    ws.onclose = () => {
+    ws.onclose = (code?: number) => {
+      logEvent(`socket close code=${code ?? '?'} wasActive=${active === ws}`);
       // Only the active socket's close tears down the session: a replaced
       // socket's late close must not clear its replacement.
       if (active === ws) {
@@ -321,6 +348,7 @@ export function createBridge(o: {
   }
 
   function dropActive(reason = 'Revoked'): void {
+    logEvent(`drop: ${reason}`);
     const socket = active;
     // Null + fail FIRST so the socket's late async onclose no-ops instead of
     // double-tearing-down; the close itself is best-effort.
@@ -342,6 +370,7 @@ export function createBridge(o: {
     dropActive,
     ping,
     connectionInfo,
+    recentEvents: () => [...eventLog],
     onTrigger: (fn: (t: TriggerMsg) => void) => {
       triggerFns.push(fn);
     },

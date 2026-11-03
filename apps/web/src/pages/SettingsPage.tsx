@@ -1,3 +1,4 @@
+import ActivityIcon from 'lucide-react/icons/activity';
 import BrainIcon from 'lucide-react/icons/brain';
 import BriefcaseIcon from 'lucide-react/icons/briefcase';
 import CheckIcon from 'lucide-react/icons/check';
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
 import {
   apiUrl,
+  getDebugEvents,
   getPairingStatus,
   isTauri,
   useDataReset,
@@ -417,6 +419,67 @@ function ServicesSection() {
   );
 }
 
+// Debug mode for pairing, server side: the bridge's recent event log —
+// hellos, rejections, redemptions, disconnects — newest last. The other two
+// legs live in the extension popup's Connection log and the service-worker
+// console ([dad-ext] lines).
+function DiagnosticsSection() {
+  const [events, setEvents] = useState<Array<{ t: string; msg: string }> | null>(null);
+  const [error, setError] = useState('');
+  const load = async () => {
+    setError('');
+    try {
+      const res = await getDebugEvents();
+      setEvents(res.events);
+    } catch {
+      setEvents(null);
+      setError('Could not load the server log.');
+    }
+  };
+  useEffect(() => {
+    // Inline promise chain (like ServicesSection above): calling load()
+    // here trips react(set-state-in-effect).
+    let cancelled = false;
+    getDebugEvents().then(
+      (res) => {
+        if (!cancelled) setEvents(res.events);
+      },
+      () => {
+        if (!cancelled) {
+          setEvents(null);
+          setError('Could not load the server log.');
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <section className="panel" aria-label="Diagnostics">
+      <CardHeading icon={ActivityIcon} title="Diagnostics" />
+      <div className="mt-2 space-y-2">
+        <p>Server log (bridge events, newest last):</p>
+        {error !== '' && <p className="text-destructive">{error}</p>}
+        {events !== null && (
+          <pre
+            data-testid="server-log"
+            className="max-h-48 overflow-y-auto rounded-md bg-muted p-2 text-xs whitespace-pre-wrap"
+          >
+            {events.length === 0
+              ? 'No server events yet.'
+              : events.map((e) => `[${e.t.slice(11, 19)}] ${e.msg}`).join('\n')}
+          </pre>
+        )}
+        <AppButton type="button" onClick={() => void load()}>
+          Refresh log
+        </AppButton>
+        <p>Extension side: open the extension popup, then “Connection log”.</p>
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   const { settings, update } = useSettings();
   if (!settings) {
@@ -436,6 +499,7 @@ export default function SettingsPage() {
       </section>
       <ThinkingSection />
       <ServicesSection />
+      <DiagnosticsSection />
       <ResetSection update={update} />
     </div>
   );

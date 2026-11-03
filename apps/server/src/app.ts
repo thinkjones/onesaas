@@ -160,6 +160,12 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ ok, connected: bridge.connected(), ...bridge.connectionInfo() });
   });
 
+  // Bridge diagnostics for Settings: recent socket/pair/hello/drop lines.
+  app.get('/api/debug/events', (c) => {
+    if (!bridge) return c.json({ error: 'Bridge not configured' }, 500);
+    return c.json({ events: bridge.recentEvents() });
+  });
+
   app.post('/api/pairing/revoke', (c) => {
     if (!pairing || !bridge) return c.json({ error: 'Bridge not configured' }, 500);
     pairing.revoke();
@@ -833,8 +839,8 @@ export function createApp(deps: AppDeps): Hono {
         onMessage(e: MessageEvent) {
           socket?.onmessage?.(String(e.data));
         },
-        onClose() {
-          socket?.onclose?.();
+        onClose(e: CloseEvent) {
+          socket?.onclose?.(e.code);
           socket = null;
         },
       };

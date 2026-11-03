@@ -175,7 +175,7 @@ function fakeSocket() {
     },
     close: (code?: number, reason?: string) => {
       ws.closed = { code, reason };
-      ws.onclose?.();
+      ws.onclose?.(code);
     },
     onmessage: null,
     onclose: null,
@@ -833,6 +833,12 @@ describe('unconfigured app (createApp({}))', () => {
     expect(await res.json()).toEqual({ error: 'Bridge not configured' });
   });
 
+  test('GET /api/debug/events returns 500', async () => {
+    const res = await createApp({}).request('/api/debug/events');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Bridge not configured' });
+  });
+
   test('/ext socket is closed with 1011', async () => {
     const { port } = await setupUnconfigured();
     const client = await connect(port);
@@ -961,5 +967,65 @@ describe('bridge ping authentication', () => {
     ws.onmessage!(JSON.stringify({ type: 'ping' }));
     expect(ws.sent.at(-1)).toEqual({ type: 'pong' });
     expect(bridge.connectionInfo().lastPingAt).toEqual(expect.any(String));
+  });
+});
+
+describe('bridge event log', () => {
+  test('recentEvents starts empty and records open, pair, and hello', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    expect(bridge.recentEvents()).toEqual([]);
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    const code = pairing.start().code;
+    ws.onmessage!(JSON.stringify({ type: 'pair', code }));
+    const token = (ws.sent.find((m: { type: string }) => m.type === 'paired') as { token: string })
+      .token;
+    ws.onmessage!(JSON.stringify({ type: 'hello', token, client: { profileEmail: 'a@b.c' } }));
+    const events = bridge.recentEvents();
+    expect(events.map((e) => e.msg)).toEqual([
+      'socket open',
+      `pair code=${code} redeemed=true`,
+      'hello valid=true client=a@b.c',
+    ]);
+    for (const e of events) expect(Date.parse(e.t)).not.toBeNaN();
+  });
+
+  test('recentEvents records failed redeems, invalid hellos, and close codes', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    const ws = fakeSocket();
+    bridge.attach(ws);
+    ws.onmessage!(JSON.stringify({ type: 'pair', code: '000000' }));
+    ws.onmessage!(JSON.stringify({ type: 'hello', token: 'bogus' }));
+    expect(bridge.recentEvents().map((e) => e.msg)).toEqual([
+      'socket open',
+      'pair code=000000 redeemed=false',
+      'hello valid=false client=(bare)',
+      'socket close code=4401 wasActive=false',
+    ]);
+  });
+
+  test('recentEvents is capped at 200 entries', () => {
+    const pairing = makePairing();
+    const bridge = createBridge({ pairing });
+    for (let i = 0; i < 250; i++) bridge.attach(fakeSocket());
+    expect(bridge.recentEvents()).toHaveLength(200);
+  });
+
+  test('GET /api/debug/events exposes the bridge log', async () => {
+    const { port } = await setup();
+    const startRes = await fetch(`http://127.0.0.1:${port}/api/pairing/start`, { method: 'POST' });
+    const { code } = (await startRes.json()) as { code: string };
+    const client = await connect(port);
+    const inbox = new Inbox(client);
+    await pairAndHello(client, inbox, code);
+    const res = await fetch(`http://127.0.0.1:${port}/api/debug/events`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { events: Array<{ t: string; msg: string }> };
+    const msgs = body.events.map((e) => e.msg);
+    expect(msgs).toContain('socket open');
+    expect(msgs).toContain(`pair code=${code} redeemed=true`);
+    expect(msgs).toContain('hello valid=true client=(bare)');
   });
 });

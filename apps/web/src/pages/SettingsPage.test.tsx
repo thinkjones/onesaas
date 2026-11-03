@@ -35,6 +35,7 @@ function renderSettings(
   models: ModelStatus[] | 'hang',
   onNavigate?: (path: string) => void,
   health: 'up' | 'down' = 'up',
+  debug?: { events: Array<{ t: string; msg: string }> } | 'fail',
 ) {
   let settings: Record<string, unknown> = { ...SETTINGS };
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -52,6 +53,10 @@ function renderSettings(
       return ok(models);
     }
     if (url === '/api/pairing/status') return ok({ paired: false, connected: false });
+    if (url === '/api/debug/events') {
+      if (debug === 'fail') throw new Error('unreachable');
+      return ok({ events: debug?.events ?? [] });
+    }
     if (url === '/health') {
       if (health === 'down') throw new Error('unreachable');
       return ok({ ok: true });
@@ -224,4 +229,38 @@ test('services shows desktop shell + loopback api inside Tauri', async () => {
 test('services shows api down when health is unreachable', async () => {
   renderSettings(SPARK_ROWS, undefined, 'down');
   expect(await screen.findByText(/App API: .* \(Down\)/)).toBeDefined();
+});
+
+test('diagnostics shows the server event log newest last', async () => {
+  renderSettings(SPARK_ROWS, undefined, 'up', {
+    events: [
+      { t: '2026-05-01T12:00:01.000Z', msg: 'hello valid=true' },
+      { t: '2026-05-01T12:00:02.000Z', msg: 'pair code=123456 redeemed=true' },
+    ],
+  });
+  const log = await screen.findByTestId('server-log');
+  expect(log.textContent ?? '').toContain('[12:00:01] hello valid=true');
+  expect(log.textContent ?? '').toContain('[12:00:02] pair code=123456 redeemed=true');
+});
+
+test('diagnostics refresh reloads the server log', async () => {
+  const debug = { events: [{ t: '2026-05-01T12:00:01.000Z', msg: 'first-line' }] };
+  renderSettings(SPARK_ROWS, undefined, 'up', debug);
+  const log = await screen.findByTestId('server-log');
+  expect(log.textContent ?? '').toContain('first-line');
+  debug.events = [{ t: '2026-05-01T12:00:09.000Z', msg: 'second-line' }];
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh log' }));
+  await vi.waitFor(() => expect(log.textContent ?? '').toContain('second-line'));
+});
+
+test('diagnostics shows an error when the server log is unreachable', async () => {
+  renderSettings(SPARK_ROWS, undefined, 'up', 'fail');
+  expect(await screen.findByText('Could not load the server log.')).toBeDefined();
+});
+
+test('diagnostics points at the extension-side log', async () => {
+  renderSettings(SPARK_ROWS);
+  expect(
+    await screen.findByText('Extension side: open the extension popup, then “Connection log”.'),
+  ).toBeDefined();
 });

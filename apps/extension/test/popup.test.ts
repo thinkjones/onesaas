@@ -54,6 +54,9 @@ beforeEach(() => {
   sendMessage = vi.fn(async (msg: { action: string; code?: string }) => {
     if (msg.action === 'status') return { ...status };
     if (msg.action === 'ping') return { ok: pingOk };
+    if (msg.action === 'getDebugLog') {
+      return { events: [{ t: '2026-05-01T12:00:00.000Z', msg: 'pair sent' }] };
+    }
     if (msg.action === 'pair') {
       if (/^\d{6}$/.test(msg.code ?? '')) {
         status = { paired: true, connected: true, lastPingAt: null };
@@ -343,5 +346,68 @@ describe('popup unpaired connection info', () => {
     status = { paired: false, connected: false, lastPingAt: null };
     await renderPopup();
     expect(container.textContent ?? '').toContain('Last ping: never');
+  });
+});
+
+describe('popup pair logging + retry', () => {
+  function pairCalls() {
+    return sendMessage.mock.calls.filter(([m]) => m.action === 'pair');
+  }
+
+  test('a first send that dies waking the worker retries once and pairs', async () => {
+    await renderPopup();
+    sendMessage.mockRejectedValueOnce(new Error('Could not establish connection'));
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    await flush();
+    expect(container.textContent ?? '').toContain('Paired ✓');
+    expect(container.textContent ?? '').not.toContain('No answer');
+    expect(pairCalls()).toHaveLength(2);
+    const log = container.querySelector('details')!.textContent ?? '';
+    expect(log).toContain('retrying');
+    expect(log).toContain('pair ok');
+  });
+
+  test('two failed sends show the error and log the outcome', async () => {
+    await renderPopup();
+    const orig = sendMessage.getMockImplementation()!;
+    sendMessage.mockImplementation(async (msg) => {
+      if (msg.action === 'pair') throw new Error('dead worker');
+      return orig(msg);
+    });
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+      await new Promise((r) => setTimeout(r, 800));
+    });
+    await flush();
+    expect(container.textContent ?? '').toContain('No answer from the app. Is it running?');
+    expect(pairCalls()).toHaveLength(2);
+    const log = container.querySelector('details')!.textContent ?? '';
+    expect(log).toContain('retrying');
+    expect(log).toContain('background unreachable');
+  });
+
+  test('rapid double-click sends one pair', async () => {
+    await renderPopup();
+    const input = container.querySelector('input')!;
+    act(() => setInput(input, '123456'));
+    await act(async () => {
+      buttonByText('Pair').click();
+      buttonByText('Pair').click();
+    });
+    await flush();
+    expect(pairCalls()).toHaveLength(1);
+  });
+
+  test('connection log shows background events', async () => {
+    await renderPopup();
+    const log = container.querySelector('details')!.textContent ?? '';
+    expect(log).toContain('[bg 12:00:00] pair sent');
   });
 });

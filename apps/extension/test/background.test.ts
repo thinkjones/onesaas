@@ -1178,3 +1178,109 @@ describe('stale token + pair race', () => {
     bg.dispose();
   });
 });
+
+describe('debug log', () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    consoleSpy.mockRestore();
+  });
+
+  async function debugLog(t: { runtimeMessage: (m: never) => unknown }): Promise<string[]> {
+    const res = (await t.runtimeMessage({ action: 'getDebugLog' } as never)) as {
+      events: Array<{ t: string; msg: string }>;
+    };
+    return res.events.map((e) => e.msg);
+  }
+
+  it('logs the pair lifecycle end to end and mirrors to the console', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    await flush();
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(pairP).resolves.toEqual({ ok: true });
+    const msgs = await debugLog(t);
+    expect(msgs.join('\n')).toMatch(
+      /boot done.*pair received.*hello settled \(acked\).*pair sent.*paired ok/s,
+    );
+    expect(consoleSpy).toHaveBeenCalled();
+    bg.dispose();
+  });
+
+  it('logs pair timeouts and socket close codes', async () => {
+    const t = makeBrowser({});
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    const assertion = expect(pairP).resolves.toEqual({
+      ok: false,
+      error: 'No answer from the app. Is it running?',
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
+    lastSocket().close(4401);
+    const msgs = await debugLog(t);
+    expect(msgs).toContain('pair: no answer (5s timeout)');
+    expect(msgs).toContain('socket close code=4401');
+    bg.dispose();
+  });
+
+  it('caps the log at 100 entries', async () => {
+    const t = makeBrowser({});
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    for (let i = 0; i < 60; i++) {
+      lastSocket().open();
+      lastSocket().close();
+    }
+    const res = (await t.runtimeMessage({ action: 'getDebugLog' } as never)) as {
+      events: Array<{ t: string; msg: string }>;
+    };
+    expect(res.events).toHaveLength(100);
+    bg.dispose();
+  });
+});
+
+describe('debug log extras', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('logs probe outcomes and superseded pairs', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pingP = t.runtimeMessage({ action: 'ping' }) as Promise<unknown>;
+    await flush();
+    lastSocket().receive({ type: 'pong' });
+    await expect(pingP).resolves.toEqual({ ok: true });
+    const p1 = t.runtimeMessage({ action: 'pair', code: '111111' }) as Promise<unknown>;
+    const p2 = t.runtimeMessage({ action: 'pair', code: '222222' }) as Promise<unknown>;
+    await flush();
+    // p1 has no socket race here: both wait hello settle, then p2 supersedes p1.
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    await expect(p1).resolves.toEqual({ ok: false, error: 'No answer from the app. Is it running?' });
+    const res = (await t.runtimeMessage({ action: 'getDebugLog' } as never)) as {
+      events: Array<{ t: string; msg: string }>;
+    };
+    const msgs = res.events.map((e) => e.msg);
+    expect(msgs).toContain('probe: ok');
+    expect(msgs).toContain('pair: previous attempt superseded');
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(p2).resolves.toEqual({ ok: true });
+    bg.dispose();
+  });
+});

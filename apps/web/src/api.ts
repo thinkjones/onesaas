@@ -168,6 +168,16 @@ export function getPairingStatus(): Promise<PairingStatus> {
   return getJson('/api/pairing/status');
 }
 
+/** GET /api/debug/events: the bridge's recent in-memory event log (debug mode). */
+export interface DebugEvent {
+  t: string;
+  msg: string;
+}
+
+export function getDebugEvents(): Promise<{ events: DebugEvent[] }> {
+  return getJson('/api/debug/events');
+}
+
 /** POST /api/pairing/ping: round-trips a live probe, reporting the (possibly self-healed) state. */
 export interface PairingPing {
   ok: boolean;

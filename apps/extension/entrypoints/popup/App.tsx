@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatPingAge } from '@dad/shared';
+import type { BgDebugEvent } from '../../lib/background.js';
 
 interface Status {
   paired: boolean;
@@ -11,6 +12,14 @@ interface PairReply {
   ok: boolean;
   error?: string;
 }
+
+// One popup-side journal line (debug mode for the Pair button).
+interface PopupLogEntry {
+  t: string;
+  msg: string;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Same origin the background socket uses; covered by host_permissions.
 const REVOKE_URL = 'http://127.0.0.1:8787/api/pairing/revoke';
@@ -50,6 +59,16 @@ function App() {
   const [error, setError] = useState('');
   // Probes serialize: a sick app must not stack a new 2s wait on every tick.
   const probing = useRef(false);
+  // Pairs serialize on a ref, not `busy`: state lags a tick, so two same-tick
+  // clicks would both pass and double-submit the single-use code.
+  const pairing = useRef(false);
+  // Debug mode: the popup's own journal plus the background worker's log.
+  const [popLog, setPopLog] = useState<PopupLogEntry[]>([]);
+  const [bgLog, setBgLog] = useState<BgDebugEvent[]>([]);
+
+  const logPop = (msg: string) => {
+    setPopLog((l) => [...l.slice(-29), { t: new Date().toISOString(), msg }]);
+  };
 
   // Active liveness check: socket-open is not proof the app answers, so ask
   // the background to round-trip a real ping. Never rejects.
@@ -76,6 +95,14 @@ function App() {
       connected: !!s?.connected,
       lastPingAt: typeof s?.lastPingAt === 'string' ? s.lastPingAt : null,
     });
+    try {
+      const log = (await browser.runtime.sendMessage({ action: 'getDebugLog' })) as
+        | { events?: BgDebugEvent[] }
+        | undefined;
+      if (Array.isArray(log?.events)) setBgLog(log.events.slice(-30));
+    } catch {
+      // The log is a bonus view; a dead worker already surfaces via status.
+    }
     if (paired) await probe();
   };
 
@@ -96,19 +123,40 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // The first send after worker hibernation can die while Chrome wakes the
+  // worker — the classic "first Pair click fails fast, second works". One
+  // retry after a beat fixes the cold start without masking real failures.
+  const sendPair = async (c: string): Promise<PairReply> => {
+    try {
+      return (await browser.runtime.sendMessage({ action: 'pair', code: c })) as PairReply;
+    } catch {
+      logPop('pair send failed (worker waking?) — retrying…');
+      await sleep(500);
+      return (await browser.runtime.sendMessage({ action: 'pair', code: c })) as PairReply;
+    }
+  };
+
   const pair = async () => {
+    if (pairing.current) return;
+    pairing.current = true;
     setBusy(true);
     setError('');
+    const started = Date.now();
+    logPop('pair attempt');
     try {
-      const res = (await browser.runtime.sendMessage({ action: 'pair', code })) as PairReply;
+      const res = await sendPair(code);
       if (res?.ok) {
+        logPop(`pair ok (${Date.now() - started}ms)`);
         await refresh();
       } else {
+        logPop(`pair failed: ${res?.error ?? 'unknown'} (${Date.now() - started}ms)`);
         setError(res?.error ?? 'Pairing failed.');
       }
     } catch {
+      logPop(`pair failed: background unreachable (${Date.now() - started}ms)`);
       setError('No answer from the app. Is it running?');
     } finally {
+      pairing.current = false;
       setBusy(false);
     }
   };
@@ -251,6 +299,20 @@ function App() {
     </>
   );
 
+  // Debug mode, in BOTH views: everything the Pair button did plus the
+  // background worker's own journal, newest last, popup lines first.
+  const debugLog = (
+    <details style={{ marginTop: 8 }}>
+      <summary style={{ cursor: 'pointer' }}>Connection log</summary>
+      <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, maxHeight: 160, overflowY: 'auto' }}>
+        {[
+          ...popLog.map((e) => `[popup ${e.t.slice(11, 19)}] ${e.msg}`),
+          ...bgLog.map((e) => `[bg ${e.t.slice(11, 19)}] ${e.msg}`),
+        ].join('\n') || 'No events yet.'}
+      </pre>
+    </details>
+  );
+
   if (!status.paired) {
     const valid = /^\d{6}$/.test(code);
     return (
@@ -278,6 +340,7 @@ function App() {
         </button>
         {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
         {connectionInfo}
+        {debugLog}
       </div>
     );
   }
@@ -300,6 +363,7 @@ function App() {
         Unpair
       </button>
       {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
+      {debugLog}
     </div>
   );
 }
