@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import InboxPage from './InboxPage.tsx';
+import ActivityPage from './ActivityPage.tsx';
 
 function workflow(id: string, name: string): Workflow {
   return {
@@ -31,13 +31,17 @@ function run(id: string, workflowId: string, startedAt: string, status: Run['sta
   };
 }
 
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString();
+}
+
 function LocationProbe({ onLocation }: { onLocation: (pathname: string, search: string) => void }) {
   const location = useLocation();
   onLocation(location.pathname, location.search);
   return null;
 }
 
-function renderInbox(runs: Run[]) {
+function renderActivity(runs: Run[]) {
   const fetch = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     const json = async () => {
@@ -58,7 +62,7 @@ function renderInbox(runs: Run[]) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/']}>
         <Routes>
-          <Route path="/" element={<InboxPage />} />
+          <Route path="/" element={<ActivityPage />} />
           <Route
             path="/reducers/:workflowId"
             element={
@@ -83,15 +87,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('InboxPage', () => {
-  test('lists runs newest-first with time, reducer, story line and status', async () => {
-    renderInbox([
-      run('run-old', 'wf-2', '2026-10-20T09:00:00.000Z', 'done'),
-      run('run-new', 'wf-1', '2026-10-30T10:42:00.000Z', 'waiting'),
+describe('ActivityPage', () => {
+  test('groups runs under Today and Past with time, reducer, story line and status', async () => {
+    renderActivity([
+      run('run-old', 'wf-2', daysAgo(10), 'done'),
+      run('run-new', 'wf-1', daysAgo(0), 'waiting'),
     ]);
     // Wait for the per-row story queries before asserting row contents.
     await screen.findByText('Drafted a reply for approval');
-    const rows = screen.getAllByRole('link');
+    expect(screen.getByText('Today')).toBeDefined();
+    expect(screen.getByText('Past')).toBeDefined();
+    const rows = screen.getAllByRole('link', { name: /Leads|Bookings/ });
     expect(rows.map((r) => r.textContent)).toHaveLength(2);
     // Newest first, with the story's last line; older row falls back to the sender.
     expect(rows[0]!.textContent).toContain('Leads');
@@ -100,17 +106,17 @@ describe('InboxPage', () => {
     expect(rows[1]!.textContent).toContain('Sarah Lee');
   });
 
-  test('clicking a row opens that run', async () => {
-    const { location } = renderInbox([run('run-new', 'wf-1', '2026-10-30T10:42:00.000Z', 'done')]);
-    fireEvent.click((await screen.findAllByRole('link'))[0]!);
+  test('clicking a row opens that run in Watch it Run mode', async () => {
+    const { location } = renderActivity([run('run-new', 'wf-1', daysAgo(0), 'done')]);
+    fireEvent.click(await screen.findByRole('link', { name: /Leads/ }));
     await waitFor(() => {
       expect(location().pathname).toBe('/reducers/wf-1');
     });
-    expect(location().search).toBe('?run=run-new');
+    expect(location().search).toBe('?mode=runtime&run=run-new');
   });
 
-  test('empty inbox points to Automate', async () => {
-    renderInbox([]);
+  test('empty activity points to Automate', async () => {
+    renderActivity([]);
     const link = await screen.findByRole('link', { name: /automate/i });
     fireEvent.click(link);
     expect(await screen.findByText('Automate')).toBeDefined();
