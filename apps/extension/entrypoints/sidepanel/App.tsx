@@ -82,6 +82,9 @@ function App() {
   // Set when pair-ok and status provably come from different workers; cleared
   // by any later paired read (the ticks heal it if the phantom yields).
   const [unmatched, setUnmatched] = useState<string | null>(null);
+  // Settings toggle (paired view): Pair again / Unpair hide behind it so the
+  // connected panel just shows status.
+  const [showSettings, setShowSettings] = useState(false);
 
   const logPanel = (msg: string) => {
     setPopLog((l) => [...l.slice(-29), { t: new Date().toISOString(), msg }]);
@@ -418,12 +421,23 @@ function App() {
       <p style={{ margin: '0 0 8px' }}>Chrome profile: {email ?? 'not signed in'}</p>
       {info}
       {manageLink}
-      <button onClick={() => void pairAgain()} disabled={busy} style={buttonStyle}>
-        Pair again
+      <button
+        onClick={() => setShowSettings((s) => !s)}
+        aria-expanded={showSettings}
+        style={buttonStyle}
+      >
+        Settings
       </button>
-      <button onClick={() => void unpair()} disabled={busy} style={buttonStyle}>
-        Unpair
-      </button>
+      {showSettings && (
+        <>
+          <button onClick={() => void pairAgain()} disabled={busy} style={buttonStyle}>
+            Pair again
+          </button>
+          <button onClick={() => void unpair()} disabled={busy} style={buttonStyle}>
+            Unpair
+          </button>
+        </>
+      )}
       {error !== '' && <p style={{ color: '#b00020' }}>{error}</p>}
       {unmatched !== null && <p style={{ color: '#b00020' }}>{unmatched}</p>}
       {debugLog}

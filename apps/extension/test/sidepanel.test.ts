@@ -48,6 +48,19 @@ function buttonByText(text: string): HTMLButtonElement {
   return btn as HTMLButtonElement;
 }
 
+// Exact-text presence probe (buttonByText's substring match can't assert
+// absence: 'Pair again' contains 'Pair').
+function hasButton(text: string): boolean {
+  return [...container.querySelectorAll('button')].some((b) => b.textContent === text);
+}
+
+async function openSettings() {
+  await act(async () => {
+    buttonByText('Settings').click();
+  });
+  await flush();
+}
+
 beforeEach(() => {
   status = { paired: false, connected: false, lastPingAt: null };
   pingOk = true;
@@ -106,7 +119,7 @@ async function renderPanel() {
 }
 
 describe('sidepanel paired view', () => {
-  test('shows status, profile, info, app link, and unpair/re-pair', async () => {
+  test('shows status, profile, info and app link, with pair buttons behind Settings', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
     const text = container.textContent ?? '';
@@ -116,8 +129,15 @@ describe('sidepanel paired view', () => {
     expect(text).toContain('Chrome profile: priya@gmail.com');
     expect(text).toContain('reads the email you have open');
     buttonByText('Open the app to manage');
-    buttonByText('Unpair');
-    buttonByText('Pair again');
+    // Pair again / Unpair hide behind the Settings toggle (Tweaks).
+    expect(hasButton('Unpair')).toBe(false);
+    expect(hasButton('Pair again')).toBe(false);
+    const toggle = buttonByText('Settings');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await openSettings();
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(hasButton('Unpair')).toBe(true);
+    expect(hasButton('Pair again')).toBe(true);
   });
 
   test('paired but offline says not connected and still shows the profile', async () => {
@@ -139,6 +159,7 @@ describe('sidepanel paired view', () => {
   test('unpair revokes the server token, forgets local state, shows the code box', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
+    await openSettings();
     await act(async () => {
       buttonByText('Unpair').click();
     });
@@ -154,6 +175,7 @@ describe('sidepanel paired view', () => {
   test('pair again keeps the server token and shows the code box', async () => {
     status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
+    await openSettings();
     await act(async () => {
       buttonByText('Pair again').click();
     });
