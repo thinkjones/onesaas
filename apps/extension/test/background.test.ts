@@ -20,16 +20,17 @@ class FakeSocket implements SocketLike {
   sent: string[] = [];
   onopen: ((ev?: unknown) => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((ev?: unknown) => void) | null = null;
   constructor(public url: string) {
     FakeSocket.instances.push(this);
   }
   send(data: string): void {
     this.sent.push(data);
   }
-  close(): void {
+  close(code?: number): void {
     this.readyState = FakeSocket.CLOSED;
-    this.onclose?.();
+    if (code === undefined) this.onclose?.();
+    else this.onclose?.({ code });
   }
   open(): void {
     this.readyState = FakeSocket.OPEN;
@@ -1081,6 +1082,99 @@ describe('mutual ping', () => {
     await flush();
     lastSocket().close();
     await assertion;
+    bg.dispose();
+  });
+});
+
+describe('stale token + pair race', () => {
+  it('a 4401 stops reconnecting: the dead token must be re-paired, not retried', async () => {
+    const t = makeBrowser({ token: 'stale' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'stale' });
+    lastSocket().close(4401);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(await t.runtimeMessage({ action: 'status' })).toEqual({
+      paired: true,
+      connected: false,
+      lastPingAt: null,
+    });
+    bg.dispose();
+  });
+
+  it('pair serializes after the auto-hello: no pair is sent before the ack', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([{ type: 'hello', token: 'tok' }]);
+    lastSocket().receive({ type: 'ready', buttons: [] });
+    await flush();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(pairP).resolves.toEqual({ ok: true });
+    bg.dispose();
+  });
+
+  it('pair after a 4401 uses a hello-free socket and completes (the race fix)', async () => {
+    const t = makeBrowser({ token: 'stale' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    await flush();
+    // The stale hello is rejected while pair waits for settle.
+    lastSocket().close(4401);
+    await flush();
+    // A fresh socket opens with NO hello (rejection remembered)...
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(sentJson(lastSocket())).toEqual([]);
+    lastSocket().open();
+    await flush();
+    expect(sentJson(lastSocket())).toEqual([{ type: 'pair', code: '123456' }]);
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(pairP).resolves.toEqual({ ok: true });
+    // ...and the new token hellos normally.
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'newtok' });
+    bg.dispose();
+  });
+
+  it('a successful pair clears the rejection: later closes reconnect normally', async () => {
+    const t = makeBrowser({ token: 'stale' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    const pairP = t.runtimeMessage({ action: 'pair', code: '123456' }) as Promise<unknown>;
+    await flush();
+    lastSocket().close(4401);
+    await flush();
+    lastSocket().open();
+    await flush();
+    lastSocket().receive({ type: 'paired', token: 'newtok' });
+    await expect(pairP).resolves.toEqual({ ok: true });
+    // Plain close after a good pairing: backoff reconnects and re-hellos.
+    lastSocket().close();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(FakeSocket.instances).toHaveLength(3);
+    lastSocket().open();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'newtok' });
+    bg.dispose();
+  });
+
+  it('a 4400 replacement still reconnects and re-hellos (token stays trusted)', async () => {
+    const t = makeBrowser({ token: 'tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    lastSocket().close(4400);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(FakeSocket.instances).toHaveLength(2);
+    lastSocket().open();
+    expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'tok' });
     bg.dispose();
   });
 });

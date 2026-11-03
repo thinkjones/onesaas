@@ -27,7 +27,10 @@ export interface SocketLike {
   onopen: ((ev?: any) => void) | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onmessage: ((ev: any) => void) | null;
-  onclose: (() => void) | null;
+  // `any` is deliberate (see onmessage): the real DOM CloseEvent must stay
+  // assignable; handlers only read ev.code (4401 = token rejected).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onclose: ((ev?: any) => void) | null;
 }
 
 export interface WebSocketCtor {
@@ -116,6 +119,8 @@ const PAIR_TIMEOUT_MS = 5000;
 const TRIGGER_TIMEOUT_MS = 5000;
 /** Active probe budget: localhost answers in ms; 2s is generous, never a hang. */
 const PING_TIMEOUT_MS = 2000;
+/** Auto-hello settle budget inside pair(): localhost answers in ms. */
+const HELLO_SETTLE_MS = 1000;
 
 interface PendingPair {
   resolve: (reply: { ok: true } | { ok: false; error: string }) => void;
@@ -146,6 +151,35 @@ export function createBackground(deps: {
   let pongWaiters: Array<(alive: boolean) => void> = [];
   let helloAcked = false;
   let disposed = false;
+  // The server 4401'd the stored token (revoked, replaced, or wiped): the
+  // token is dead, so never auto-hello with it again — re-helloing would
+  // 4401-loop forever (every open resets the backoff) and race pair().
+  // Cleared only by a successful pair. Browsers never see this flag.
+  let tokenRejected = false;
+  // This socket's auto-hello outcome, for serializing pair() after it.
+  let helloOutcome: 'acked' | 'rejected' | null = null;
+  let helloSettledWaiters: Array<() => void> = [];
+
+  function drainHelloSettled(): void {
+    const waiters = helloSettledWaiters;
+    helloSettledWaiters = [];
+    for (const w of waiters) w();
+  }
+
+  function waitForHelloSettled(ms: number): Promise<void> {
+    if (helloOutcome !== null) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = timers.setTimeout(() => {
+        helloSettledWaiters = helloSettledWaiters.filter((w) => w !== done);
+        resolve();
+      }, ms);
+      const done = () => {
+        timers.clearTimeout(timer);
+        resolve();
+      };
+      helloSettledWaiters.push(done);
+    });
+  }
   // Chrome profile address for the hello client identity (null when Chrome
   // is signed out or the lookup fails — hello goes out bare, the app shows
   // the peer as unknown).
@@ -159,7 +193,7 @@ export function createBackground(deps: {
   }
 
   function sendHello(): void {
-    if (!token) return;
+    if (!token || tokenRejected) return;
     send(
       profileEmail !== null
         ? { type: 'hello', token, client: { profileEmail } }
@@ -209,6 +243,7 @@ export function createBackground(deps: {
     ws.onopen = () => {
       failures = 0;
       clearPing();
+      helloOutcome = null;
       pingTimer = timers.setInterval(() => send({ type: 'ping' }), PING_EVERY_MS);
       sendHello();
       // Waiters survive closes and resolve on ANY future open within budget,
@@ -220,11 +255,22 @@ export function createBackground(deps: {
     ws.onmessage = (ev: { data: string }) => {
       void handleServerMessage(ev.data);
     };
-    ws.onclose = () => {
+    ws.onclose = (ev?: { code?: number }) => {
       clearPing();
       helloAcked = false;
       // The probe's socket died: an in-flight ping can never be answered.
       failPongWaiters();
+      // 4401 = the server rejected the token: it is dead, so stop auto-
+      // helloing with it and do NOT reconnect — reconnecting would 4401-loop
+      // forever and race pair(). Only a fresh code (pair) revives us. Any
+      // other close (4400 replacement, silence, restart) reconnects as before.
+      if (ev?.code === 4401) {
+        tokenRejected = true;
+        helloOutcome = 'rejected';
+        drainHelloSettled();
+        return;
+      }
+      helloOutcome = null;
       if (disposed) return;
       // Backoff 1, 2, 5, 10s, then stay at 10s.
       const delay = RECONNECT_DELAYS_MS[Math.min(failures, RECONNECT_DELAYS_MS.length - 1)]!;
@@ -304,6 +350,9 @@ export function createBackground(deps: {
     switch (msg.type) {
       case 'paired': {
         token = msg.token;
+        // A fresh token revives everything the 4401 killed.
+        tokenRejected = false;
+        helloOutcome = null;
         try {
           await browser.storage.local.set({ [TOKEN_KEY]: token });
         } catch {
@@ -325,6 +374,8 @@ export function createBackground(deps: {
         // triggers may send.
         noteServerPing();
         helloAcked = true;
+        helloOutcome = 'acked';
+        drainHelloSettled();
         const waiters = readyWaiters;
         readyWaiters = [];
         for (const w of waiters) w();
@@ -497,6 +548,16 @@ export function createBackground(deps: {
     connect();
     const opened = await waitForOpen(PAIR_TIMEOUT_MS);
     if (!opened) return { ok: false, error: NO_ANSWER };
+    if (token !== null && !tokenRejected) {
+      // Let the auto-hello settle before sending pair: a pair sent on a
+      // socket the server is about to 4401 loses its 'paired' reply on the
+      // closing socket (the redeem lands, the popup hears nothing). After a
+      // rejection, reconnect clean — the fresh socket skips the dead hello.
+      await waitForHelloSettled(HELLO_SETTLE_MS);
+      connect();
+      const reopened = await waitForOpen(PAIR_TIMEOUT_MS);
+      if (!reopened) return { ok: false, error: NO_ANSWER };
+    }
     // Single-flight by replacement: one user, one popup; a second pair
     // supersedes the first (unreachable from the popup, which disables Pair
     // while busy — the stale caller gets told to retry, never hangs).
@@ -640,6 +701,7 @@ export function createBackground(deps: {
       }
       openWaiters = [];
       readyWaiters = [];
+      helloSettledWaiters = [];
       failPongWaiters();
       try {
         socket?.close();
