@@ -34,6 +34,7 @@ export interface Conversation {
 export interface ConversationStore {
   load(workflowId: string): Conversation | undefined;
   save(workflowId: string, c: Conversation): void;
+  remove(workflowId: string): void;
 }
 
 export function createConversationStore(db: Database): ConversationStore {
@@ -68,6 +69,10 @@ export function createConversationStore(db: Database): ConversationStore {
           },
         })
         .run();
+    },
+
+    remove(workflowId: string): void {
+      orm.delete(conversations).where(eq(conversations.workflowId, workflowId)).run();
     },
   };
 }

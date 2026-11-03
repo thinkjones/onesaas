@@ -8,7 +8,7 @@ import {
   type StepRun as StepRunType,
   type Workflow as WorkflowType,
 } from '@dad/shared';
-import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { nanoid } from 'nanoid';
 import type { Database } from './connection.js';
@@ -81,6 +81,8 @@ export interface Repo {
   listWorkflows(): WorkflowType[];
   createWorkflow(o: { name: string; description: string }): WorkflowType;
   updateLatestInPlace(wf: WorkflowType): WorkflowType;
+  /** Delete all versions, runs, and step runs. False when unknown. */
+  deleteWorkflow(id: string): boolean;
   createRun(
     r: Omit<RunType, 'id' | 'startedAt' | 'kind' | 'usedSample'> & { kind?: RunType['kind'] },
   ): RunType;
@@ -240,6 +242,27 @@ export function createRepo(db: Database): Repo {
         .where(and(eq(workflows.id, parsed.id), eq(workflows.version, latest.version)))
         .run();
       return stored;
+    },
+
+    deleteWorkflow(id: string): boolean {
+      const existing = orm
+        .select({ id: workflows.id })
+        .from(workflows)
+        .where(eq(workflows.id, id))
+        .get();
+      if (!existing) return false;
+      const runIds = orm
+        .select({ id: runs.id })
+        .from(runs)
+        .where(eq(runs.workflowId, id))
+        .all()
+        .map((r) => r.id);
+      if (runIds.length > 0) {
+        orm.delete(stepRuns).where(inArray(stepRuns.runId, runIds)).run();
+      }
+      orm.delete(runs).where(eq(runs.workflowId, id)).run();
+      orm.delete(workflows).where(eq(workflows.id, id)).run();
+      return true;
     },
 
     saveWorkflow(wf: WorkflowType): WorkflowType {

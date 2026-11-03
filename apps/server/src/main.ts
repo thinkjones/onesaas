@@ -204,6 +204,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
     setTimezone,
     files,
     image,
+    conversations,
     resetData: () => resetDataToFreshInstall({ db, filesDir, repo, tables, setTimezone }),
     // The voice proxy holds the key server-side; the browser never sees it.
     voice: { apiKey },

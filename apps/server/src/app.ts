@@ -8,6 +8,7 @@ import { streamSSE } from 'hono/streaming';
 import type { EventEmitter } from 'node:events';
 import { z } from 'zod';
 import { AGENT_BUSY_MESSAGE, type BuilderAgent } from './agent/loop.js';
+import type { ConversationStore } from './agent/conversations.js';
 import type { Bridge, WSContext as BridgeSocket } from './bridge/bridge.js';
 import { type Pairing } from './bridge/pairing.js';
 import type { Repo } from './db/repo.js';
@@ -92,6 +93,7 @@ export function createApp(deps: AppDeps): Hono {
   const pairing = deps.pairing as Pairing | undefined;
   const bridge = deps.bridge as FullBridge | undefined;
   const repo = deps.repo as Repo | undefined;
+  const conversations = deps.conversations as ConversationStore | undefined;
   const engine = deps.engine as ReturnType<typeof createEngine> | undefined;
   const tables = deps.tables as TableStore | undefined;
   const onWorkflowChange = deps.onWorkflowChange as
@@ -443,6 +445,15 @@ export function createApp(deps: AppDeps): Hono {
     const wf = repo.getWorkflow(id);
     if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
     return c.json({ ...wf, problems: checkWorkflow(wf, tables) });
+  });
+
+  app.delete('/api/workflows/:id', (c) => {
+    if (!repo) return c.json({ error: 'Server not configured' }, 500);
+    const id = c.req.param('id');
+    const deleted = repo.deleteWorkflow(id);
+    if (!deleted) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    conversations?.remove(id);
+    return c.json({ deleted: true });
   });
 
   // The ops route takes positional args (the workflow id comes from the URL):

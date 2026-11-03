@@ -610,6 +610,24 @@ export function useCreateWorkflow() {
   });
 }
 
+export function useDeleteWorkflow() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<{ deleted: boolean }> => {
+      const res = await fetch(apiUrl(`/api/workflows/${encodeURIComponent(id)}`), {
+        method: 'DELETE',
+      });
+      if (!res.ok) await throwApiError(res);
+      return (await res.json()) as { deleted: boolean };
+    },
+    onSuccess: (_res, id) => {
+      void client.invalidateQueries({ queryKey: ['workflows'] });
+      void client.invalidateQueries({ queryKey: ['workflow', id] });
+      void client.invalidateQueries({ queryKey: ['runs'] });
+    },
+  });
+}
+
 /**
  * Mirrors apps/server/src/agent/conversations.ts TranscriptEntry (the web
  * package cannot import server code, so the shape is redeclared here like

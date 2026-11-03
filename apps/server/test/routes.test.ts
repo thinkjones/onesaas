@@ -325,3 +325,39 @@ test('POST /api/app/focus rejects malformed bodies and paths', async () => {
   expect(ok.status).toBe(200);
   expect(await ok.json()).toEqual({ focused: false });
 });
+
+test('DELETE /api/workflows/:id removes the workflow, its runs, steps, and conversation', async () => {
+  const { app, repo, conversations } = createServer({ dbFile: ':memory:' });
+  const wf = repo.createWorkflow({ name: 'Doomed', description: '' });
+  const run = repo.createRun({
+    workflowId: wf.id,
+    workflowVersion: 1,
+    triggerPayload: {},
+    status: 'done',
+  });
+  repo.upsertStepRun({
+    id: randomUUID(),
+    runId: run.id,
+    stepId: 'trigger',
+    status: 'done',
+    startedAt: new Date().toISOString(),
+  });
+  conversations.save(wf.id, { messages: [], transcript: [] });
+  const other = repo.createWorkflow({ name: 'Spared', description: '' });
+
+  const res = await app.request(`/api/workflows/${wf.id}`, { method: 'DELETE' });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ deleted: true });
+  expect(repo.getWorkflow(wf.id)).toBeUndefined();
+  expect(repo.getRun(run.id)).toBeUndefined();
+  expect(repo.listRuns({ workflowId: wf.id })).toEqual([]);
+  expect(conversations.load(wf.id)).toBeUndefined();
+  expect(repo.getWorkflow(other.id)?.name).toBe('Spared');
+});
+
+test('DELETE /api/workflows/:id is 404 for unknown ids', async () => {
+  const { app } = createServer({ dbFile: ':memory:' });
+  const res = await app.request('/api/workflows/nope', { method: 'DELETE' });
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: 'Unknown workflow: nope' });
+});
