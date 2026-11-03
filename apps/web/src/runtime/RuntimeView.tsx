@@ -17,11 +17,13 @@ import RunsList from './RunsList.tsx';
 import RunStory from './RunStory.tsx';
 
 /**
- * Two-column shell (300px runs list left, detail pane right) shared by the
- * loading, error, and loaded branches, so the list stays mounted — the
- * recovery hint ("pick another run on the left") is only honest if the
- * list is actually there. The inspector renders in a portal, so passing it
- * as a child costs the flex layout nothing.
+ * Full-viewport shell shared by the loading, error, and loaded branches.
+ * The runs list floats over the canvas as a left overlay panel (340px, own
+ * scroll) so it stays mounted everywhere — the recovery hint ("pick another
+ * run on the left") is only honest if the list is actually there. The
+ * inspector renders in a portal, so passing it as a child costs the layout
+ * nothing. Panel chrome mirrors the design-mode overlays (card, radius
+ * token, shadow).
  */
 function RuntimeShell({
   runs,
@@ -37,8 +39,11 @@ function RuntimeShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex gap-4">
-      <div className="w-[340px] shrink-0">
+    <div className="relative h-full">
+      <div
+        data-testid="runtime-runs-panel"
+        className="absolute top-0 bottom-0 left-0 z-10 m-4 w-[340px] overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-3 shadow-md"
+      >
         <RunsList
           runs={runs}
           selectedRunId={selectedRunId}
@@ -46,7 +51,7 @@ function RuntimeShell({
           lastLineByRunId={lastLineByRunId}
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-4">{children}</div>
+      <div className="h-full min-w-0">{children}</div>
     </div>
   );
 }
@@ -61,9 +66,10 @@ function proposedTextOf(output: unknown): string {
 }
 
 /**
- * The runtime screen: runs list left (300px), run story + canvas centre,
- * inspector sheet on node click. Selections live in the URL (?run=, ?step=)
- * so they are linkable (M3's "Fix this step" and M5's explain links use it).
+ * The runtime screen: full-viewport canvas with the runs list (left), run
+ * story (top), and inspector (right sheet) floating over it; node clicks
+ * open the inspector. Selections live in the URL (?run=, ?step=) so they
+ * are linkable (M3's "Fix this step" and M5's explain links use it).
  *
  * Canvas seams (per review): stepRuns is a memoized Record (a fresh object
  * per SSE event would churn nodes), onSelectStep is a useCallback, and
@@ -234,27 +240,41 @@ export default function RuntimeView({
     [stepRuns],
   );
 
-  if (runsQuery.isPending) return <p className="text-base">Loading runs…</p>;
+  // Pre-shell branches centre in the full-viewport area (the shell is
+  // full-bleed now, so bare top-left content would strand in the corner).
+  if (runsQuery.isPending) {
+    return (
+      <div className="flex h-full items-center justify-center p-4">
+        <p className="text-base">Loading runs…</p>
+      </div>
+    );
+  }
   if (runsQuery.isError || !runs) {
     return (
-      <EmptyState
-        icon={TriangleAlert}
-        title="Couldn't load runs"
-        hint="Check the server is running and try again."
-      />
+      <div className="flex h-full items-center justify-center p-4">
+        <EmptyState
+          icon={TriangleAlert}
+          title="Couldn't load runs"
+          hint="Check the server is running and try again."
+        />
+      </div>
     );
   }
   if (runs.length === 0 || runId === undefined) {
     return (
-      <EmptyState
-        icon={History}
-        title="No runs yet"
-        hint="Run this chore reducer once and it will show up here."
-      />
+      <div className="flex h-full items-center justify-center p-4">
+        <EmptyState
+          icon={History}
+          title="No runs yet"
+          hint="Run this chore reducer once and it will show up here."
+        />
+      </div>
     );
   }
   // The error branch comes first: on error `detail` is undefined, so the
   // `!detail` pending check below would swallow it into "Loading run…" forever.
+  // Both centre in the space right of the runs overlay (16px margin + 340px
+  // panel + 16px gap = 372px of left offset).
   if (detailQuery.isError) {
     return (
       <RuntimeShell
@@ -263,11 +283,13 @@ export default function RuntimeView({
         onSelectRun={handleSelectRun}
         lastLineByRunId={lastLineByRunId}
       >
-        <EmptyState
-          icon={TriangleAlert}
-          title="Couldn't load this run"
-          hint="It may have been deleted; pick another run on the left."
-        />
+        <div className="flex h-full items-center justify-center p-4 pl-[372px]">
+          <EmptyState
+            icon={TriangleAlert}
+            title="Couldn't load this run"
+            hint="It may have been deleted; pick another run on the left."
+          />
+        </div>
       </RuntimeShell>
     );
   }
@@ -279,7 +301,9 @@ export default function RuntimeView({
         onSelectRun={handleSelectRun}
         lastLineByRunId={lastLineByRunId}
       >
-        <p className="text-base">Loading run…</p>
+        <div className="flex h-full items-center justify-center p-4 pl-[372px]">
+          <p className="text-base">Loading run…</p>
+        </div>
       </RuntimeShell>
     );
   }
@@ -298,8 +322,7 @@ export default function RuntimeView({
       onSelectRun={handleSelectRun}
       lastLineByRunId={lastLineByRunId}
     >
-      <RunStory story={detail.story} />
-      <div className="relative isolate h-[560px] rounded-[var(--radius)] border border-border bg-card">
+      <div className="relative isolate h-full w-full overflow-hidden">
         <MoodBackdrop visible={false} fileIds={settings?.moodFileIds ?? []} />
         <WorkflowCanvas
           workflow={detail.workflow}
@@ -310,6 +333,15 @@ export default function RuntimeView({
           renderNodeExtra={renderNodeExtra}
           renderNodeOutcome={renderNodeOutcome}
         />
+        {/* Story overlay (top card over the canvas): starts right of the
+            runs panel (372px, same offset as the centred branches) with the
+            card centred in the remaining space. After the canvas in DOM
+            order so it paints above the flow. */}
+        <div data-testid="runtime-story" className="absolute top-4 right-4 left-[372px] z-10">
+          <div className="mx-auto w-fit max-w-full rounded-[var(--radius)] border border-border bg-card px-4 py-2 shadow-md">
+            <RunStory story={detail.story} />
+          </div>
+        </div>
       </div>
       {/* Keyed by step so the sheet (incl. the Show-details toggle) resets per selection. */}
       <Inspector

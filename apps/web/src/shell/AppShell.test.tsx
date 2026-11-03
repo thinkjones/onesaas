@@ -79,7 +79,7 @@ describe('AppShell', () => {
   });
 });
 
-describe('AppShell design-mode full bleed', () => {
+describe('AppShell reducer full bleed', () => {
   test('design mode drops content padding and scroll for the full-bleed canvas', async () => {
     renderShell({ path: '/reducers/wf-1?mode=design' });
     const content = await screen.findByTestId('shell-content');
@@ -87,8 +87,22 @@ describe('AppShell design-mode full bleed', () => {
     expect(content.className).not.toContain('px-8');
   });
 
-  test('runtime mode keeps the padded scrolling content', async () => {
+  test('runtime mode joins the full bleed (Watch-it-Run fills the window)', async () => {
     renderShell({ path: '/reducers/wf-1?mode=runtime' });
+    const content = await screen.findByTestId('shell-content');
+    expect(content.className).toContain('overflow-hidden');
+    expect(content.className).not.toContain('px-8');
+  });
+
+  test('a bare reducer URL (default runtime) is full bleed too', async () => {
+    renderShell({ path: '/reducers/wf-1' });
+    const content = await screen.findByTestId('shell-content');
+    expect(content.className).toContain('overflow-hidden');
+    expect(content.className).not.toContain('px-8');
+  });
+
+  test('other pages keep the padded scrolling content', async () => {
+    renderShell({ path: '/' });
     const content = await screen.findByTestId('shell-content');
     expect(content.className).toContain('overflow-y-auto');
     expect(content.className).toContain('px-8');

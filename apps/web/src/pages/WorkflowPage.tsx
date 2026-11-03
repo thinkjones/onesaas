@@ -232,7 +232,9 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
               onRequestRuntime={handleRequestRuntime}
             />
           ) : (
-            <div className="flex flex-col gap-4">
+            // Full-height column: the upload drop (photo flows only) takes
+            // its own height and the runtime view fills the rest.
+            <div className="flex h-full min-h-0 flex-col gap-4">
               {showUploadDrop && (
                 <div className="flex flex-col gap-2">
                   <UploadDrop
@@ -247,7 +249,9 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
                   )}
                 </div>
               )}
-              <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+              <div className="min-h-0 flex-1">
+                <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
+              </div>
             </div>
           )}
         </div>

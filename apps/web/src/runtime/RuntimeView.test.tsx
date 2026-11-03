@@ -254,8 +254,7 @@ describe('RuntimeView canvas', () => {
     expect(screen.getByTestId('extract-outcome').textContent).toBe('Saved the lead.');
   });
 
-  test('the canvas container has a definite height', async () => {
-    // Same collapse as design mode (see the DesignView canvas test):
+  test('the canvas fills the viewport (h-full, no fixed pixel height)', async () => {
     // WorkflowCanvas is mocked here, but the real container div wraps it.
     const client = makeClient();
     seed(client, [BOB, ALICE], [BOB_DETAIL, ALICE_DETAIL]);
@@ -264,6 +263,32 @@ describe('RuntimeView canvas', () => {
       expect(screen.getByTestId('pinned-run').textContent).toBe('run-bob');
     });
     const container = screen.getByTestId('canvas').parentElement;
-    expect(container?.className).toMatch(/(?<![\w-])h-\[\d+px\]/);
+    expect(container?.className).toMatch(/(?<![\w-])h-full(?![\w-])/);
+    expect(container?.className).toMatch(/(?<![\w-])w-full(?![\w-])/);
+    expect(container?.className).not.toMatch(/h-\[\d+px\]/);
+  });
+
+  test('the runs list floats over the canvas as an overlay panel', async () => {
+    const client = makeClient();
+    seed(client, [BOB, ALICE], [BOB_DETAIL, ALICE_DETAIL]);
+    renderRuntime(client, '/');
+    await waitFor(() => {
+      expect(screen.getByTestId('pinned-run').textContent).toBe('run-bob');
+    });
+    const panel = screen.getByTestId('runtime-runs-panel');
+    expect(panel.className).toMatch(/(?<![\w-])absolute(?![\w-])/);
+    expect(panel.querySelector('[role="listbox"]')).not.toBeNull();
+  });
+
+  test('the run story floats over the canvas as an overlay card', async () => {
+    const client = makeClient();
+    seed(client, [BOB, ALICE], [BOB_DETAIL, ALICE_DETAIL]);
+    renderRuntime(client, '/');
+    await waitFor(() => {
+      expect(screen.getByTestId('pinned-run').textContent).toBe('run-bob');
+    });
+    const card = screen.getByTestId('runtime-story');
+    expect(card.className).toMatch(/(?<![\w-])absolute(?![\w-])/);
+    expect(card.textContent).toContain('Bob started this run.');
   });
 });
