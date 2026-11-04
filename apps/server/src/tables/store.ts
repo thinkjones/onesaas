@@ -23,6 +23,8 @@ export interface TableStore {
     table: string,
     row: Record<string, unknown>,
     keyField: string,
+    /** Cells only a new row gets. Passing it also means a blank key saves as new, and blanks don't overwrite. */
+    onCreate?: Record<string, unknown>,
   ): { id: number; created: boolean };
   query(
     table: string,
@@ -234,7 +236,12 @@ export function createTableStore(db: Database): TableStore {
 
     insert,
 
-    upsert(table: string, row: Record<string, unknown>, keyField: string): { id: number; created: boolean } {
+    upsert(
+      table: string,
+      row: Record<string, unknown>,
+      keyField: string,
+      onCreate?: Record<string, unknown>,
+    ): { id: number; created: boolean } {
       const def = getDefOrThrow(table);
       const key = sanitiseName(keyField);
       if (!def.columns.some((c) => c.name === key)) {
@@ -249,7 +256,10 @@ export function createTableStore(db: Database): TableStore {
       });
       const keyValue = keyEntry?.[1];
       if (keyValue === null || keyValue === undefined) {
-        throw new Error(`Missing value for key field: ${keyField}`);
+        if (onCreate === undefined) throw new Error(`Missing value for key field: ${keyField}`);
+        // Nothing to match a repeat on, but what was read is still worth keeping.
+        const { id } = insert(table, { ...row, ...onCreate });
+        return { id, created: true };
       }
       const keyType = def.columns.find((c) => c.name === key)!.type;
       if (keyType === 'email') checkEmail(key, keyValue);
@@ -260,10 +270,13 @@ export function createTableStore(db: Database): TableStore {
         )
         .get(toStored(keyType, keyValue)) as { id: number } | undefined;
       if (!existing) {
-        const { id } = insert(table, row);
+        const { id } = insert(table, { ...row, ...onCreate });
         return { id, created: true };
       }
-      const cells = knownCells(def, row).filter((c) => c.col !== key);
+      // With onCreate, a detail this run couldn't find doesn't wipe a known one.
+      const cells = knownCells(def, row).filter(
+        (c) => c.col !== key && (onCreate === undefined || (c.value !== null && c.value !== undefined)),
+      );
       const now = new Date().toISOString();
       const set = [...cells.map((c) => `${qident(c.col)} = ?`), '"updated_at" = ?'].join(', ');
       db.prepare(`UPDATE ${qident(physicalTableName(def.name))} SET ${set} WHERE "id" = ?`).run(

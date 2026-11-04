@@ -81,6 +81,23 @@ function tablesSection(tables: TableDef[]): string {
   return lines.join('\n');
 }
 
+const EXTRACT_AND_SAVE_RULES = [
+  '# When an automation reads details and saves them',
+  'These rules win over the worked examples below.',
+  '- Set "optional": true on every ai.extract field, so a detail the text doesn\u2019t give stays blank instead of being made up or stopping the run.',
+  '- Give a new list a text column named record_id (label "Record ID"), and set "recordId": "record_id" on the save step. The step fills it with the date, the time and 3 random characters. A list that already exists without that column can\u2019t gain one, so leave recordId off for it.',
+  '- If a detail identifies someone or something, such as an email address or a link, use table.upsert with it as keyField, so a repeat updates the row instead of adding another. With recordId set, a blank keyField still saves as a new row. If nothing identifies it, use table.insert.',
+].join('\n');
+
+/**
+ * Whether those rules apply. A step-free automation may be about to; after that,
+ * it needs a read or save step for them to mean anything.
+ */
+function mayExtractAndSave(workflow: Workflow): boolean {
+  if (workflow.steps.length === 0) return true;
+  return workflow.steps.some((s) => s.type === 'ai.extract' || s.type === 'table.insert' || s.type === 'table.upsert');
+}
+
 export function buildSystemPrompt(o: {
   business: { name?: string; what?: string; timezone: string };
   workflow: Workflow;
@@ -101,6 +118,7 @@ export function buildSystemPrompt(o: {
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
       '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells the owner what it does in one plain sentence.',
     ].join('\n'),
+    ...(mayExtractAndSave(o.workflow) ? [EXTRACT_AND_SAVE_RULES] : []),
     catalogSection(),
     workflowSection(o.workflow, o.problems),
     tablesSection(o.tables),

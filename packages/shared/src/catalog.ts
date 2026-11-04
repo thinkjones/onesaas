@@ -140,6 +140,8 @@ export const catalog: Record<string, StepDef> = {
             name: z.string(),
             type: columnTypeSchema,
             description: z.string(),
+            /** Blank instead of guessed when the text doesn't say. */
+            optional: z.boolean().optional(),
           }),
         )
         .min(1),
@@ -169,8 +171,13 @@ export const catalog: Record<string, StepDef> = {
     type: 'table.upsert',
     kind: 'store',
     title: 'Save to list',
-    description: 'Saves a row to one of your lists.',
-    configSchema: z.object({ table: z.string(), keyField: z.string() }),
+    description: 'Saves a row to one of your lists. Updates the row whose keyField matches instead of adding a repeat.',
+    configSchema: z.object({
+      table: z.string(),
+      keyField: z.string(),
+      /** A column filled with a record id on new rows. Also lets a blank keyField save as a new row. */
+      recordId: z.string().optional(),
+    }),
     inputSchema: z.object({ row: z.record(z.string(), z.unknown()) }),
     outputSchema: z.object({ id: z.number(), created: z.boolean() }),
   },
@@ -179,7 +186,11 @@ export const catalog: Record<string, StepDef> = {
     kind: 'store',
     title: 'Add to list',
     description: 'Adds a new row to one of your lists.',
-    configSchema: z.object({ table: z.string() }),
+    configSchema: z.object({
+      table: z.string(),
+      /** A column filled with a record id on new rows. */
+      recordId: z.string().optional(),
+    }),
     inputSchema: z.object({ row: z.record(z.string(), z.unknown()) }),
     outputSchema: z.object({ id: z.number() }),
   },

@@ -213,6 +213,9 @@ function asRows(value: unknown): Row[] {
 const inputClass =
   'min-h-10 w-full rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-base text-foreground';
 
+// Set by the builder and kept as they are: nothing the owner would need to change.
+const HIDDEN_SETTINGS = new Set(['recordId']);
+
 /**
  * The settings form for one step: its `configSchema` fields (string,
  * multiline string, enum, number, boolean, array-of-objects tables) plus an
@@ -225,7 +228,9 @@ export default function ConfigForm({ step, workflow, onSave, formId, saving, def
   const resolved = def ?? catalog[step.type];
   const shape = resolved ? objectShape(resolved.configSchema) : undefined;
   const descs: [string, FieldDesc][] = shape
-    ? Object.entries(shape).map(([name, schema]) => [name, describeField(name, schema)])
+    ? Object.entries(shape)
+        .filter(([name]) => !HIDDEN_SETTINGS.has(name))
+        .map(([name, schema]) => [name, describeField(name, schema)])
     : [];
 
   const [config, setConfig] = useState<Record<string, unknown>>(() => {

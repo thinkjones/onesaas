@@ -1,5 +1,5 @@
 import { sanitiseName } from '../tables/store.js';
-import type { Executor } from './registry.js';
+import { ctxNow, ctxTimezone, type Executor, type StepContext } from './registry.js';
 
 // Display value for a fresh row: the list's display column, else the
 // upsert-style 'someone' fallback (bookings and customers are people-shaped).
@@ -11,10 +11,26 @@ function displayOf(
   return raw === null || raw === undefined ? 'someone' : String(raw);
 }
 
+/** A row's id when nothing in it can be relied on: 20261104-143205-x7k, in the owner's time. */
+export function makeRecordId(now: Date, timezone: string): string {
+  const part = (options: Intl.DateTimeFormatOptions): string =>
+    new Intl.DateTimeFormat('en-GB', { timeZone: timezone, ...options }).format(now);
+  const date = `${part({ year: 'numeric' })}${part({ month: '2-digit' })}${part({ day: '2-digit' })}`;
+  const time = part({ hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).replaceAll(':', '');
+  const random = Math.random().toString(36).slice(2, 5).padEnd(3, '0');
+  return `${date}-${time}-${random}`;
+}
+
+function recordIdCells(config: Record<string, unknown>, ctx: StepContext): Record<string, unknown> | undefined {
+  const column = config['recordId'];
+  if (typeof column !== 'string' || column === '') return undefined;
+  return { [column]: makeRecordId(ctxNow(ctx), ctxTimezone(ctx)) };
+}
+
 export const insertExecutor: Executor = async (config, input, ctx) => {
   const table = config.table as string;
   const row = input.row as Record<string, unknown>;
-  const { id } = ctx.tables.insert(table, row);
+  const { id } = ctx.tables.insert(table, { ...row, ...recordIdCells(config, ctx) });
   // insert succeeded, so the table exists; still tolerate a missing def.
   const def = ctx.tables.getTable(table);
   const name = displayOf(row, def?.displayField);
@@ -103,7 +119,7 @@ export const upsertExecutor: Executor = async (config, input, ctx) => {
   const table = config.table as string;
   const keyField = config.keyField as string;
   const row = input.row as Record<string, unknown>;
-  const { id, created } = ctx.tables.upsert(table, row, keyField);
+  const { id, created } = ctx.tables.upsert(table, row, keyField, recordIdCells(config, ctx));
   // upsert succeeded, so the table exists; still tolerate a missing def.
   const displayField = ctx.tables.getTable(table)?.displayField;
   const raw =
@@ -154,7 +170,9 @@ upsertExecutor.preview = async (config, input, ctx) => {
   });
   const keyValue = keyEntry?.[1];
   if (keyValue === null || keyValue === undefined) {
-    throw new Error(`Missing value for key field: ${keyField}`);
+    if (recordIdCells(config, ctx) === undefined) throw new Error(`Missing value for key field: ${keyField}`);
+    const name = displayOf(row, def.displayField);
+    return { output: { id: 0, created: true }, why: `In a real run I would save ${name} to ${table} as a new row.` };
   }
   const keyType = def.columns.find((c) => c.name === key)!.type;
   if (keyType === 'email' && !String(keyValue).includes('@')) {

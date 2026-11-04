@@ -20,6 +20,7 @@ import { FileNotFoundError, FileRejectedError, type FileStore } from './files/st
 import { ManualRunRefused, manualRunPayload } from './engine/manualRun.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { Gateway, ModelStatus } from './models/gateway.js';
+import { ExtensionUnavailable, installExtension } from './extension/install.js';
 import { ModelConnectionRejected, type ModelConnectionStore, type ModelKeyStatus } from './models/connection.js';
 import type { ImageModels } from './models/image.js';
 import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
@@ -858,6 +859,20 @@ export function createApp(deps: AppDeps): Hono {
       hash: z.string().max(100).optional(),
     })
     .strict();
+
+  // Setup's "Get the extension". JSON only, so a website can't trigger it: that
+  // content type needs a CORS preflight, which other origins don't pass.
+  app.post('/api/extension/install', (c) => {
+    if (!c.req.header('content-type')?.includes('application/json')) {
+      return c.json({ error: 'Invalid request' }, 415);
+    }
+    try {
+      return c.json({ path: installExtension() });
+    } catch (err) {
+      if (err instanceof ExtensionUnavailable) return c.json({ error: err.message }, 404);
+      return c.json({ error: "I couldn't copy the extension. Try again." }, 500);
+    }
+  });
 
   // Desktop focus for the extension's "open the app" button: broadcast a
   // navigation request over SSE. Works identically in dev and production —

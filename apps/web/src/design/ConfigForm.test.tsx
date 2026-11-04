@@ -89,7 +89,7 @@ describe('ConfigForm', () => {
         instructions: 'Read the catering enquiry.',
         fields: [
           { name: 'email', type: 'email', description: 'The sender email' },
-          { name: 'need', type: 'text', description: 'What they need' },
+          { name: 'need', type: 'text', description: 'What they need', optional: false },
         ],
       },
       inputs: { text: '{{trigger.email.body}}' },

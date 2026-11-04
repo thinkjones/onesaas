@@ -142,6 +142,13 @@ export function checkWorkflow(wf: Workflow, tables: TableStore): WorkflowProblem
     if (node.type.startsWith('table.') && typeof table === 'string' && !tables.getTable(table)) {
       problems.push({ stepId: node.id, problem: `The list "${table}" doesn't exist yet.` });
     }
+    const recordId = node.config['recordId'];
+    if (node.type.startsWith('table.') && typeof table === 'string' && typeof recordId === 'string' && recordId !== '') {
+      const def = tables.getTable(table);
+      if (def && !def.columns.some((c) => c.name === recordId)) {
+        problems.push({ stepId: node.id, problem: `The list "${table}" has no "${recordId}" column for record ids.` });
+      }
+    }
     if (node.id !== wf.trigger.id && !reachable.has(node.id) && !members.has(node.id)) {
       problems.push({ stepId: node.id, problem: 'Nothing leads to this step yet.' });
     }

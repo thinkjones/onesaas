@@ -39,7 +39,11 @@ interface ExtractField {
   name: string;
   type: ColumnType;
   description: string;
+  optional?: boolean;
 }
+
+const OPTIONAL_RULE =
+  'Some fields can be null. When the text does not give one of those, use null. Never guess or make one up.';
 
 // Shared with code.transform (steps/code.ts), which builds its output schema
 // from the same ColumnType union.
@@ -105,10 +109,10 @@ export const extractExecutor: Executor = async (config, input, ctx) => {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const field of fields) {
     if (field.name in shape) throw new Error(`Duplicate field: "${field.name}"`);
-    // All fields REQUIRED: the model must return every field every time, so a
-    // missing field is a schema error (and retried). M3 may add per-field
-    // required flags; until then the contract is strict.
-    shape[field.name] = fieldSchema(field.type).describe(field.description);
+    // The model must return every field every time, so a missing field is a
+    // schema error (and retried). An optional one may come back null.
+    const type = fieldSchema(field.type);
+    shape[field.name] = (field.optional ? type.nullable() : type).describe(field.description);
   }
   const schema = z.object({ output: z.object(shape), why: z.string() });
   const result = await chatJsonWithSchemaRetry(
@@ -116,14 +120,20 @@ export const extractExecutor: Executor = async (config, input, ctx) => {
     {
       role: 'builder',
       system: systemPromptWithDate(ctx),
-      user: `${config.instructions as string}\n\nText to read:\n${input.text as string}`,
+      user: `${config.instructions as string}${fields.some((f) => f.optional) ? `\n\n${OPTIONAL_RULE}` : ''}\n\nText to read:\n${input.text as string}`,
       schema,
       schemaName: 'ai_extract',
     },
     'read',
   );
+  // Some models say "not there" with an empty string, which an email or date
+  // column would then refuse.
+  const output: Record<string, unknown> = { ...result.data.output };
+  for (const field of fields) {
+    if (field.optional && output[field.name] === '') output[field.name] = null;
+  }
   return {
-    output: result.data.output,
+    output,
     why: result.data.why,
     model: result.model,
     tokens: result.tokens,
