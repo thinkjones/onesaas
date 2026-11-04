@@ -182,6 +182,20 @@ function emitPlan(
 
 const PLAN_RESULT = 'Plan shown to Dad; wait for his reply.';
 
+/**
+ * The plan in words with answers to tap. The turn ends here, so without this
+ * nothing tells Dad it's his move, and the saved transcript keeps the plan
+ * across a reload (ghost boxes live only in the page's memory).
+ */
+function emitPlanQuestion(ctx: ToolContext, steps: ProposedStep[]): void {
+  const lines = steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n');
+  ctx.emit({
+    type: 'ask',
+    question: `Here's my plan:\n${lines}\nShall I build it?`,
+    options: ['Build it', 'Change something'],
+  });
+}
+
 const askUser: ToolImpl = {
   name: 'ask_user',
   description:
@@ -219,7 +233,7 @@ const askUser: ToolImpl = {
     return {
       result: "Question asked; wait for Dad's reply.",
       endTurn: true,
-      activity: `Asked Dad: ${question}`,
+      activity: 'Asked you a question.',
     };
   },
 };
@@ -306,10 +320,11 @@ const proposePlan: ToolImpl = {
       edges = revalidated.edges;
     }
     emitPlan(ctx, steps, edges);
+    emitPlanQuestion(ctx, steps);
     return {
       result: PLAN_RESULT,
       endTurn: true,
-      activity: `Showed Dad a plan with ${steps.length} step${steps.length === 1 ? '' : 's'}.`,
+      activity: `Drew up a plan with ${steps.length} step${steps.length === 1 ? '' : 's'}.`,
     };
   },
 };
@@ -540,7 +555,7 @@ const createWorkflow: ToolImpl = {
     ctx.emit({ type: 'switched', workflowId: wf.id });
     return {
       result: `Created "${wf.name}" and switched to it. Set its trigger next.`,
-      activity: `Started a new chore reducer "${wf.name}".`,
+      activity: `Started a new automation "${wf.name}".`,
     };
   },
 };

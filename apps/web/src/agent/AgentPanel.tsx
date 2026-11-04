@@ -142,6 +142,11 @@ export default function AgentPanel({
             onSend={submitChip}
           />
         ))}
+        {busy && (
+          <p role="status" className="text-base text-muted-foreground">
+            Working on it…
+          </p>
+        )}
         {historyPending && transcript.length === 0 && (
           <p className="text-base text-muted-foreground">Loading…</p>
         )}

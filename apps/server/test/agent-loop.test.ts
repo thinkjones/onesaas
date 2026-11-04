@@ -187,6 +187,15 @@ test('a propose_plan turn ends with a plan event and done', async () => {
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
   expect(conv.transcript).toEqual([
     { role: 'dad', text: 'When a customer emails me, help me reply.', at: expect.any(Number) },
+    {
+      role: 'agent',
+      text: "Here's my plan:\n1. Read it\nShall I build it?",
+      ask: {
+        question: "Here's my plan:\n1. Read it\nShall I build it?",
+        options: ['Build it', 'Change something'],
+      },
+      at: expect.any(Number),
+    },
   ]);
 });
 
@@ -227,7 +236,7 @@ test('next turn builds four steps, connects and says one line', async () => {
   // Turn 2's first model call saw turn 1's persisted history.
   const turn2First = calls[1]!.messages;
   expect(turn2First.filter((m) => m.role === 'user')).toHaveLength(2);
-  expect(agent.getTranscript(wf.id).map((e) => e.role)).toEqual(['dad', 'dad', 'agent']);
+  expect(agent.getTranscript(wf.id).map((e) => e.role)).toEqual(['dad', 'agent', 'dad', 'agent']);
 });
 
 test('an unknown tool becomes a Problem result and the loop continues', async () => {

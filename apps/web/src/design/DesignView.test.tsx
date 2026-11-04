@@ -581,6 +581,14 @@ describe('DesignView start', () => {
     expect(screen.queryByRole('button', { name: 'Try it' })).toBeNull();
   });
 
+  test('a conversation started elsewhere hides Start so the plan can draw', async () => {
+    renderDesign(detail([]), {
+      agent: makeAgent({ transcript: [{ kind: 'dad', text: 'Log my jobs', at: 1 }] }),
+    });
+    await screen.findByTestId('design-titlebar');
+    expect(screen.queryByRole('heading', { name: 'What should this automation do?' })).toBeNull();
+  });
+
   test('a suggestion chip fills the Start box without submitting', async () => {
     const agent = makeAgent();
     renderDesign(detail([]), { agent });

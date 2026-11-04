@@ -150,6 +150,13 @@ export default function WorkflowCanvas({
   // disconnected pile. layoutWorkflow passes edges through untouched.
   const laid = useMemo(() => {
     if (!ghosts || ghosts.length === 0) return layoutWorkflow(workflow, layout);
+    // A plan's first steps hang off the end of the flow; unlinked, dagre would
+    // set them beside the trigger instead of below it.
+    const planTargets = new Set((ghostEdges ?? []).map((e) => e.to));
+    const flowEnd = workflow.steps.at(-1)?.id ?? workflow.trigger.id;
+    const planEntryEdges: WorkflowEdge[] = ghosts
+      .filter((g) => !planTargets.has(g.id))
+      .map((g) => ({ from: flowEnd, to: g.id }));
     const ghostSteps: StepInstance[] = ghosts.map((g) => ({
       ...g,
       config: {},
@@ -160,7 +167,7 @@ export default function WorkflowCanvas({
       {
         ...workflow,
         steps: [...workflow.steps, ...ghostSteps],
-        edges: [...workflow.edges, ...(ghostEdges ?? [])],
+        edges: [...workflow.edges, ...(ghostEdges ?? []), ...planEntryEdges],
       },
       layout,
     );

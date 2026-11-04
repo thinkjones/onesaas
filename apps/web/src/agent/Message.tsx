@@ -32,7 +32,7 @@ export default function Message({ item, latestAsk, busy, onSend }: MessageProps)
     return (
       <div className="flex justify-start">
         <div className="flex max-w-[90%] flex-col gap-2 rounded-[var(--radius)] bg-muted px-3 py-2">
-          <p className="text-base">{item.question}</p>
+          <p className="text-base whitespace-pre-line">{item.question}</p>
           <AskChips options={item.options} disabled={busy || !latestAsk} onSelect={onSend} />
         </div>
       </div>

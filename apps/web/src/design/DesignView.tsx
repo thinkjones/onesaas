@@ -167,7 +167,7 @@ function proposedTextOf(output: unknown): string {
 }
 
 export default function DesignView({ workflowId, agent, logActivity, onFixStep, runsExtra, onBuilt }: DesignViewProps) {
-  // Start shows until the first turn is sent from the Start box (per mount).
+  // Keeps Start closed if its first send fails (the failed message leaves the transcript).
   const [started, setStarted] = useState(false);
   // Node chat: which step the mini box is open for, plus per-step histories.
   const [chatFor, setChatFor] = useState<string | undefined>(undefined);
@@ -816,7 +816,10 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
     [agent],
   );
 
-  if (detailQuery.isPending) return <p className="text-base">Loading automation…</p>;
+  // Wait for the chat history too, so a conversation in progress never flashes Start.
+  if (detailQuery.isPending || (agent.historyPending && detail?.steps.length === 0)) {
+    return <p className="text-base">Loading automation…</p>;
+  }
   if (detailQuery.isError || !detail) {
     return (
       <EmptyState
@@ -829,7 +832,9 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
 
   const selected = selectedStepId === undefined ? undefined : findStep(detail, selectedStepId);
   const problemCount = detail.problems.length;
-  const showStart = detail.steps.length === 0 && !started;
+  // Any conversation hides Start, wherever it began (Home's box, the chat): the
+  // plan's ghost boxes only draw on the canvas.
+  const showStart = detail.steps.length === 0 && !started && agent.transcript.length === 0;
 
   const published = detail.status === 'on';
   // Everything else about an automation lives in the bar's ⋯ menu.
