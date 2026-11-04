@@ -1,4 +1,6 @@
-# My Dad's AI Agent — the tool that builds small-business apps
+# OneSaaS: One SaaS to rule them all
+
+The tool that builds small-business apps.
 
 My dad runs his small business out of Gmail and memory, and every evening the same chores eat him: answer customers, track bookings, turn phone photos into posts. This app doesn't do one of those chores — it's the tool that *builds* chore reducers. He says what he wants to achieve, out loud, and watches the workflow get built in front of him: ghost plan, boxes snapping in with a chime, a test run on a real email, then Turn on. Every step says why in plain English, nothing ever sends itself, and the whole thing runs on his own computer.
 
@@ -43,7 +45,7 @@ pnpm dev
 - Server: `http://127.0.0.1:8787` (`/health` for a quick check)
 - Web: `http://localhost:5173` (desktop only, 1280px+)
 - Then load the extension (below) and pair it: the app shows a 6-digit code,
-  enter it in the extension popup.
+  enter it in the extension's side panel.
 
 ### Loading the extension unpacked
 
