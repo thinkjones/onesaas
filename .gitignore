@@ -49,11 +49,15 @@ data/
 # Playwright E2E output (videos, screenshots, temp DB)
 test-results/
 
-# Working plans stay local; shipped docs (e.g. docs/glimmer.md) are committed.
-docs/plans/
+# Local-only docs and the review log (it describes exploits against the local server).
+docs/
+KNOWN_ISSUES.md
 
 # Tauri build outputs (scaffold, icons, lockfile are committed).
 src-tauri/target/
 src-tauri/gen/
 src-tauri/resources/
 src-tauri/bin/
+
+# Stray image-generation output.
+generated_images/
