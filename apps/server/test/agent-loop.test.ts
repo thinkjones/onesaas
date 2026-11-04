@@ -838,3 +838,61 @@ test('endTurn with sibling calls runs the whole response then stops', async () =
   const conv = conversations.load(wf.id)!;
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool']);
 });
+
+describe('naming a new automation', () => {
+  const named = (name: string | Error) => async () => {
+    if (name instanceof Error) throw name;
+    return { data: { name }, model: 'm', tokens: { input: 1, output: 1 }, costUsd: 0 };
+  };
+  const placeholder = (t: ReturnType<typeof setup>, name: string) => t.repo.saveWorkflow({ ...t.wf, name });
+  const REQUEST = 'Log Job. Click Button and store high level details';
+
+  test('the placeholder gets a short name, and the screen hears about it', async () => {
+    const t = setup([{ text: 'On it.' }]);
+    placeholder(t, 'Log Job. Click Button and store');
+    (t as unknown as { gateway: { chatJson: unknown } }).gateway.chatJson = named('Log Job');
+    await t.agent.send(t.wf.id, REQUEST);
+    await vi.waitFor(() => expect(t.repo.getWorkflow(t.wf.id)!.name).toBe('Log Job'));
+    const kinds = t.seen.map((s) => s.event.type);
+    expect(kinds).toContain('renamed');
+  });
+
+  test.each([
+    ['a long answer', 'Log Every Single Job Application That Comes In'],
+  ])('%s keeps the placeholder', async (_label, answer) => {
+    const t = setup([{ text: 'On it.' }]);
+    placeholder(t, 'Log Job. Click Button and store');
+    (t as unknown as { gateway: { chatJson: unknown } }).gateway.chatJson = named(answer);
+    await t.agent.send(t.wf.id, REQUEST);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(t.repo.getWorkflow(t.wf.id)!.name).toBe('Log Job. Click Button and store');
+  });
+
+  test('a failed name never stops the build', async () => {
+    const t = setup([{ text: 'On it.' }]);
+    placeholder(t, 'Log Job. Click Button and store');
+    (t as unknown as { gateway: { chatJson: unknown } }).gateway.chatJson = named(new Error('down'));
+    await t.agent.send(t.wf.id, REQUEST);
+    expect(t.calls).toHaveLength(1);
+    expect(t.repo.getWorkflow(t.wf.id)!.name).toBe('Log Job. Click Button and store');
+  });
+
+  test('a name the owner chose is left alone', async () => {
+    const t = setup([{ text: 'On it.' }]);
+    placeholder(t, 'My Jobs');
+    const chatJson = vi.fn(named('Log Job'));
+    (t as unknown as { gateway: { chatJson: unknown } }).gateway.chatJson = chatJson;
+    await t.agent.send(t.wf.id, REQUEST);
+    expect(chatJson).not.toHaveBeenCalled();
+  });
+
+  test('later turns do not rename it', async () => {
+    const t = setup([{ text: 'One.' }, { text: 'Two.' }]);
+    placeholder(t, 'Log Job. Click Button and store');
+    await t.agent.send(t.wf.id, REQUEST);
+    const chatJson = vi.fn(named('Other Name'));
+    (t as unknown as { gateway: { chatJson: unknown } }).gateway.chatJson = chatJson;
+    await t.agent.send(t.wf.id, REQUEST);
+    expect(chatJson).not.toHaveBeenCalled();
+  });
+});

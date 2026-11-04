@@ -612,6 +612,7 @@ export type AgentEvent =
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
   | { type: 'switched'; workflowId: string }
+  | { type: 'renamed' }
   | { type: 'done' };
 
 /**

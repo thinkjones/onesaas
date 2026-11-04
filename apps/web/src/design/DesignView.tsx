@@ -260,6 +260,9 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
         setGhosts(e.ghosts);
         setGhostEdges(e.edges);
         setMatchedGhostIds([]);
+      } else if (e.type === 'renamed') {
+        void client.invalidateQueries({ queryKey: ['workflow', workflowId] });
+        void client.invalidateQueries({ queryKey: ['workflows'] });
       } else if (e.type === 'built') {
         setPendingBuilt((prev) => (prev.includes(e.stepId) ? prev : [...prev, e.stepId]));
         if (!pendingTimers.current.has(e.stepId)) {

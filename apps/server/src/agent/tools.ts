@@ -1,3 +1,4 @@
+import { isShortName } from './naming.js';
 import { catalog, type Edge } from '@onesaas/shared';
 import { z } from 'zod';
 import type { Repo } from '../db/repo.js';
@@ -21,6 +22,7 @@ export type AgentEvent =
   | { type: 'built'; stepId: string }
   | { type: 'test'; runId: string }
   | { type: 'switched'; workflowId: string }
+  | { type: 'renamed' }
   | { type: 'done' };
 
 export interface ToolContext {
@@ -179,6 +181,8 @@ function emitPlan(
     ),
   });
 }
+
+const TOO_LONG_NAME = 'That name is too long. Use 3 to 5 plain words, like "Add to CRM" or "Log Job".';
 
 const PLAN_RESULT = 'Plan shown to the owner; wait for their reply.';
 
@@ -545,6 +549,9 @@ const createWorkflow: ToolImpl = {
     if (typeof name !== 'string' || name.trim() === '') {
       return problem('Give the new automation a name.');
     }
+    if (!isShortName(name)) {
+      return problem(TOO_LONG_NAME);
+    }
     if (typeof description !== 'string' || description.trim() === '') {
       return problem('Give the new automation a description.');
     }
@@ -573,7 +580,10 @@ const renameWorkflow: ToolImpl = {
     additionalProperties: false,
   },
   run: async (args: any, ctx: ToolContext) => {
-    return opOut(
+    if (typeof args?.name === 'string' && !isShortName(args.name)) {
+      return problem(TOO_LONG_NAME);
+    }
+    const out = opOut(
       ctx.ops.rename(
         ctx.workflowId,
         {
@@ -583,6 +593,8 @@ const renameWorkflow: ToolImpl = {
         { by: 'agent' },
       ),
     );
+    ctx.emit({ type: 'renamed' });
+    return out;
   },
 };
 

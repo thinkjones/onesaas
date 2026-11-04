@@ -1,3 +1,4 @@
+import { isPlaceholderName, shortNameFor } from './naming.js';
 import type { EventEmitter } from 'node:events';
 import type { TestRunResult } from '../engine/testRun.js';
 import type { Gateway, AgentMessage } from '../models/gateway.js';
@@ -102,6 +103,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     const start = repo.getWorkflow(workflowId);
     if (!start) throw new Error(`Unknown workflow: ${workflowId}`);
     const conv = conversations.load(workflowId) ?? { messages: [], transcript: [] };
+    const firstTurn = conv.messages.length === 0;
     active.set(workflowId, conv);
     conv.messages.push({ role: 'user', content: text });
     conv.transcript.push({ role: 'owner', text, at: Date.now() });
@@ -124,6 +126,22 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
         // Deliberately swallowed: listener errors are not turn errors.
       }
     };
+
+    // Alongside the build, not before it: a slow or failed name must never hold
+    // it up, and the placeholder is a fine name to fall back on.
+    if (firstTurn && isPlaceholderName(start.name, text)) {
+      void shortNameFor(gateway, text).then(
+        (name) => {
+          if (name === null || name === start.name) return;
+          // The owner may have renamed it in the meantime.
+          if (repo.getWorkflow(workflowId)?.name !== start.name) return;
+          if (!ops.rename(workflowId, { name }, { by: 'agent' }).ok) return;
+          emit({ type: 'renamed' });
+          emit({ type: 'activity', text: `Named it "${name}".` });
+        },
+        () => {},
+      );
+    }
 
     const ctx: ToolContext = {
       workflowId,

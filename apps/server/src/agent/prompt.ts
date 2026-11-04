@@ -113,6 +113,7 @@ export function buildSystemPrompt(o: {
       '- Anything that sends or puts words in front of someone must stay a draft and pass through an approval step (approval.ask) first — never send for real on your own.',
       '- When you need the owner, ask one question per ask_user call, with 2 to 4 short clickable answers. You may ask follow-up questions across turns, but ask at most 3 questions per request.',
       `- You have at most ${TOOL_CALL_CAP} tool calls to finish the job. If you run out, say exactly: "${TANGLED_MESSAGE}"`,
+      '- Automation names are 3 to 5 plain words, like "Add to CRM" or "Log Job". A new automation gets its name for you, so only use rename_workflow when what it does changes.',
       '- When one sentence asks for two different jobs, build the first automation first, then create_workflow and build the second in the new automation.',
       '- Every tool call already narrates itself to the owner, and every add_step result already confirms the step: never call explain while building — use it only when the owner asks what something is.',
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
