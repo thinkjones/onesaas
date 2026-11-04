@@ -2,22 +2,28 @@ import ActivityIcon from 'lucide-react/icons/activity';
 import BrainIcon from 'lucide-react/icons/brain';
 import BriefcaseIcon from 'lucide-react/icons/briefcase';
 import CheckIcon from 'lucide-react/icons/check';
+import PlugIcon from 'lucide-react/icons/plug';
 import PaletteIcon from 'lucide-react/icons/palette';
 import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
 import ServerIcon from 'lucide-react/icons/server';
 import Volume2Icon from 'lucide-react/icons/volume-2';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
 import {
   apiUrl,
+  ApiError,
   getDebugEvents,
+  getModelConnection,
   getPairingStatus,
   isTauri,
+  putModelConnection,
   useDataReset,
   useModelStatus,
   useSettings,
+  type ModelConnection,
   type ModelStatus,
   type Settings,
   type SettingsPatch,
@@ -231,7 +237,120 @@ const META_MODEL_NAMES: Record<string, string> = {
 
 function modelDisplayName(row: ModelStatus): string {
   if (row.provider === 'glimmer') return 'Muse Glimmer';
+  if (row.provider === 'custom') return row.model;
   return META_MODEL_NAMES[row.model] ?? row.model;
+}
+
+function ModelEndpointForm({ saved }: { saved: ModelConnection }) {
+  const queryClient = useQueryClient();
+  const [baseUrl, setBaseUrl] = useState(saved.baseUrl);
+  const [model, setModel] = useState(saved.model);
+  const [apiKey, setApiKey] = useState('');
+  const save = useMutation({
+    mutationFn: putModelConnection,
+    onSuccess: (next) => {
+      queryClient.setQueryData(['model-connection'], next);
+      void queryClient.invalidateQueries({ queryKey: ['model-status'] });
+      setBaseUrl(next.baseUrl);
+      setModel(next.model);
+      setApiKey('');
+      toast.success(next.baseUrl ? 'Now using your endpoint.' : "Saved. Using Meta's models.");
+    },
+  });
+  const error = save.error instanceof ApiError ? save.error.message : save.error ? "Couldn't save that." : null;
+
+  return (
+    <form
+      className="mt-2 space-y-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        // A blank key box means "keep the saved key", so it's only sent when typed.
+        save.mutate({ baseUrl, model, ...(apiKey === '' ? {} : { apiKey }) });
+      }}
+    >
+      <p className="text-muted-foreground">
+        Use any OpenAI-compatible service for chat, the builder and reading pages. Images and voice
+        stay on Meta. Leave the endpoint blank to use Meta&rsquo;s models.
+      </p>
+      <div className="space-y-1">
+        <label htmlFor="settings-model-url" className="text-sm font-medium">
+          Endpoint URL
+        </label>
+        <input
+          id="settings-model-url"
+          className={inputClass}
+          type="url"
+          placeholder="https://api.openai.com/v1"
+          autoComplete="off"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="settings-model-key" className="text-sm font-medium">
+          API key
+        </label>
+        <input
+          id="settings-model-key"
+          className={inputClass}
+          type="password"
+          placeholder={saved.hasApiKey ? 'Saved. Type to replace it.' : 'Paste your key'}
+          autoComplete="off"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+        />
+      </div>
+      <div className="space-y-1">
+        <label htmlFor="settings-model-name" className="text-sm font-medium">
+          Model
+        </label>
+        <input
+          id="settings-model-name"
+          className={inputClass}
+          placeholder="The model name on this endpoint"
+          autoComplete="off"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+        />
+      </div>
+      {error !== null && (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <AppButton type="submit" disabled={save.isPending}>
+          Save
+        </AppButton>
+        {(saved.baseUrl !== '' || saved.hasApiKey) && (
+          <AppButton
+            type="button"
+            variant="outline"
+            disabled={save.isPending}
+            onClick={() => save.mutate({ baseUrl: '', apiKey: '', model: '' })}
+          >
+            Remove and use Meta
+          </AppButton>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function ModelEndpointSection() {
+  const { data, isError } = useQuery({ queryKey: ['model-connection'], queryFn: getModelConnection });
+  return (
+    <section className="panel" aria-label="AI model endpoint">
+      <CardHeading icon={PlugIcon} title="AI model endpoint" />
+      {data !== undefined ? (
+        <ModelEndpointForm saved={data} />
+      ) : (
+        <p className="mt-2 text-muted-foreground">
+          {isError ? "Couldn't load the model endpoint." : 'Loading…'}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function ThinkingSection() {
@@ -256,6 +375,8 @@ function ThinkingSection() {
                   Inbox sorting runs on this computer (Muse Glimmer)
                   <CheckIcon size={13} strokeWidth={2} aria-hidden className="text-success" />
                 </>
+              ) : triage?.provider === 'custom' ? (
+                `Inbox sorting: ${triage.model}`
               ) : (
                 "Inbox sorting is using Muse Spark (Glimmer isn't running on this computer)."
               )}
@@ -434,6 +555,7 @@ export default function SettingsPage() {
   }
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <h1 className="text-2xl font-semibold">Settings</h1>
       <BusinessSection settings={settings} update={update} />
       <LookSection settings={settings} update={update} />
       <SoundSection settings={settings} update={update} />
@@ -441,6 +563,7 @@ export default function SettingsPage() {
         <Pairing />
       </section>
       <ThinkingSection />
+      <ModelEndpointSection />
       <ServicesSection />
       <DiagnosticsSection />
       <ResetSection update={update} />

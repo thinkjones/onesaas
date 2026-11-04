@@ -1,11 +1,13 @@
 import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@dad/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import CopyIcon from 'lucide-react/icons/copy';
+import HistoryIcon from 'lucide-react/icons/history';
+import PencilIcon from 'lucide-react/icons/pencil';
 import TriangleAlert from 'lucide-react/icons/triangle-alert';
 import XIcon from 'lucide-react/icons/x';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import {
   ApiError,
@@ -16,6 +18,8 @@ import {
   useSettings,
   useTestRun,
   useWorkflowDetail,
+  useRun,
+  useRuns,
   useWorkflowOp,
   type AgentEvent,
   type OpResult,
@@ -32,7 +36,13 @@ import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import Suggestions from '../home/Suggestions.tsx';
 import MicButton from '../voice/MicButton.tsx';
 import MoodBackdrop from '../mood/MoodBackdrop.tsx';
+import ApprovalCard from '../runtime/ApprovalCard.tsx';
+import FailureCard from '../runtime/FailureCard.tsx';
+import Inspector from '../runtime/Inspector.tsx';
+import { outcomeOf } from '../runtime/outcome.ts';
 import { resolveStepId } from '../runtime/params.ts';
+import RunStory from '../runtime/RunStory.tsx';
+import BarActions from '../shell/BarActions.tsx';
 import { sound } from '../sound/sound.ts';
 import SoundControl from '../sound/SoundControl.tsx';
 import { useSound } from '../sound/useSound.ts';
@@ -42,6 +52,7 @@ import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
 import NodeChat, { type ChatMsg, type ChatPick } from './NodeChat.tsx';
 import ProblemsBadge from './ProblemsBadge.tsx';
+import RunsPanel from './RunsPanel.tsx';
 import TestResults from './TestResults.tsx';
 
 export interface BuiltInfo {
@@ -58,8 +69,10 @@ export interface DesignViewProps {
   agent: UseAgentResult;
   /** Append a line to the RHS "Recent changes" log (owned by the page). */
   logActivity(text: string): void;
-  /** Turn-on succeeded: the mode container switches to runtime. */
-  onRequestRuntime(): void;
+  /** "Fix this step" on a failed run: hands the failure to the chat. */
+  onFixStep?(info: FixStepInfo): void;
+  /** Shown at the top of the runs panel (the photo drop for upload flows). */
+  runsExtra?: ReactNode;
   /**
    * Fired when an agent-built step lands on the canvas (the M5 chime hook).
    * No-op by default.
@@ -139,7 +152,22 @@ function findStep(workflow: Workflow, stepId: string): StepInstance | undefined 
  * title against the refetched workflow and swaps the FIRST unmatched ghost
  * with that title for the real box (duplicate titles match in order).
  */
-export default function DesignView({ workflowId, agent, logActivity, onRequestRuntime, onBuilt }: DesignViewProps) {
+export interface FixStepInfo {
+  stepId: string;
+  title: string;
+  error: string;
+}
+
+/** A waiting approval's output is `{ proposed: { text } }`; anything else yields ''. */
+function proposedTextOf(output: unknown): string {
+  if (typeof output !== 'object' || output === null) return '';
+  const proposed = (output as Record<string, unknown>)['proposed'];
+  if (typeof proposed !== 'object' || proposed === null) return '';
+  const text = (proposed as Record<string, unknown>)['text'];
+  return typeof text === 'string' ? text : '';
+}
+
+export default function DesignView({ workflowId, agent, logActivity, onFixStep, runsExtra, onBuilt }: DesignViewProps) {
   // Start shows until the first turn is sent from the Start box (per mount).
   const [started, setStarted] = useState(false);
   // Node chat: which step the mini box is open for, plus per-step histories.
@@ -172,6 +200,26 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
   const [failedBuilt, setFailedBuilt] = useState<string[]>([]);
   const [builtIds, setBuiltIds] = useState<string[]>([]);
   const [testResult, setTestResult] = useState<TestRunResponse | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  // With a run overlaid, a click on a box shows what happened there; the
+  // pencil still opens its settings, so redesign is one click away.
+  const [configOpen, setConfigOpen] = useState(false);
+
+  // The run laid over the canvas (?run=). Nothing is overlaid by default: this
+  // is the design surface, and a run is something you choose to look at.
+  const rawRunId = params.get('run');
+  const runsQuery = useRuns(workflowId);
+  const runs = runsQuery.data;
+  const overlayRunId = rawRunId !== null && runs?.some((r) => r.id === rawRunId) ? rawRunId : undefined;
+  const [runsOpen, setRunsOpen] = useState(() => rawRunId !== null || params.get('runs') === '1');
+  const overlayQuery = useRun(overlayRunId ?? '', { enabled: overlayRunId !== undefined });
+  const overlay = overlayRunId === undefined ? undefined : overlayQuery.data;
+  const stepRuns = useMemo(() => {
+    const map: Record<string, StepRun> = {};
+    for (const s of overlay?.steps ?? []) map[s.stepId] = s;
+    return map;
+  }, [overlay]);
+  const hasOverlay = overlay !== undefined;
   // onBuilt must fire exactly once per built step even under effect re-runs.
   const builtFired = useRef<Set<string>>(new Set());
   // One timeout per pending built; an entry's presence means "still
@@ -314,9 +362,23 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
 
   const handleSelectStep = useCallback(
     (stepId: string) => {
+      setConfigOpen(false);
       setParams((prev) => {
         const next = new URLSearchParams(prev);
         next.set('step', stepId);
+        return next;
+      });
+    },
+    [setParams],
+  );
+
+  const setOverlayRun = useCallback(
+    (runId: string | undefined) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (runId === undefined) next.delete('run');
+        else next.set('run', runId);
+        next.delete('step');
         return next;
       });
     },
@@ -555,7 +617,10 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
   const renderNodeDesign = useCallback(
     (s: StepInstance): StepNodeData['design'] => ({
       onAdd: () => setChatFor(s.id),
-      onSelect: () => handleSelectStep(s.id),
+      onSelect: () => {
+        handleSelectStep(s.id);
+        setConfigOpen(true);
+      },
       onDelete: () => void handleRemove(s.id),
       showDelete: detail !== undefined && s.id !== detail.trigger.id,
       nodeChat:
@@ -582,10 +647,23 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
     [send],
   );
 
-  const handleTurnOn = useCallback(async () => {
-    const res = await send({ op: 'setStatus', args: ['on'] });
-    if (res?.ok) onRequestRuntime();
-  }, [send, onRequestRuntime]);
+  const handlePublish = useCallback(
+    async (on: boolean) => {
+      const res = await send({ op: 'setStatus', args: [on ? 'on' : 'off'] });
+      if (res?.ok) toast.success(on ? 'Published. It now runs on its own.' : 'Unpublished. It will not run.');
+    },
+    [send],
+  );
+
+  const handleRename = useCallback(
+    async (name: string) => {
+      setRenaming(null);
+      const trimmed = name.trim();
+      if (trimmed === '' || trimmed === detail?.name) return;
+      await send({ op: 'rename', args: [{ name: trimmed }] });
+    },
+    [send, detail?.name],
+  );
 
   const handleTryIt = useCallback(() => {
     testRun.mutate(undefined, {
@@ -634,6 +712,11 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
     [problemsByStep, testByStep],
   );
 
+  const renderNodeOutcome = useCallback(
+    (stepId: string): string | undefined => outcomeOf(stepRuns[stepId]),
+    [stepRuns],
+  );
+
   const handleStartSubmit = useCallback(
     (text: string) => {
       setStarted(true);
@@ -657,27 +740,113 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
   const problemCount = detail.problems.length;
   const showStart = detail.steps.length === 0 && !started;
 
-  // Title bar overlay (top-left card over the canvas): breadcrumbs back to
-  // Automate and the run list, the reducer title with a name+id copy button,
-  // the CTAs, and the latest Try-it verdict.
-  const titleBar = (
-    <div
-      data-testid="design-titlebar"
-      className="absolute top-0 left-0 z-10 m-4 max-h-[calc(100%-2rem)] w-max max-w-[calc(100%-2rem)] overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-4 shadow-md"
+  const published = detail.status === 'on';
+  // The overlaid run's approvals and failures sit in the runs panel, not on the
+  // boxes: saved box positions leave no room for a card, so the next box would
+  // cover it. Question and title come from the version the run actually used.
+  const runCards =
+    overlay && overlayRunId !== undefined
+      ? overlay.steps.flatMap((sr) => {
+          const pinned =
+            sr.stepId === overlay.workflow.trigger.id
+              ? overlay.workflow.trigger
+              : overlay.workflow.steps.find((st) => st.id === sr.stepId);
+          if (sr.status === 'waiting') {
+            const rawQuestion = pinned?.config['question'];
+            return [
+              <ApprovalCard
+                key={sr.stepId}
+                runId={overlayRunId}
+                stepId={sr.stepId}
+                question={typeof rawQuestion === 'string' ? rawQuestion : 'Is this OK to use?'}
+                proposedText={proposedTextOf(sr.output)}
+              />,
+            ];
+          }
+          if (sr.status === 'failed') {
+            const error = sr.error ?? 'Something went wrong.';
+            return [
+              <FailureCard
+                key={sr.stepId}
+                runId={overlayRunId}
+                stepId={sr.stepId}
+                error={error}
+                onFixStep={
+                  onFixStep
+                    ? () => {
+                        setConfigOpen(true);
+                        onFixStep({ stepId: sr.stepId, title: pinned?.title ?? sr.stepId, error });
+                      }
+                    : undefined
+                }
+              />,
+            ];
+          }
+          return [];
+        })
+      : [];
+  const runsPanel = runsOpen && (
+    <RunsPanel
+      runs={runs ?? []}
+      selectedRunId={overlayRunId}
+      onSelect={setOverlayRun}
+      onClearOverlay={() => setOverlayRun(undefined)}
+      onClose={() => setRunsOpen(false)}
+      summary={
+        overlay && (
+          <>
+          <div data-testid="run-story" className="rounded-[var(--radius-s)] bg-muted p-3 text-sm">
+            <RunStory story={overlay.story} />
+            {overlay.run.workflowVersion !== detail.version && (
+              <p className="mt-1 text-muted-foreground">
+                This run used an earlier version, so some steps may have changed since.
+              </p>
+            )}
+          </div>
+          {runCards}
+          </>
+        )
+      }
     >
-      <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1 text-sm">
-        <Link to="/automate" className="text-primary underline-offset-4 hover:underline">
-          Automate
-        </Link>
-        <span aria-hidden="true">›</span>
-        <Link
-          to={`/reducers/${workflowId}/runs`}
-          className="text-primary underline-offset-4 hover:underline"
-        >
-          Runs
-        </Link>
-        <span aria-hidden="true">›</span>
-        <span className="font-semibold">{detail.name}</span>
+      {runsExtra}
+    </RunsPanel>
+  );
+
+  // Publish, rename and delete live in the floating bar, beside the picker
+  // that chose this automation.
+  const titleBar = (
+    <BarActions>
+      <div data-testid="design-titlebar" className="flex flex-wrap items-center gap-2">
+        {renaming !== null ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleRename(renaming);
+            }}
+          >
+            <input
+              autoFocus
+              aria-label="Automation name"
+              value={renaming}
+              onChange={(e) => setRenaming(e.target.value)}
+              onBlur={() => void handleRename(renaming)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+              className="w-56 rounded-[var(--radius-s)] border border-input bg-background px-2 py-1 text-sm"
+            />
+          </form>
+        ) : (
+          <AppButton
+            variant="outline"
+            size="sm"
+            className="min-h-0 text-sm"
+            onClick={() => setRenaming(detail.name)}
+          >
+            <PencilIcon aria-hidden />
+            Rename
+          </AppButton>
+        )}
         <button
           type="button"
           onClick={() => void copyNameAndId()}
@@ -687,46 +856,82 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
         >
           <CopyIcon size={14} aria-hidden />
         </button>
-      </nav>
-      <div className="flex flex-wrap items-center gap-3">
         {!showStart && (
           <>
-            {problemCount === 0 ? (
+            {published ? (
+              <AppButton
+                variant="outline"
+                size="sm"
+                className="min-h-0 text-sm"
+                onClick={() => void handlePublish(false)}
+                disabled={op.isPending}
+              >
+                Unpublish
+              </AppButton>
+            ) : problemCount === 0 ? (
               <span
-                data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Turn on')}
+                data-explain={dataExplainValue({ kind: 'ui', id: 'turn-on' }, 'Publish')}
                 className="inline-flex items-center gap-1"
               >
-                <AppButton onClick={() => void handleTurnOn()} disabled={op.isPending}>
-                  Turn on
+                <AppButton
+                  size="sm"
+                  className="min-h-0 text-sm"
+                  onClick={() => void handlePublish(true)}
+                  disabled={op.isPending}
+                >
+                  Publish
                 </AppButton>
-                <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />
+                <Explain target={{ kind: 'ui', id: 'turn-on' }} label="Publish" />
               </span>
             ) : (
-              <p className="text-base">
-                {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before turning on
+              <p className="text-sm">
+                {problemCount} thing{problemCount === 1 ? '' : 's'} to fix before publishing
               </p>
             )}
-            <AppButton variant="outline" onClick={handleTryIt} disabled={testRun.isPending}>
+            <AppButton
+              variant="outline"
+              size="sm"
+              className="min-h-0 text-sm"
+              onClick={handleTryIt}
+              disabled={testRun.isPending}
+            >
               {testRun.isPending ? 'Trying…' : 'Try it'}
+            </AppButton>
+            <AppButton
+              variant={runsOpen || hasOverlay ? 'secondary' : 'outline'}
+              size="sm"
+              className="min-h-0 text-sm"
+              aria-pressed={runsOpen}
+              onClick={() => setRunsOpen((o) => !o)}
+            >
+              <HistoryIcon aria-hidden />
+              Runs · {runs?.length ?? 0}
             </AppButton>
             <SoundControl />
           </>
         )}
         <ArmableButton
+          compact
           label="Delete"
           confirmLabel="Yes, delete"
           disabled={deleteWorkflow.isPending}
           onConfirm={() => {
             deleteWorkflow.mutate(workflowId, {
               onSuccess: () => navigate('/automate'),
-              onError: () => toast.error("Couldn't delete this chore reducer."),
+              onError: () => toast.error("Couldn't delete this automation."),
             });
           }}
         />
       </div>
-      {testResult && <TestResults story={testResult.story} />}
-    </div>
+    </BarActions>
   );
+
+  const selectedRunStep =
+    !overlay || selectedStepId === undefined
+      ? undefined
+      : selectedStepId === overlay.workflow.trigger.id
+        ? overlay.workflow.trigger
+        : overlay.workflow.steps.find((s) => s.id === selectedStepId);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -741,7 +946,7 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
             className="relative h-full w-full"
           >
             {titleBar}
-            <div className="flex h-full items-center justify-center overflow-y-auto p-8">
+            <div className="flex h-full items-center justify-center overflow-y-auto p-8 pt-20">
               <DesignStart send={handleStartSubmit} busy={agent.busy} />
             </div>
           </motion.div>
@@ -760,6 +965,7 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
               <WorkflowCanvas
                 workflow={detail}
                 mode="design"
+                stepRuns={hasOverlay ? stepRuns : undefined}
                 ghosts={visibleGhosts}
                 ghostEdges={visibleGhostEdges}
                 builtIds={builtIds}
@@ -767,13 +973,37 @@ export default function DesignView({ workflowId, agent, logActivity, onRequestRu
                 onSelectStep={handleSelectStep}
                 onChange={handleCanvasOp}
                 renderNodeExtra={renderNodeExtra}
+                renderNodeOutcome={hasOverlay ? renderNodeOutcome : undefined}
                 renderNodeDesign={renderNodeDesign}
               />
             </div>
-            {selected && (
+            {runsPanel}
+            {testResult && (
+              <div className="absolute bottom-4 left-1/2 z-20 max-h-[40%] w-[32rem] max-w-[calc(100%-2rem)] -translate-x-1/2 overflow-y-auto rounded-[var(--radius)] border border-border bg-card p-4 shadow-md">
+                <TestResults story={testResult.story} />
+              </div>
+            )}
+            {overlay && selected && !configOpen && (
+              <Inspector
+                key={selectedStepId ?? 'none'}
+                stepRun={selectedStepId === undefined ? undefined : stepRuns[selectedStepId]}
+                title={selectedRunStep?.title ?? selected.title}
+                open
+                onClose={clearSelectedStep}
+                explainTarget={{ kind: 'step', id: selected.id, context: workflowId }}
+                explainLabel={selected.title}
+                code={
+                  selectedRunStep?.type === 'code.transform' &&
+                  typeof selectedRunStep.config['code'] === 'string'
+                    ? (selectedRunStep.config['code'] as string)
+                    : undefined
+                }
+              />
+            )}
+            {selected && (!overlay || configOpen) && (
               <div
                 data-testid="design-inspector"
-                className="absolute top-0 right-0 bottom-0 z-10 w-[380px] max-w-[calc(100%-2rem)] overflow-y-auto border-l border-border bg-card p-4 shadow-lg"
+                className="absolute top-0 right-0 bottom-0 z-30 w-[380px] max-w-[calc(100%-2rem)] overflow-y-auto border-l border-border bg-card p-4 shadow-lg"
               >
                 <div className="mb-2 flex justify-end">
                   <AppButton variant="ghost" size="icon" onClick={clearSelectedStep} aria-label="Close">

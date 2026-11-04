@@ -239,6 +239,26 @@ export function putSettings(patch: SettingsPatch): Promise<Settings> {
   return putJson('/api/settings', patch);
 }
 
+/** The saved OpenAI-compatible endpoint. The server never returns the key. */
+export interface ModelConnection {
+  baseUrl: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
+export function getModelConnection(): Promise<ModelConnection> {
+  return getJson('/api/models/connection');
+}
+
+/** An omitted field stays as it is; an empty string clears it. */
+export function putModelConnection(patch: {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}): Promise<ModelConnection> {
+  return putJson('/api/models/connection', patch);
+}
+
 /** POST /api/data/reset: wipe the store back to fresh-install state. */
 export function postDataReset(): Promise<{ ok: boolean }> {
   return postJson('/api/data/reset');
@@ -395,7 +415,7 @@ export type ModelRole = 'builder' | 'planner' | 'triage' | 'vision';
 
 export interface ModelStatus {
   role: ModelRole;
-  provider: 'meta' | 'glimmer';
+  provider: 'meta' | 'glimmer' | 'custom';
   model: string;
   healthy: boolean;
   note?: string;

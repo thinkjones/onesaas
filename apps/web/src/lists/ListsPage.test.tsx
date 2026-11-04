@@ -98,6 +98,7 @@ afterEach(() => {
 describe('ListsPage', () => {
   test('a pinned number whose data fails shows an error and keeps Unpin', async () => {
     renderLists({
+      entry: '/lists?table=customers',
       views: [PIN],
       viewData: () => err(400, 'Unknown column: naem for table customers'),
     });
@@ -109,6 +110,7 @@ describe('ListsPage', () => {
 
   test('a truncated row list says how many of the total are shown', async () => {
     renderLists({
+      entry: '/lists?table=customers',
       rows: [
         { id: 1, name: 'A' },
         { id: 2, name: 'B' },
@@ -120,6 +122,7 @@ describe('ListsPage', () => {
 
   test('a complete row list shows no truncation note', async () => {
     renderLists({
+      entry: '/lists?table=customers',
       rows: [
         { id: 1, name: 'A' },
         { id: 2, name: 'B' },
@@ -136,15 +139,28 @@ describe('ListsPage', () => {
     expect(screen.queryByRole('region', { name: 'Customers' })).toBeNull();
   });
 
-  test('an unknown ?table= falls back to the first table', async () => {
-    renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=nope' });
-    expect(await screen.findByRole('region', { name: 'Customers' })).toBeDefined();
+  test('search narrows the rows to matches on any word', async () => {
+    renderLists({
+      entry: '/lists?table=customers',
+      rows: [
+        { id: 1, name: 'Priya Nair' },
+        { id: 2, name: 'Jordan Lee' },
+      ],
+      total: 2,
+    });
+    await screen.findByText('Priya Nair');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search Customers' }), {
+      target: { value: 'jordan' },
+    });
+    expect(await screen.findByText('1 match')).toBeDefined();
+    expect(screen.queryByText('Priya Nair')).toBeNull();
+    expect(screen.getByText('Jordan Lee')).toBeDefined();
   });
 
-  test('clicking a list writes ?table= to the URL', async () => {
-    renderLists({ tables: [TABLE, ORDERS] });
-    expect(await screen.findByRole('region', { name: 'Customers' })).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Orders · 2' }));
+  test('with no table chosen it shows every table to pick from', async () => {
+    renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=nope' });
+    expect(await screen.findByRole('region', { name: 'Your tables' })).toBeDefined();
+    fireEvent.click(screen.getByRole('link', { name: /Orders/ }));
     expect(await screen.findByRole('region', { name: 'Orders' })).toBeDefined();
     expect(screen.getByTestId('loc-search').textContent).toBe('?table=orders');
   });

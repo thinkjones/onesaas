@@ -1,16 +1,5 @@
 import type { Run, Workflow } from '@dad/shared';
 
-export type WorkflowMode = 'design' | 'runtime';
-
-/**
- * ?mode= validation. Defaults to 'runtime'; unknown values (mode=garbage)
- * also fall back to 'runtime'.
- */
-export function parseModeParam(raw: string | null): WorkflowMode {
-  if (raw === 'design') return 'design';
-  return 'runtime';
-}
-
 /**
  * ?run= validation. A valid id (present in the workflow's runs) wins,
  * otherwise the newest run is selected (the server lists newest-first, so

@@ -179,14 +179,10 @@ describe('HomePage', () => {
     expect(screen.queryByText(/business at a glance/i)).toBeNull();
   });
 
-  test('with chores it shows the prompt plus the reducer cards underneath', async () => {
+  test('with automations it shows them to pick from, then the prompt for a new one', async () => {
     renderHome({ workflows: [mkWorkflow()] });
-    expect(
-      await screen.findByRole('heading', { name: 'What do you want to achieve today?' }),
-    ).toBeDefined();
-    expect(
-      await screen.findByRole('heading', { name: 'Your chore reducers · 1' }),
-    ).toBeDefined();
+    expect(await screen.findByRole('region', { name: 'Your automations' })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: 'Set up a new automation' })).toBeDefined();
   });
 
   test('clicking a suggestion fills the box without submitting', async () => {
@@ -271,13 +267,13 @@ describe('HomePage', () => {
       ],
     });
     const badge = await screen.findByRole('link', { name: '2 waiting for you' });
-    expect(badge.getAttribute('href')).toBe('/reducers/wf-1?run=run-old');
+    expect(badge.getAttribute('href')).toBe('/reducers/wf-1?mode=design&run=run-old');
   });
 
 });
 
-test('a reducer card name links to that reducer list review', async () => {
+test('a reducer card name opens that reducer in design mode', async () => {
   renderHome({ workflows: [mkWorkflow()], runs: [mkRun({})] });
   const name = await screen.findByRole('link', { name: 'Email helper' });
-  expect(name.getAttribute('href')).toBe('/reducers/wf-1/runs');
+  expect(name.getAttribute('href')).toBe('/reducers/wf-1?mode=design');
 });

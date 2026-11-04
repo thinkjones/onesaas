@@ -12,9 +12,8 @@ import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
 import { TELL_ME_MORE_EVENT } from '../explain/useAltClickExplain.ts';
 import EmptyState from '../design/EmptyState.tsx';
+import type { FixStepInfo } from '../design/DesignView.tsx';
 import UploadDrop from '../design/UploadDrop.tsx';
-import { parseModeParam } from '../runtime/params.ts';
-import RuntimeView, { type FixStepInfo } from '../runtime/RuntimeView.tsx';
 
 export interface WorkflowPageProps {
   /**
@@ -27,17 +26,12 @@ export interface WorkflowPageProps {
 
 /**
  * The workflow screen: design or runtime view below (no in-page switch — run
- * clicks land in runtime, design icons land in design). Param
- * contract (validated in runtime/params.ts, choices documented there):
- * - ?mode=: 'runtime' default, 'design' for the builder; garbage → runtime.
+ * and any run laid over it). Param contract:
  * - unknown workflowId: useWorkflow resolves success+undefined → not-found.
- * - ?run=/?step=: validated in RuntimeView (newest run / closed inspector);
- *   DesignView reuses ?step= for its selection.
+ * - ?run=: the run laid over the canvas (none by default); ?step=: the open step.
  *
- * Photo-triggered flows (trigger.upload) get an UploadDrop above the runtime
- * view: dropping a photo posts it to the upload route and jumps to the new
- * run. The chat sits on the right (1/3, collapsible) in BOTH modes, at
- * the same tree position so switching modes never remounts it mid-turn. When
+ * Photo-triggered flows (trigger.upload) get an UploadDrop in the runs panel:
+ * dropping a photo posts it to the upload route and overlays the new run. When
  * the agent starts a second reducer mid-turn (create_workflow), its `switched`
  * event navigates this page to the new reducer's design view (the workflows
  * list is invalidated first, so the new reducer resolves instead of showing
@@ -56,14 +50,13 @@ export interface WorkflowPageProps {
  */
 export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
-  const [params, setParams] = useSearchParams();
+  const [, setParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
   // One conversation per page mount, shared by the design Start box and the
   // chat panel (Bug #4) — a turn started in one place continues in the other.
   const agent = useAgent(workflowId ?? '');
-  const mode = parseModeParam(params.get('mode'));
   const queryClient = useQueryClient();
   // Photo-triggered flows start runs by dropping a photo (runtime mode only).
   // On success the runs list refetches and the view jumps to the new run
@@ -133,14 +126,6 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     },
     [onAgentPrefill, setParams],
   );
-
-  const handleRequestRuntime = useCallback(() => {
-    setParams((prev) => {
-      const updated = new URLSearchParams(prev);
-      updated.set('mode', 'runtime');
-      return updated;
-    });
-  }, [setParams]);
 
   const handlePrefillConsumed = useCallback(() => setAgentPrefill(undefined), []);
 
@@ -218,67 +203,60 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
 
   const rawPrompt = workflowQuery.data.trigger.config['prompt'];
   const uploadPrompt = typeof rawPrompt === 'string' ? rawPrompt : 'Drop a photo here';
-  const showUploadDrop = mode === 'runtime' && workflowQuery.data.trigger.type === 'trigger.upload';
+  const showUploadDrop = workflowQuery.data.trigger.type === 'trigger.upload';
 
+  // The canvas fills the board; the chat floats over its right side.
   return (
-    <div data-testid="workflow-root" className="flex h-full min-h-0 flex-1 flex-col gap-4">
-      <div className="flex min-h-0 flex-1 items-stretch gap-4">
-        <div className="min-h-0 min-w-0 flex-[2]">
-          {mode === 'design' ? (
-            <DesignView
-              workflowId={workflowQuery.data.id}
-              agent={agent}
-              logActivity={logActivity}
-              onRequestRuntime={handleRequestRuntime}
-            />
-          ) : (
-            // Full-height column: the upload drop (photo flows only) takes
-            // its own height and the runtime view fills the rest.
-            <div className="flex h-full min-h-0 flex-col gap-4">
-              {showUploadDrop && (
-                <div className="flex flex-col gap-2">
-                  <UploadDrop
-                    prompt={uploadPrompt}
-                    onUpload={(file) => upload.mutate(file)}
-                    disabled={upload.isPending}
-                  />
-                  {upload.isError && (
-                    <p role="alert" className="text-base text-destructive">
-                      {upload.error instanceof Error ? upload.error.message : 'The upload failed.'}
-                    </p>
-                  )}
-                </div>
+    <div data-testid="workflow-root" className="relative h-full min-h-0 flex-1">
+      <DesignView
+        workflowId={workflowQuery.data.id}
+        agent={agent}
+        logActivity={logActivity}
+        onFixStep={handleFixStep}
+        runsExtra={
+          showUploadDrop ? (
+            <div className="flex flex-col gap-2">
+              <UploadDrop
+                prompt={uploadPrompt}
+                onUpload={(file) => upload.mutate(file)}
+                disabled={upload.isPending}
+              />
+              {upload.isError && (
+                <p role="alert" className="text-base text-destructive">
+                  {upload.error instanceof Error ? upload.error.message : 'The upload failed.'}
+                </p>
               )}
-              <div className="min-h-0 flex-1">
-                <RuntimeView workflowId={workflowQuery.data.id} onFixStep={handleFixStep} />
-              </div>
             </div>
-          )}
+          ) : undefined
+        }
+      />
+      {panelCollapsed ? (
+        <AppButton
+          variant="outline"
+          className="absolute right-3 bottom-4 z-20 shadow-md"
+          onClick={() => setPanelCollapsed(false)}
+        >
+          <PanelRightOpen />
+          Show chat
+        </AppButton>
+      ) : (
+        <div className="absolute top-20 right-3 bottom-4 z-20 flex w-[360px] flex-col gap-3">
+          {activity.length > 0 && <ActivityLog entries={activity} />}
+          <AgentPanel
+            agent={agent}
+            prefill={agentPrefill}
+            onPrefillConsumed={handlePrefillConsumed}
+            initialPrompt={initialPrompt}
+            onInitialSent={handleInitialSent}
+            sendRequest={
+              tellMeMore !== undefined && tellMeMore.workflowId === workflowId
+                ? { text: tellMeMore.text, nonce: tellMeMore.nonce }
+                : undefined
+            }
+            onCollapse={() => setPanelCollapsed(true)}
+          />
         </div>
-        {panelCollapsed ? (
-          <AppButton variant="outline" onClick={() => setPanelCollapsed(false)}>
-            <PanelRightOpen />
-            Show chat
-          </AppButton>
-        ) : (
-          <div className="flex min-h-0 min-w-[300px] flex-[1] shrink-0 flex-col gap-4">
-            {mode === 'design' && activity.length > 0 && <ActivityLog entries={activity} />}
-            <AgentPanel
-              agent={agent}
-              prefill={agentPrefill}
-              onPrefillConsumed={handlePrefillConsumed}
-              initialPrompt={initialPrompt}
-              onInitialSent={handleInitialSent}
-              sendRequest={
-                tellMeMore !== undefined && tellMeMore.workflowId === workflowId
-                  ? { text: tellMeMore.text, nonce: tellMeMore.nonce }
-                  : undefined
-              }
-              onCollapse={() => setPanelCollapsed(true)}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

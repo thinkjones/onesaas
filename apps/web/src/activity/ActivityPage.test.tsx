@@ -88,31 +88,44 @@ afterEach(() => {
 });
 
 describe('ActivityPage', () => {
-  test('groups runs under Today and Past with time, reducer, story line and status', async () => {
+  test('shows runs as a table, newest first, with automation, story line and status', async () => {
     renderActivity([
       run('run-old', 'wf-2', daysAgo(10), 'done'),
       run('run-new', 'wf-1', daysAgo(0), 'waiting'),
     ]);
-    // Wait for the per-row story queries before asserting row contents.
     await screen.findByText('Drafted a reply for approval');
-    expect(screen.getByText('Today')).toBeDefined();
-    expect(screen.getByText('Past')).toBeDefined();
-    const rows = screen.getAllByRole('link', { name: /Leads|Bookings/ });
-    expect(rows.map((r) => r.textContent)).toHaveLength(2);
-    // Newest first, with the story's last line; older row falls back to the sender.
+    expect(screen.getByRole('columnheader', { name: 'What happened' })).toBeDefined();
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0]!.textContent).toContain('Leads');
     expect(rows[0]!.textContent).toContain('Drafted a reply for approval');
     expect(rows[1]!.textContent).toContain('Bookings');
     expect(rows[1]!.textContent).toContain('Sarah Lee');
   });
 
-  test('clicking a row opens that run in Watch it Run mode', async () => {
+  test('filters narrow the table by status and automation', async () => {
+    renderActivity([
+      run('run-old', 'wf-2', daysAgo(10), 'done'),
+      run('run-new', 'wf-1', daysAgo(0), 'waiting'),
+    ]);
+    await screen.findByText('Drafted a reply for approval');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), {
+      target: { value: 'waiting' },
+    });
+    expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by automation' }), {
+      target: { value: 'wf-2' },
+    });
+    expect(await screen.findByText('No runs match these filters.')).toBeDefined();
+  });
+
+  test('clicking a row opens its automation with that run overlaid', async () => {
     const { location } = renderActivity([run('run-new', 'wf-1', daysAgo(0), 'done')]);
-    fireEvent.click(await screen.findByRole('link', { name: /Leads/ }));
+    fireEvent.click((await screen.findAllByRole('row'))[1]!);
     await waitFor(() => {
       expect(location().pathname).toBe('/reducers/wf-1');
     });
-    expect(location().search).toBe('?mode=runtime&run=run-new');
+    expect(location().search).toBe('?mode=design&run=run-new');
   });
 
   test('empty activity points to Automate', async () => {

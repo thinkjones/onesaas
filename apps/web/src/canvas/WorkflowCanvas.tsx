@@ -277,9 +277,9 @@ export default function WorkflowCanvas({
         elementsSelectable={design}
         deleteKeyCode={design ? 'Backspace' : null}
         fitView
-        // Tall vertical flows must stay readable: fit small flows at full
-        // size, shrink large ones only slightly (the user pans the rest).
-        fitViewOptions={{ minZoom: 0.8, maxZoom: 1 }}
+        // Fit the whole flow so a run's progress reads at a glance, clear of
+        // the floating bar; small flows stay at full size.
+        fitViewOptions={{ minZoom: 0.6, maxZoom: 1, padding: { top: '96px', bottom: '24px', x: '24px' } }}
       />
     </MotionConfig>
   );

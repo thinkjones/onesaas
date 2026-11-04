@@ -157,11 +157,15 @@ describe('WorkflowPage fix-this-step seam', () => {
   test('"Fix this step" opens design with the step selected, settings open, and the agent input pre-filled', async () => {
     const onAgentPrefill = vi.fn();
     let search = '';
-    renderPage(onAgentPrefill, (s) => {
-      search = s;
-    });
+    renderPage(
+      onAgentPrefill,
+      (s) => {
+        search = s;
+      },
+      { search: '?run=run-1' },
+    );
 
-    // The runtime canvas shows the failed box with its Fix button. Found by
+    // The overlaid run shows the failed box with its Fix button. Found by
     // text, not role: jsdom has no layout, so React Flow leaves nodes
     // `visibility: hidden` (unmeasured) and role queries exclude them — a
     // test-env artifact, in a real browser the box is visible. Clicks still
@@ -271,12 +275,12 @@ describe('WorkflowPage photo drop zone', () => {
     return { uploads, search: () => search };
   }
 
-  test('runtime mode shows the trigger prompt drop zone', async () => {
-    renderUploadPage();
+  test('the runs panel shows the trigger prompt drop zone', async () => {
+    renderUploadPage({ search: '?runs=1', steps: [EXTRACT] });
     expect(await screen.findByText('Drop the mug shot here')).toBeDefined();
   });
 
-  test('design mode hides the drop zone', async () => {
+  test('the drop zone stays out of the way until the runs panel opens', async () => {
     // A step so design mode opens the workspace (step-free opens Start).
     renderUploadPage({ search: '?mode=design', steps: [EXTRACT] });
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
@@ -284,7 +288,7 @@ describe('WorkflowPage photo drop zone', () => {
   });
 
   test('dropping a photo posts it and jumps to the new run', async () => {
-    const page = renderUploadPage();
+    const page = renderUploadPage({ search: '?runs=1', steps: [EXTRACT] });
     const zone = await screen.findByText('Drop the mug shot here');
     const file = new File(['fake-image-bytes'], 'mug.jpg', { type: 'image/jpeg' });
     fireEvent.drop(zone, { dataTransfer: { files: [file] } });
@@ -296,7 +300,11 @@ describe('WorkflowPage photo drop zone', () => {
   });
 
   test('a rejected photo shows the server message', async () => {
-    renderUploadPage({ uploadError: "That doesn't look like a photo." });
+    renderUploadPage({
+      search: '?runs=1',
+      steps: [EXTRACT],
+      uploadError: "That doesn't look like a photo.",
+    });
     const zone = await screen.findByText('Drop the mug shot here');
     fireEvent.drop(zone, {
       dataTransfer: { files: [new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' })] },
@@ -313,13 +321,6 @@ describe('WorkflowPage chat panel', () => {
     return screen.getByRole('textbox', { name: 'Chat message' });
   }
 
-  test('the panel shows in runtime mode', async () => {
-    renderPage(() => {}, () => {});
-    // Runtime mode (default): the failed run's Fix button plus the chat panel.
-    expect(await screen.findByText('Fix this step')).toBeDefined();
-    expect(panelInput()).toBeDefined();
-  });
-
   test('the panel shows in design mode', async () => {
     renderPage(() => {}, () => {}, { search: '?mode=design' });
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
@@ -328,7 +329,7 @@ describe('WorkflowPage chat panel', () => {
 
   test('the panel collapses and reopens', async () => {
     renderPage(() => {}, () => {});
-    expect(await screen.findByText('Fix this step')).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
     expect(screen.queryByRole('textbox', { name: 'Chat message' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Show chat' }));
@@ -336,7 +337,7 @@ describe('WorkflowPage chat panel', () => {
   });
 
   test('"Fix this step" prefill lands in the panel input, sends, and never resurrects', async () => {
-    const { agentPosts } = renderPage(() => {}, () => {});
+    const { agentPosts } = renderPage(() => {}, () => {}, { search: '?run=run-1' });
     fireEvent.click(await screen.findByText('Fix this step'));
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
     expect((panelInput() as HTMLTextAreaElement).value).toBe(HANDOFF);
@@ -466,10 +467,7 @@ describe('WorkflowPage agent switch seam', () => {
         </TooltipProvider>
       </QueryClientProvider>,
     );
-    // The workflow name now lives in the TopBar crumb (not rendered here);
-    // the failed run's Fix button proves the page loaded (runtime has
-    // auto-selected it into ?run= by then).
-    await screen.findByText('Fix this step');
+    await screen.findByRole('button', { name: 'Try it' });
     expect(path.startsWith('/reducers/flow-1')).toBe(true);
 
     listed = [workflow(), photoWorkflow()];

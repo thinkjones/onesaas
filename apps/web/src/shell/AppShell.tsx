@@ -1,52 +1,36 @@
 import { Outlet, useLocation } from 'react-router';
-import { useWorkflows } from '../api.ts';
+import { isTauri } from '../api.ts';
 import TellMeMoreFallback from '../explain/TellMeMoreFallback.tsx';
 import { useDesktopFocus } from './DesktopFocus.ts';
-import Sidebar from './Sidebar.tsx';
-import TopBar from './TopBar.tsx';
+import FloatingBar from './FloatingBar.tsx';
 
+/**
+ * One full-screen board with the floating bar over it, Miro style: no sidebar
+ * and no fixed chrome. An automation's canvas fills the whole board; every
+ * other screen scrolls beneath the bar.
+ */
 export default function AppShell() {
   // Extension "open the app" button: no-op in browsers.
   useDesktopFocus();
-  // Floating Craft shell (design-system-prompt §4): sidebar and main are
-  // rounded panels on the window backdrop with an 8px gap; the main panel
-  // carries the sky canvas gradient, a TopBar (§6), and the scrolling content
-  // column. Only .content scrolls. Under Tauri's Overlay title bar the window
-  // drags from the sidebar strip + the top bar (both carry
-  // data-tauri-drag-region); browsers ignore the attribute.
   const location = useLocation();
-  const workflowsQuery = useWorkflows();
-  // Bug #7: first-time Automate (no chores yet, or still loading) hides the
-  // sidebar AND the top bar so the pure prompt stands alone; chrome appears
-  // with the first chore.
-  const hideNav =
-    location.pathname === '/automate' &&
-    (workflowsQuery.data === undefined || workflowsQuery.data.length === 0);
-  // Reducer pages own the whole content area in both modes: no padding,
-  // no shell scroll — the canvas fills 100% w/h and the chat stretches full
-  // height. (Design mode pioneered this; Watch-it-Run joined it.)
   const fullBleed = /^\/reducers\/[^/]+$/.test(location.pathname);
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-window">
-      <div className="flex min-h-0 flex-1 gap-2 p-2">
-        {/* Off-workflow "Tell me more" routing (renders nothing). */}
-        <TellMeMoreFallback />
-        {/* The sidebar carries its own panel chrome (Craft §5). */}
-        {!hideNav && <Sidebar />}
-        <main className="bg-canvas flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border shadow-sm">
-          {!hideNav && <TopBar />}
-          <div
-            data-testid="shell-content"
-            className={
-              fullBleed
-                ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
-                : 'min-w-0 flex-1 overflow-y-auto px-8 pt-3 pb-8'
-            }
-          >
-            <Outlet />
-          </div>
-        </main>
+    <main className="board relative h-screen overflow-hidden">
+      {/* Off-workflow "Tell me more" routing (renders nothing). */}
+      <TellMeMoreFallback />
+      {/* The webview can't be dragged by its hidden title bar: this strip stands in. */}
+      {isTauri() && <div data-tauri-drag-region className="absolute inset-x-0 top-0 z-30 h-3" />}
+      <FloatingBar />
+      <div
+        data-testid="shell-content"
+        className={
+          fullBleed
+            ? 'flex h-full min-h-0 min-w-0 flex-col overflow-hidden'
+            : 'h-full min-w-0 overflow-y-auto px-6 pt-20 pb-6'
+        }
+      >
+        <Outlet />
       </div>
-    </div>
+    </main>
   );
 }

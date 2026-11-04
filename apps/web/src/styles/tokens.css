@@ -1,4 +1,5 @@
-/* Craft design tokens — design-system-prompt §2, values verbatim.
+/* OneSaaS design tokens: electric violet with a coral-pink second accent, on
+ * violet-tinted neutrals. Token names follow design-system-prompt §2.
  * Light/dark follows the OS (prefers-color-scheme); there is no in-app theme
  * switcher. System fonts only — no web-font imports (see main.tsx).
  *
@@ -13,33 +14,36 @@
   --font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
   font-family: var(--font-ui);
-  --bg: hsl(210 20% 98.5%);
-  --bg-well: hsl(214 22% 95%);
+  --bg: hsl(270 50% 98.5%);
+  --bg-well: hsl(268 45% 95%);
   --bg-raised: hsl(0 0% 100%);
-  --bg-hover: hsl(214 20% 92%);
-  --bg-window: hsl(214 14% 91%);
-  --bg-sidebar: hsl(210 20% 97.5%);
-  --bg-canvas: linear-gradient(180deg, hsl(203 60% 93%) 0%, hsl(206 45% 96.5%) 240px, var(--bg) 520px);
-  --bg-input: hsl(214 25% 95%);
-  --border: hsl(214 18% 89%);
-  --border-strong: hsl(214 14% 80%);
-  --text: hsl(220 10% 12%);
-  --text-dim: hsl(218 8% 45%);
-  --accent: hsl(213 88% 53%);
-  --accent-soft: hsl(213 88% 53% / 0.11);
+  --bg-hover: hsl(266 45% 91%);
+  --bg-window: hsl(264 35% 88%);
+  --bg-sidebar: hsl(268 55% 96.5%);
+  --bg-canvas: linear-gradient(180deg, hsl(262 95% 90%) 0%, hsl(335 90% 95%) 240px, var(--bg) 520px);
+  --bg-input: hsl(266 45% 95%);
+  --border: hsl(264 35% 87%);
+  --border-strong: hsl(262 28% 75%);
+  --text: hsl(258 45% 11%);
+  --text-dim: hsl(258 15% 38%);
+  --accent: hsl(262 85% 50%);
+  --accent-soft: hsl(262 85% 50% / 0.13);
   --on-accent: hsl(0 0% 100%);
-  --danger: hsl(4 72% 48%);
-  --danger-soft: hsl(4 72% 50% / 0.10);
-  --warning: hsl(32 90% 38%);
-  --warning-soft: hsl(38 92% 50% / 0.15);
-  --success: hsl(145 55% 32%);
-  --success-soft: hsl(145 50% 40% / 0.12);
-  --term-bg: hsl(220 14% 12%);
-  --term-text: hsl(214 20% 90%);
-  --scrim: hsl(215 30% 20% / 0.16);
-  --shadow-card: 0 1px 2px hsl(215 30% 20% / 0.05), 0 3px 10px hsl(215 30% 20% / 0.05);
-  --shadow-float: 0 1px 2px hsl(215 30% 20% / 0.06), 0 2px 6px hsl(215 30% 20% / 0.05);
-  --shadow-dialog: 0 18px 48px hsl(215 30% 20% / 0.16), 0 2px 8px hsl(215 30% 20% / 0.06);
+  --accent-2: hsl(335 90% 45%);
+  --accent-2-soft: hsl(335 90% 45% / 0.13);
+  --gradient-brand: linear-gradient(115deg, hsl(262 85% 50%), hsl(335 90% 45%));
+  --danger: hsl(350 85% 44%);
+  --danger-soft: hsl(350 85% 44% / 0.12);
+  --warning: hsl(28 95% 33%);
+  --warning-soft: hsl(28 95% 33% / 0.16);
+  --success: hsl(158 85% 24%);
+  --success-soft: hsl(158 85% 24% / 0.13);
+  --term-bg: hsl(258 40% 10%);
+  --term-text: hsl(264 40% 92%);
+  --scrim: hsl(262 60% 25% / 0.16);
+  --shadow-card: 0 1px 2px hsl(262 60% 25% / 0.05), 0 3px 10px hsl(262 60% 25% / 0.05);
+  --shadow-float: 0 1px 2px hsl(262 60% 25% / 0.06), 0 2px 6px hsl(262 60% 25% / 0.05);
+  --shadow-dialog: 0 18px 48px hsl(262 60% 25% / 0.16), 0 2px 8px hsl(262 60% 25% / 0.06);
   --radius: 14px;
   --radius-s: 8px;
   --radius-pill: 999px;
@@ -47,28 +51,31 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: hsl(220 13% 10%);
-    --bg-well: hsl(220 12% 13.5%);
-    --bg-raised: hsl(220 11% 16%);
-    --bg-hover: hsl(220 10% 21%);
-    --bg-window: hsl(220 14% 6%);
-    --bg-sidebar: hsl(220 12% 12%);
-    --bg-canvas: linear-gradient(180deg, hsl(212 30% 15%) 0%, hsl(215 20% 12%) 240px, var(--bg) 520px);
-    --bg-input: hsl(220 10% 19%);
-    --border: hsl(220 9% 21%);
-    --border-strong: hsl(220 8% 30%);
-    --text: hsl(214 20% 93%);
-    --text-dim: hsl(216 9% 64%);
-    --accent: hsl(213 92% 63%);
-    --accent-soft: hsl(213 92% 63% / 0.16);
-    --on-accent: hsl(220 30% 8%);
-    --danger: hsl(4 80% 67%);
-    --danger-soft: hsl(4 80% 60% / 0.16);
-    --warning: hsl(38 92% 62%);
-    --warning-soft: hsl(38 92% 55% / 0.16);
-    --success: hsl(145 48% 60%);
-    --success-soft: hsl(145 45% 50% / 0.16);
-    --term-bg: hsl(220 14% 7%);
+    --bg: hsl(258 35% 8%);
+    --bg-well: hsl(258 32% 11%);
+    --bg-raised: hsl(258 30% 15%);
+    --bg-hover: hsl(258 28% 21%);
+    --bg-window: hsl(258 40% 5%);
+    --bg-sidebar: hsl(258 34% 10%);
+    --bg-canvas: linear-gradient(180deg, hsl(262 60% 22%) 0%, hsl(320 40% 13%) 240px, var(--bg) 520px);
+    --bg-input: hsl(258 26% 18%);
+    --border: hsl(258 24% 22%);
+    --border-strong: hsl(258 20% 32%);
+    --text: hsl(264 40% 96%);
+    --text-dim: hsl(260 18% 72%);
+    --accent: hsl(262 100% 76%);
+    --accent-soft: hsl(262 100% 76% / 0.2);
+    --on-accent: hsl(258 60% 8%);
+    --accent-2: hsl(350 100% 74%);
+    --accent-2-soft: hsl(350 100% 74% / 0.2);
+    --gradient-brand: linear-gradient(115deg, hsl(262 100% 76%), hsl(350 100% 74%));
+    --danger: hsl(350 95% 70%);
+    --danger-soft: hsl(350 95% 70% / 0.18);
+    --warning: hsl(38 100% 62%);
+    --warning-soft: hsl(38 100% 62% / 0.18);
+    --success: hsl(155 70% 58%);
+    --success-soft: hsl(155 70% 58% / 0.18);
+    --term-bg: hsl(258 40% 5%);
     --scrim: hsl(220 30% 3% / 0.5);
     --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.35);
     --shadow-float: 0 1px 2px hsl(0 0% 0% / 0.4);
@@ -83,68 +90,68 @@
  * Names the §2 block already owns (--border, --accent, --warning, --success
  * as full values) are NOT redefined here — app.css @theme maps those straight
  * from §2. NOTE the one deliberate name clash: shadcn `accent` is a hover
- * FILL (= §2 --bg-hover), while §2 --accent is the blue (shadcn `primary`).
- * `--info` (the "Working…" running blue) has no §2 token: it aliases the
- * blue accent in both schemes. */
+ * FILL (= §2 --bg-hover), while §2 --accent is the violet (shadcn `primary`).
+ * `--info` (the "Working…" running color) has no §2 token: it aliases the
+ * accent in both schemes. */
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
-  --background: 210 20% 98.5%;
-  --foreground: 220 10% 12%;
+  --background: 270 50% 98.5%;
+  --foreground: 258 45% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 220 10% 12%;
+  --card-foreground: 258 45% 11%;
   --popover: 0 0% 100%;
-  --popover-foreground: 220 10% 12%;
-  --primary: 213 88% 53%;
+  --popover-foreground: 258 45% 11%;
+  --primary: 262 85% 50%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 214 22% 95%;
-  --secondary-foreground: 220 10% 12%;
-  --muted: 214 22% 95%;
-  --muted-foreground: 218 8% 45%;
-  --accent-foreground: 220 10% 12%;
-  --destructive: 4 72% 48%;
+  --secondary: 268 45% 95%;
+  --secondary-foreground: 258 45% 11%;
+  --muted: 268 45% 95%;
+  --muted-foreground: 258 15% 38%;
+  --accent-foreground: 258 45% 11%;
+  --destructive: 350 85% 44%;
   --destructive-foreground: 0 0% 100%;
-  --info: 213 88% 53%;
-  --input: 214 25% 95%;
-  --ring: 213 88% 53%;
-  --window: 214 14% 91%;
-  --sidebar: 210 20% 97.5%;
+  --info: 262 85% 50%;
+  --input: 266 45% 95%;
+  --ring: 262 85% 50%;
+  --window: 264 35% 88%;
+  --sidebar: 268 55% 96.5%;
   --canvas: linear-gradient(
     180deg,
-    hsl(203 60% 93%) 0%,
-    hsl(206 45% 96.5%) 240px,
-    hsl(210 20% 98.5%) 520px
+    hsl(262 95% 90%) 0%,
+    hsl(335 90% 95%) 240px,
+    hsl(270 50% 98.5%) 520px
   );
-  --shadow-sm: 0 1px 2px hsl(215 30% 20% / 0.05), 0 3px 10px hsl(215 30% 20% / 0.05);
-  --shadow-md: 0 18px 48px hsl(215 30% 20% / 0.16), 0 2px 8px hsl(215 30% 20% / 0.06);
+  --shadow-sm: 0 1px 2px hsl(262 60% 25% / 0.05), 0 3px 10px hsl(262 60% 25% / 0.05);
+  --shadow-md: 0 18px 48px hsl(262 60% 25% / 0.16), 0 2px 8px hsl(262 60% 25% / 0.06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: 220 13% 10%;
-    --foreground: 214 20% 93%;
-    --card: 220 11% 16%;
-    --card-foreground: 214 20% 93%;
-    --popover: 220 11% 16%;
-    --popover-foreground: 214 20% 93%;
-    --primary: 213 92% 63%;
-    --primary-foreground: 220 30% 8%;
-    --secondary: 220 12% 13.5%;
-    --secondary-foreground: 214 20% 93%;
-    --muted: 220 12% 13.5%;
-    --muted-foreground: 216 9% 64%;
-    --accent-foreground: 214 20% 93%;
-    --destructive: 4 80% 67%;
+    --background: 258 35% 8%;
+    --foreground: 264 40% 96%;
+    --card: 258 30% 15%;
+    --card-foreground: 264 40% 96%;
+    --popover: 258 30% 15%;
+    --popover-foreground: 264 40% 96%;
+    --primary: 262 100% 76%;
+    --primary-foreground: 258 60% 8%;
+    --secondary: 258 32% 11%;
+    --secondary-foreground: 264 40% 96%;
+    --muted: 258 32% 11%;
+    --muted-foreground: 260 18% 72%;
+    --accent-foreground: 264 40% 96%;
+    --destructive: 350 95% 70%;
     --destructive-foreground: 0 0% 100%;
-    --info: 213 92% 63%;
-    --input: 220 10% 19%;
-    --ring: 213 92% 63%;
-    --window: 220 14% 6%;
-    --sidebar: 220 12% 12%;
+    --info: 262 100% 76%;
+    --input: 258 26% 18%;
+    --ring: 262 100% 76%;
+    --window: 258 40% 5%;
+    --sidebar: 258 34% 10%;
     --canvas: linear-gradient(
       180deg,
-      hsl(212 30% 15%) 0%,
-      hsl(215 20% 12%) 240px,
-      hsl(220 13% 10%) 520px
+      hsl(262 60% 22%) 0%,
+      hsl(320 40% 13%) 240px,
+      hsl(258 35% 8%) 520px
     );
     --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.35);
     --shadow-md: 0 18px 48px hsl(0 0% 0% / 0.55);

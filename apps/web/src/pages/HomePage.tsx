@@ -73,44 +73,61 @@ export default function HomePage() {
   // still work when the reducers list can't load).
   const firstTime = (workflowsQuery.data?.length ?? 0) === 0;
 
-  return (
-    <div
-      className={
-        firstTime
-          ? 'mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center gap-8'
-          : 'mx-auto flex max-w-3xl flex-col gap-8'
-      }
-    >
-      <div className="flex flex-col items-center gap-4 text-center">
-        <h1 className="font-display text-[44px] leading-tight font-semibold text-balance">
-          {HOME_PROMPT}
-        </h1>
-        <MicButton sizePx={72} onSend={(text) => handleStart(text)} />
-        <Textarea
-          aria-label={HOME_PROMPT}
-          placeholder="For example: when a customer emails me, save them and draft a reply for me to check"
-          rows={3}
-          value={sentence}
-          disabled={create.isPending}
-          onChange={(e) => setSentence(e.target.value)}
-          className="w-full text-left"
-        />
-        {error && (
-          <p role="alert" className="text-base text-destructive">
-            {error}
-          </p>
-        )}
-        <AppButton onClick={() => handleStart(sentence)} disabled={create.isPending}>
-          {create.isPending ? 'Starting…' : 'Build it'}
-        </AppButton>
-      </div>
-      <Suggestions
-        onPick={(s) => {
-          setSentence(s);
-          setError(null);
-        }}
+  const prompt = (
+    <div className="flex flex-col items-center gap-4 text-center">
+      <h1
+        className={
+          firstTime
+            ? 'font-display text-[44px] leading-tight font-semibold text-balance'
+            : 'font-display text-2xl font-semibold'
+        }
+      >
+        {firstTime ? HOME_PROMPT : 'Set up a new automation'}
+      </h1>
+      <MicButton sizePx={firstTime ? 72 : 56} onSend={(text) => handleStart(text)} />
+      <Textarea
+        aria-label={HOME_PROMPT}
+        placeholder="For example: when a customer emails me, save them and draft a reply for me to check"
+        rows={firstTime ? 3 : 2}
+        value={sentence}
+        disabled={create.isPending}
+        onChange={(e) => setSentence(e.target.value)}
+        className="w-full text-left"
       />
-      {!firstTime && <ReducerCards />}
+      {error && (
+        <p role="alert" className="text-base text-destructive">
+          {error}
+        </p>
+      )}
+      <AppButton onClick={() => handleStart(sentence)} disabled={create.isPending}>
+        {create.isPending ? 'Starting…' : 'Build it'}
+      </AppButton>
+    </div>
+  );
+  const suggestions = (
+    <Suggestions
+      onPick={(s) => {
+        setSentence(s);
+        setError(null);
+      }}
+    />
+  );
+
+  if (firstTime) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center gap-8">
+        {prompt}
+        {suggestions}
+      </div>
+    );
+  }
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-8">
+      <ReducerCards />
+      <div className="panel mx-auto flex w-full max-w-3xl flex-col gap-6">
+        {prompt}
+        {suggestions}
+      </div>
     </div>
   );
 }

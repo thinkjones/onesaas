@@ -1,6 +1,6 @@
 import type { Run, StepInstance, Workflow } from '@dad/shared';
 import { describe, expect, test } from 'vitest';
-import { parseModeParam, resolveRunId, resolveStepId } from './params.ts';
+import { resolveRunId, resolveStepId } from './params.ts';
 
 function run(id: string): Run {
   return {
@@ -79,18 +79,3 @@ describe('resolveStepId', () => {
   });
 });
 
-describe('parseModeParam', () => {
-  test('absent or runtime stays on runtime', () => {
-    expect(parseModeParam(null)).toBe('runtime');
-    expect(parseModeParam('runtime')).toBe('runtime');
-  });
-
-  test('design selects the design branch', () => {
-    expect(parseModeParam('design')).toBe('design');
-  });
-
-  test('garbage falls back to runtime', () => {
-    expect(parseModeParam('garbage')).toBe('runtime');
-    expect(parseModeParam('')).toBe('runtime');
-  });
-});

@@ -95,8 +95,7 @@ function renderDesign(
   initialDetail: WorkflowDetail,
   opts?: {
     entry?: string;
-    onRequestRuntime?: () => void;
-    onBuilt?: (info: { stepId: string; title: string }) => void;
+      onBuilt?: (info: { stepId: string; title: string }) => void;
     fetchHandler?: (url: string, init?: RequestInit) => unknown;
     agent?: UseAgentResult;
     logActivity?: (text: string) => void;
@@ -116,7 +115,6 @@ function renderDesign(
   );
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const onRequestRuntime = opts?.onRequestRuntime ?? (() => {});
   const agent = opts?.agent ?? makeAgent();
   const logActivity = opts?.logActivity ?? (() => {});
   const rendered = render(
@@ -127,7 +125,6 @@ function renderDesign(
           workflowId="flow-1"
           agent={agent}
           logActivity={logActivity}
-          onRequestRuntime={onRequestRuntime}
           onBuilt={opts?.onBuilt}
         />
         {opts?.onLocation && <LocationProbe onLocation={opts.onLocation} />}
@@ -352,31 +349,30 @@ describe('DesignView built failure', () => {
 });
 
 describe('DesignView problems and turn on', () => {
-  test('two problems replace "Turn on" with "2 things to fix before turning on"', async () => {
+  test('two problems replace "Publish" with "2 things to fix before publishing"', async () => {
     renderDesign(
       detail([step('s1', 'Pick out the details'), step('s2', 'Write the reply')], [
         { stepId: 's1', problem: "This step isn't set up yet: instructions is missing." },
         { stepId: 's2', problem: 'Nothing leads to this step yet.' },
       ]),
     );
-    expect(await screen.findByText('2 things to fix before turning on')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull();
+    expect(await screen.findByText('2 things to fix before publishing')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
     // Each troubled box shows its problem in an amber badge.
     expect(screen.getByText("This step isn't set up yet: instructions is missing.")).toBeDefined();
     expect(screen.getByText('Nothing leads to this step yet.')).toBeDefined();
   });
 
-  test('one problem reads "1 thing to fix before turning on"', async () => {
+  test('one problem reads "1 thing to fix before publishing"', async () => {
     renderDesign(detail([step('s1', 'Pick out the details')], [
       { stepId: 's1', problem: 'Nothing leads to this step yet.' },
     ]));
-    expect(await screen.findByText('1 thing to fix before turning on')).toBeDefined();
+    expect(await screen.findByText('1 thing to fix before publishing')).toBeDefined();
   });
 
-  test('"Turn on" calls setStatus(on) and switches to runtime mode', async () => {
-    const onRequestRuntime = vi.fn();
-    const { fetch } = renderDesign(detail(), { onRequestRuntime });
-    fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
+  test('"Publish" calls setStatus(on) and stays on the canvas', async () => {
+    const { fetch } = renderDesign(detail());
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         '/api/workflows/flow-1/ops',
@@ -389,16 +385,13 @@ describe('DesignView problems and turn on', () => {
       op: 'setStatus',
       args: ['on'],
     });
-    await waitFor(() => {
-      expect(onRequestRuntime).toHaveBeenCalledTimes(1);
-    });
+    expect(await screen.findByText('Published. It now runs on its own.')).toBeDefined();
+    expect(screen.getByText('Pick out the details')).toBeDefined();
   });
 
-  test('a refused turn-on toasts the server error and stays in design', async () => {
-    const onRequestRuntime = vi.fn();
+  test('a refused publish toasts the server error', async () => {
     const initial = detail();
     renderDesign(initial, {
-      onRequestRuntime,
       fetchHandler: (url, init) => {
         if (url === '/api/workflows/flow-1') return initial;
         if (url === '/api/workflows/flow-1/ops' && init?.method === 'POST') {
@@ -407,11 +400,11 @@ describe('DesignView problems and turn on', () => {
         throw new Error(`unexpected fetch: ${url}`);
       },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     expect(
       await screen.findByText('Cannot turn on yet: "Pick out the details": bad.'),
     ).toBeDefined();
-    expect(onRequestRuntime).not.toHaveBeenCalled();
+    expect(screen.queryByText('Published. It now runs on its own.')).toBeNull();
   });
 });
 
@@ -673,25 +666,29 @@ describe('DesignView canvas', () => {
 });
 
 describe('DesignView title bar', () => {
-  test('breadcrumbs Automate › Runs › name with exact hrefs', async () => {
+  test('Publish, Rename, Try it, Runs and Delete live in the title bar', async () => {
     renderDesign(detail());
     await screen.findByText('Pick out the details');
     const bar = screen.getByTestId('design-titlebar');
-    expect(within(bar).getByRole('link', { name: 'Automate' }).getAttribute('href')).toBe(
-      '/automate',
-    );
-    expect(within(bar).getByRole('link', { name: 'Runs' }).getAttribute('href')).toBe(
-      '/reducers/flow-1/runs',
-    );
-    expect(within(bar).getByText('Test flow')).toBeDefined();
+    for (const name of ['Publish', 'Rename', 'Try it', 'Delete']) {
+      expect(within(bar).getByRole('button', { name })).toBeDefined();
+    }
+    expect(within(bar).getByRole('button', { name: /^Runs/ })).toBeDefined();
   });
 
-  test('Turn on and Try it live in the title bar', async () => {
-    renderDesign(detail());
-    await screen.findByText('Pick out the details');
-    const bar = screen.getByTestId('design-titlebar');
-    expect(within(bar).getByRole('button', { name: 'Turn on' })).toBeDefined();
-    expect(within(bar).getByRole('button', { name: 'Try it' })).toBeDefined();
+  test('Rename sends the rename op', async () => {
+    const { fetch } = renderDesign(detail());
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Automation name' });
+    fireEvent.change(input, { target: { value: 'New name' } });
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => {
+      const ops = fetch.mock.calls.filter((c) => String(c[0]).endsWith('/ops'));
+      expect(JSON.parse(String((ops[0]![1] as RequestInit).body))).toEqual({
+        op: 'rename',
+        args: [{ name: 'New name' }],
+      });
+    });
   });
 
   test('copy button copies name and id, then toasts', async () => {
@@ -755,11 +752,11 @@ describe('DesignView delete', () => {
 });
 
 describe('DesignView start title bar', () => {
-  test('start screen offers breadcrumbs, copy, and delete but no Try it', async () => {
+  test('start screen offers rename, copy, and delete but no Try it', async () => {
     renderDesign(detail([]));
     await screen.findByRole('heading', { name: 'What should this chore reducer do?' });
     const bar = screen.getByTestId('design-titlebar');
-    expect(within(bar).getByRole('link', { name: 'Automate' })).toBeDefined();
+    expect(within(bar).getByRole('button', { name: 'Rename' })).toBeDefined();
     expect(within(bar).getByRole('button', { name: 'Copy name and id' })).toBeDefined();
     expect(within(bar).getByRole('button', { name: 'Delete' })).toBeDefined();
     expect(within(bar).queryByRole('button', { name: 'Try it' })).toBeNull();

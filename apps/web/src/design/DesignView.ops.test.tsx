@@ -137,7 +137,7 @@ function renderOps(entry = '/reducers/flow-1') {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <Toaster />
-        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
+        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -316,7 +316,7 @@ describe('DesignView canvas ops', () => {
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={['/reducers/flow-1']}>
           <Toaster />
-          <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
+          <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} />
         </MemoryRouter>
       </QueryClientProvider>,
     );

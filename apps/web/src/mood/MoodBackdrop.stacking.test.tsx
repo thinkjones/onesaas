@@ -1,9 +1,9 @@
-import type { Run, StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { type RunDetail, type Settings, type WorkflowDetail } from '../api.ts';
+import { type Settings, type WorkflowDetail } from '../api.ts';
 import type { UseAgentResult } from '../agent/useAgent.ts';
 import DesignView from '../design/DesignView.tsx';
 
@@ -17,7 +17,6 @@ function makeAgent(): UseAgentResult {
     send: vi.fn(async () => {}),
   };
 }
-import RuntimeView from '../runtime/RuntimeView.tsx';
 
 // M5 Task 4 D1 regression: the mood backdrop paints at z-index:-1, so its
 // canvas container must create a stacking context (`isolate`); otherwise the
@@ -109,41 +108,7 @@ test('DesignView canvas container isolates the mood backdrop stacking context', 
   const { container } = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/design/flow-1']}>
-        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} onRequestRuntime={() => {}} />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  await waitFor(() => {
-    expect(screen.getByTestId('canvas')).toBeDefined();
-  });
-  expectIsolatedBackdrop(container);
-});
-
-test('RuntimeView canvas container isolates the mood backdrop stacking context', async () => {
-  const run: Run = {
-    id: 'run-1',
-    workflowId: 'flow-1',
-    workflowVersion: 1,
-    triggerPayload: {},
-    status: 'done',
-    kind: 'live',
-    usedSample: false,
-    startedAt: '2026-10-28T10:42:00.000Z',
-  };
-  const runDetail: RunDetail = {
-    run,
-    steps: [],
-    story: ['Run one started.'],
-    workflow: { ...WF, status: 'on' },
-  };
-  const client = makeClient();
-  client.setQueryData(['runs', 'flow-1'], [run]);
-  client.setQueryData(['run', 'run-1'], runDetail);
-  client.setQueryData(['settings'], SETTINGS);
-  const { container } = render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/?run=run-1']}>
-        <RuntimeView workflowId="flow-1" />
+        <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} />
       </MemoryRouter>
     </QueryClientProvider>,
   );

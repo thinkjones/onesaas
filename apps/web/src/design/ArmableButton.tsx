@@ -14,12 +14,16 @@ export default function ArmableButton({
   confirmLabel,
   onConfirm,
   disabled,
+  compact,
 }: {
   label: string;
   confirmLabel: string;
   onConfirm: () => void;
   disabled?: boolean;
+  /** Fits a toolbar (the floating bar) rather than a form. */
+  compact?: boolean;
 }) {
+  const sizing = compact ? ({ size: 'sm', className: 'min-h-0 text-sm' } as const) : {};
   const [armed, setArmed] = useState(false);
   const timer = useRef<number | null>(null);
   useEffect(
@@ -33,6 +37,7 @@ export default function ArmableButton({
       <AppButton
         type="button"
         variant="destructive"
+        {...sizing}
         disabled={disabled}
         onClick={() => {
           setArmed(true);
@@ -47,6 +52,7 @@ export default function ArmableButton({
     <AppButton
       type="button"
       variant="destructive"
+      {...sizing}
       disabled={disabled}
       onClick={() => {
         if (timer.current !== null) clearTimeout(timer.current);

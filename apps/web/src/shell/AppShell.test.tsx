@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import AppShell from './AppShell.tsx';
+import BarActions from './BarActions.tsx';
 
 function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -15,8 +16,8 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
       if (String(input) === '/api/settings') {
         return { ok: true, status: 200, json: async () => ({ onboarded: true }) };
       }
-      // TopBar badges: no runs, healthy models.
-      if (String(input) === '/api/runs' || String(input) === '/api/models/status') {
+      // Bar badges: no runs, healthy models; no tables.
+      if (['/api/runs', '/api/models/status', '/api/lists'].includes(String(input))) {
         return { ok: true, status: 200, json: async () => [] };
       }
       throw new Error(`unexpected fetch: ${String(input)}`);
@@ -29,7 +30,14 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
           <Route element={<AppShell />}>
             <Route path="/" element={<p>page body</p>} />
             <Route path="/automate" element={<p>automate body</p>} />
-            <Route path="/reducers/:workflowId" element={<p>reducer body</p>} />
+            <Route path="/reducers/:workflowId" element={
+              <>
+                <p>reducer body</p>
+                <BarActions>
+                  <button type="button">Screen action</button>
+                </BarActions>
+              </>
+            } />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -49,62 +57,56 @@ afterEach(() => {
 });
 
 describe('AppShell', () => {
-  test('renders nav and page with no desktop drag strip in a browser', () => {
-    const { container } = renderShell();
-    expect(screen.getByText('page body')).toBeDefined();
-    expect(screen.getByRole('link', { name: 'Activity' })).toBeDefined();
-    // The TopBar carries an inert data-tauri-drag-region (per §6); only the
-    // sidebar strip is Tauri-only.
-    expect(container.querySelector('.drag')).toBeNull();
-  });
-
-  test('renders a drag strip under the Tauri overlay title bar', () => {
-    (window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'] = {};
-    const { container } = renderShell();
-    const strip = container.querySelector('[data-tauri-drag-region]');
-    expect(strip).not.toBeNull();
-    expect(strip?.getAttribute('aria-hidden')).toBe('true');
-  });
-
-  test('hides the nav rail on first-time Automate (no chores yet)', async () => {
+  test('the floating bar is the only navigation, on every screen', async () => {
     renderShell({ path: '/automate', workflows: [] });
     expect(await screen.findByText('automate body')).toBeDefined();
-    expect(screen.queryByRole('link', { name: 'Activity' })).toBeNull();
+    const bar = screen.getByTestId('floating-bar');
+    for (const name of ['Activity', 'Automate', 'Data']) {
+      expect(within(bar).getByRole('link', { name })).toBeDefined();
+    }
+    expect(within(bar).getByRole('link', { name: 'Settings' })).toBeDefined();
   });
 
-  test('shows the nav rail on Automate once a chore exists', async () => {
-    renderShell({ path: '/automate', workflows: [{ id: 'wf-1' }] });
+  test('Alt+number travels between the three modes, but not while typing', async () => {
+    renderShell({ path: '/', workflows: [] });
+    expect(await screen.findByText('page body')).toBeDefined();
+    fireEvent.keyDown(window, { altKey: true, code: 'Digit2' });
     expect(await screen.findByText('automate body')).toBeDefined();
-    expect(await screen.findByRole('link', { name: 'Activity' })).toBeDefined();
-  });
-});
-
-describe('AppShell reducer full bleed', () => {
-  test('design mode drops content padding and scroll for the full-bleed canvas', async () => {
-    renderShell({ path: '/reducers/wf-1?mode=design' });
-    const content = await screen.findByTestId('shell-content');
-    expect(content.className).toContain('overflow-hidden');
-    expect(content.className).not.toContain('px-8');
+    const input = document.body.appendChild(document.createElement('input'));
+    fireEvent.keyDown(input, { altKey: true, code: 'Digit1' });
+    expect(screen.queryByText('page body')).toBeNull();
+    input.remove();
   });
 
-  test('runtime mode joins the full bleed (Watch-it-Run fills the window)', async () => {
-    renderShell({ path: '/reducers/wf-1?mode=runtime' });
-    const content = await screen.findByTestId('shell-content');
-    expect(content.className).toContain('overflow-hidden');
-    expect(content.className).not.toContain('px-8');
+  test('the picker lists automations in Automate and opens the chosen one', async () => {
+    renderShell({ path: '/automate', workflows: [{ id: 'wf-1', name: 'Leads' }] });
+    const picker = await screen.findByRole('combobox', { name: 'Choose an automation' });
+    fireEvent.change(picker, { target: { value: 'wf-1' } });
+    expect(await screen.findByText('reducer body')).toBeDefined();
   });
 
-  test('a bare reducer URL (default runtime) is full bleed too', async () => {
-    renderShell({ path: '/reducers/wf-1' });
-    const content = await screen.findByTestId('shell-content');
-    expect(content.className).toContain('overflow-hidden');
-    expect(content.className).not.toContain('px-8');
+  test('a screen can place its actions in the bar', async () => {
+    renderShell({ path: '/reducers/wf-1?mode=design', workflows: [] });
+    const button = await screen.findByRole('button', { name: 'Screen action' });
+    expect(screen.getByTestId('floating-bar').contains(button)).toBe(true);
   });
 
-  test('other pages keep the padded scrolling content', async () => {
+  test('an automation canvas fills the board; other screens scroll beneath the bar', async () => {
+    const { unmount } = renderShell({ path: '/reducers/wf-1?mode=design' });
+    expect((await screen.findByTestId('shell-content')).className).toContain('overflow-hidden');
+    unmount();
     renderShell({ path: '/' });
     const content = await screen.findByTestId('shell-content');
     expect(content.className).toContain('overflow-y-auto');
-    expect(content.className).toContain('px-8');
+    expect(content.className).toContain('pt-20');
+  });
+
+  test('the drag strip only appears under the Tauri overlay title bar', () => {
+    const { container, unmount } = renderShell();
+    expect(container.querySelector('div[data-tauri-drag-region]')).toBeNull();
+    unmount();
+    (window as unknown as Record<string, unknown>)['__TAURI_INTERNALS__'] = {};
+    const tauri = renderShell();
+    expect(tauri.container.querySelector('div[data-tauri-drag-region]')).not.toBeNull();
   });
 });

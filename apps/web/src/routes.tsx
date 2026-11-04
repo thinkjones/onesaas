@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router';
 import { useSettings } from './api.ts';
 import ActivityPage from './activity/ActivityPage.tsx';
 import Onboarding from './onboarding/Onboarding.tsx';
-import ChoreReducersPage from './pages/ChoreReducersPage.tsx';
 import DesignPreviewPage from './pages/DesignPreviewPage.tsx';
-import ReducerRunsPage from './pages/ReducerRunsPage.tsx';
 import HomePage from './pages/HomePage.tsx';
 import ListsPage from './pages/ListsPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
@@ -34,6 +32,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   return children;
 }
 
+/** Runs now live over the automation's own canvas. */
+function RunsRedirect() {
+  const { workflowId = '' } = useParams();
+  return <Navigate to={`/reducers/${workflowId}?mode=design&runs=1`} replace />;
+}
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -47,9 +51,9 @@ export default function AppRoutes() {
       >
         <Route index element={<ActivityPage />} />
         <Route path="automate" element={<HomePage />} />
-        <Route path="reducers" element={<ChoreReducersPage />} />
+        <Route path="reducers" element={<Navigate to="/automate" replace />} />
         <Route path="reducers/:workflowId" element={<WorkflowPage />} />
-        <Route path="reducers/:workflowId/runs" element={<ReducerRunsPage />} />
+        <Route path="reducers/:workflowId/runs" element={<RunsRedirect />} />
         <Route path="lists" element={<ListsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="design" element={<DesignPreviewPage />} />

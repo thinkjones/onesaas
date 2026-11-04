@@ -286,6 +286,11 @@
   .font-display {
     font-family: var(--font-heading);
   }
+  /* The board: dots over the canvas gradient, behind every screen. */
+  .board {
+    background-image: radial-gradient(var(--border-strong) 1px, transparent 1px), var(--canvas);
+    background-size: 22px 22px, 100% 100%;
+  }
   /* Sky canvas gradient behind the main panel (Bug #2, CRM look). */
   .bg-canvas {
     background: var(--canvas);

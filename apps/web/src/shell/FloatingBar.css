@@ -1,0 +1,86 @@
+/* The universal bar: one floating strip, top left, on every screen. */
+.floatbar {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 40;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.4rem 0.5rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+}
+/* Clears the macOS traffic lights under Tauri's overlay title bar. */
+.floatbar.tauri { left: 5.5rem; max-width: calc(100vw - 6.25rem); }
+.floatbar .wordmark {
+  padding: 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.floatbar .modes {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-well);
+  border-radius: var(--radius-s);
+}
+.floatbar .mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  border-radius: calc(var(--radius-s) - 2px);
+}
+.floatbar .mode:hover { color: var(--text); }
+.floatbar .mode.active {
+  color: var(--on-accent);
+  background: var(--gradient-brand);
+  font-weight: 600;
+}
+.floatbar .picker {
+  max-width: 15rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+}
+.floatbar .slot { display: contents; }
+.floatbar .sep { width: 1px; height: 1.4rem; background: var(--border); }
+.floatbar .ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--text-dim);
+  border-radius: var(--radius-s);
+}
+.floatbar .ic:hover, .floatbar .ic.active { color: var(--accent); background: var(--accent-soft); }
+.floatbar .warn, .floatbar .err {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: var(--radius-pill);
+}
+.floatbar .warn { color: var(--warning); background: var(--warning-soft); }
+.floatbar .err { color: var(--danger); background: var(--danger-soft); }
