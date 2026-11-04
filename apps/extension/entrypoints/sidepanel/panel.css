@@ -421,14 +421,6 @@ body {
   border-color: var(--accent-2);
   background: var(--accent-2-soft);
 }
-.cta-draft .cta-icon,
-.cta-draft .cta-tag {
-  color: var(--accent);
-}
-.control .cta-draft:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
 .control .cta-new {
   margin-bottom: 0;
   color: var(--accent-ink);

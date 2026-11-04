@@ -2,7 +2,6 @@ import { savedRecordPath } from '@onesaas/shared';
 import ArrowUpRight from 'lucide-react/icons/arrow-up-right';
 import Check from 'lucide-react/icons/check';
 import Pause from 'lucide-react/icons/pause';
-import Pencil from 'lucide-react/icons/pencil';
 import Play from 'lucide-react/icons/play';
 import Plus from 'lucide-react/icons/plus';
 import Settings from 'lucide-react/icons/settings';
@@ -255,7 +254,6 @@ export default function ControlPlane({
   }
 
   const activate = (a: Automation) => {
-    if (a.status !== 'on') return void openApp(`/automations/${encodeURIComponent(a.id)}?mode=design`);
     if (a.trigger.type === 'trigger.upload') {
       photoFor.current = a;
       photoInput.current?.click();
@@ -312,27 +310,25 @@ export default function ControlPlane({
   // What the panel says follows the paced steps, not the run underneath.
   const shownState: RunState | null = run === null ? null : pacing ? 'running' : run.state;
   const running = shownState === 'starting' || shownState === 'running';
-  const groups = groupAutomations(automations ?? [], site);
+  // Only what's published can run from here; the rest is still being built in the app.
+  const groups = groupAutomations((automations ?? []).filter((a) => a.status === 'on'), site);
 
-  const row = (a: Automation) => {
-    const live = a.status === 'on';
-    return (
-      <button
-        key={a.id}
-        type="button"
-        className={`cta ${live ? 'cta-run' : 'cta-draft'}`}
-        disabled={live && (running || shownState === 'waiting')}
-        onClick={() => activate(a)}
-        title={live ? `Run ${a.name} now` : `${a.name} isn't on yet. Finish it in the app.`}
-      >
-        <span className="cta-icon" aria-hidden="true">
-          {live ? <Play size={13} fill="currentColor" /> : <Pencil size={14} />}
-        </span>
-        <span className="cta-name">{a.name}</span>
-        <span className="cta-tag">{live ? 'Run' : 'Draft'}</span>
-      </button>
-    );
-  };
+  const row = (a: Automation) => (
+    <button
+      key={a.id}
+      type="button"
+      className="cta cta-run"
+      disabled={running || shownState === 'waiting'}
+      onClick={() => activate(a)}
+      title={`Run ${a.name} now`}
+    >
+      <span className="cta-icon" aria-hidden="true">
+        <Play size={13} fill="currentColor" />
+      </span>
+      <span className="cta-name">{a.name}</span>
+      <span className="cta-tag">Run</span>
+    </button>
+  );
 
   const shownStatus = (step: AutomationStep, i: number): string => {
     if (i < revealed) return run?.steps[step.id]?.status ?? 'pending';

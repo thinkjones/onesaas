@@ -204,14 +204,10 @@ describe('running an automation', () => {
     expect(banner().textContent).toContain('Finished');
   });
 
-  test('clicking one that is not on opens it in the app and starts no run', async () => {
+  test('an automation that is not published does not show', async () => {
     await render();
-    await act(async () => {
-      button('Half built').click();
-    });
-    await flush();
-    expect(posts('/api/workflows/wf-draft/run')).toHaveLength(0);
-    expect(openApp).toHaveBeenCalledWith('/automations/wf-draft?mode=design');
+    expect(container.textContent).toContain('Save as lead');
+    expect(container.textContent).not.toContain('Half built');
   });
 
   test('setting up a new automation happens in the app', async () => {

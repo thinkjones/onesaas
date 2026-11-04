@@ -83,9 +83,9 @@ Your key stays on your computer and is never sent to the browser.
 
 ## What the Chrome extension does
 
-The side panel does two things: **run your automations** and **show you the results**, including approving a step that's waiting for you. You build and change automations in the app. Its settings screen handles pairing.
+The side panel does two things: **run your published automations** and **show you the results**, including approving a step that's waiting for you. You build and change automations in the app. Its settings screen handles pairing.
 
-<img src="./assets/readme/panel.png" alt="The side panel listing automations for the current page, each with a Run or Draft label" width="280">
+<img src="./assets/readme/panel.png" alt="The side panel listing published automations for the current page, each with a Run label" width="280">
 
 It acts in your own logged-in tabs, so the server never holds your Google or Meta passwords. It can read any site, because a manual automation can use whichever page you're on, but it only reads a page when you click run.
 
