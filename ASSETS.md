@@ -64,7 +64,7 @@ for this repo).
 
 | File | Source | Licence | Author |
 | ---- | ------ | ------- | ------ |
-| `apps/extension/public/icon/{16,32,48,96,128}.png` (toolbar icons) | Created with the project scaffold during the hackathon | Original work | Project author |
+| `apps/extension/public/icon/{16,32,48,96,128}.png` (toolbar icons, from `apps/extension/assets/icon.svg` and `icon-small.svg`) | Drawn for this project during the hackathon | Original work | Project author |
 | `apps/web/public/favicon.svg` (sparkle mark) | Created with the project scaffold during the hackathon | Original work | Project author |
 | `apps/web/public/icons.svg` (UI icon sprite) | Created with the project scaffold during the hackathon | Original work | Project author |
 

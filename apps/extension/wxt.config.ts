@@ -6,6 +6,8 @@ export default defineConfig({
   manifest: {
     name: 'OneSaaS',
     version: '0.1.0',
+    // The toolbar button: without this, clicking the icon can't open the side panel.
+    action: { default_title: 'Open OneSaaS' },
     permissions: ['storage', 'tabs', 'activeTab', 'scripting', 'identity'],
     // A run started by hand reads whatever page the owner is on, so any site can be
     // the source. Only read on their click; content scripts stay on the listed sites.

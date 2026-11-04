@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>OneSaaS</title>
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0.6"><stop offset="0" stop-color="#6A16E8"/><stop offset="1" stop-color="#DB0B6E"/></linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="30" fill="url(#brand)"/>
+  <path d="M58 26c3 24 14 35 38 38-24 3-35 14-38 38-3-24-14-35-38-38 24-3 35-14 38-38z" fill="#fff"/>
+  <path d="M96 20c1.300 9 5.700 13.400 14 14.500-8.300 1.100-12.700 5.500-14 14.500-1.300-9-5.700-13.400-14-14.500 8.300-1.100 12.700-5.500 14-14.500z" fill="#fff"/>
+</svg>
