@@ -145,7 +145,7 @@ describe('sidepanel paired view', () => {
     expect(text).toContain('Paired ✓');
     expect(text).toContain('Connected ✓');
     expect(text).toContain('Chrome profile: priya@gmail.com');
-    expect(text).toContain('reads the email you have open');
+    expect(text).toContain('work on the websites you use');
     buttonByText('Open the app to manage');
     // Pair again / Unpair hide behind the Settings toggle (Tweaks).
     expect(hasButton('Unpair')).toBe(false);
@@ -213,7 +213,7 @@ describe('sidepanel unpaired view', () => {
     expect(container.querySelector('input')).not.toBeNull();
     buttonByText('Pair');
     const text = container.textContent ?? '';
-    expect(text).toContain('reads the email you have open');
+    expect(text).toContain('work on the websites you use');
     buttonByText('Open the app to manage');
   });
 
@@ -593,7 +593,7 @@ describe('sidepanel on this page', () => {
     activeTabUrl = 'https://example.com/';
     await renderPanel();
     expect(container.textContent ?? '').toContain(
-      'Open Gmail, Google Calendar, or Meta Business Suite in a tab to see what I can do there.',
+      'Open a website you use for work to see what I can do there.',
     );
   });
 

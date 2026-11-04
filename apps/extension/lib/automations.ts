@@ -14,6 +14,28 @@ export interface Automation {
   status: 'draft' | 'on' | 'off';
   trigger: AutomationStep;
   steps: AutomationStep[];
+  edges?: { from: string; to: string }[];
+}
+
+/**
+ * Steps in the order they run. The saved list is in the order they were added,
+ * so walk the links from the trigger; anything not linked goes last.
+ */
+export function flowOrder(a: Automation): AutomationStep[] {
+  const byId = new Map([a.trigger, ...a.steps].map((s) => [s.id, s]));
+  const order = [a.trigger];
+  const seen = new Set([a.trigger.id]);
+  for (let i = 0; i < order.length; i += 1) {
+    for (const e of a.edges ?? []) {
+      const next = byId.get(e.to);
+      if (e.from === order[i]!.id && next && !seen.has(next.id)) {
+        seen.add(next.id);
+        order.push(next);
+      }
+    }
+  }
+  for (const s of a.steps) if (!seen.has(s.id)) order.push(s);
+  return order;
 }
 
 const GMAIL_TRIGGERS: ReadonlySet<string> = new Set(['trigger.gmailButton', 'trigger.email']);

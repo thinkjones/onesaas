@@ -327,9 +327,8 @@ function App() {
 
   const info = (
     <p style={{ color: 'var(--text-dim)' }}>
-      This extension connects the app to Gmail in this Chrome profile. It reads the email you
-      have open, watches for new mail, and adds the “Save as lead &amp; reply” button. It only
-      works while Gmail is open here.
+      This extension lets OneSaaS work on the websites you use, in this Chrome profile. It runs
+      your automations and shows you what they did.
     </p>
   );
 
@@ -379,8 +378,7 @@ function App() {
   const onThisPage =
     site === null ? (
       <p style={{ color: 'var(--text-dim)' }}>
-        Open Gmail, Google Calendar, or Meta Business Suite in a tab to see what I can do
-        there.
+        Open a website you use for work to see what I can do there.
       </p>
     ) : (
       <div>

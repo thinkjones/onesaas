@@ -93,10 +93,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function render(site: PanelSite | null = 'gmail', connected = true) {
+async function render(site: PanelSite | null = 'gmail', connected = true, stepPace = () => 0) {
   await act(async () => {
     root = createRoot(container);
-    root.render(createElement(ControlPlane, { site, connected, openApp, onOpenSettings }));
+    root.render(createElement(ControlPlane, { site, connected, openApp, onOpenSettings, stepPace }));
   });
   await flush();
 }
@@ -114,27 +114,22 @@ const button = (text: string, within: Element = container) => {
   if (!el) throw new Error(`button "${text}" missing: ${container.innerHTML}`);
   return el;
 };
-const banner = () => q('[data-testid="mode-banner"]');
+const banner = () => q('[data-testid="run-banner"]');
 const posts = (path: string) =>
   fetchMock.mock.calls.filter(([u, i]) => u === `${API}${path}` && i?.method === 'POST');
 
-function type(text: string) {
-  const el = q<HTMLTextAreaElement>('textarea');
-  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
-  act(() => {
-    set.call(el, text);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
-async function sendChat(text: string) {
-  type(text);
-  await act(async () => {
-    button('Send').click();
-  });
-  await flush();
-}
-
 describe('call-to-action groups', () => {
+  test('coming back to the panel picks up automations made in the app', async () => {
+    await render();
+    expect(container.textContent).not.toContain('Made in the app');
+    replies['GET /api/workflows'] = { body: [{ ...LEAD, id: 'wf-new', name: 'Made in the app' }] };
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await flush();
+    expect(container.textContent).toContain('Made in the app');
+  });
+
   test('puts automations in the group for the current page, then the new-automation action', async () => {
     await render('gmail');
     expect(group('Automations for this page').textContent).toContain('Save as lead');
@@ -157,12 +152,12 @@ describe('call-to-action groups', () => {
   });
 });
 
-describe('mode is always clear', () => {
-  test('starts out designing a new automation', async () => {
+describe('running an automation', () => {
+  test('there is no chat, and no way to change anything', async () => {
     await render();
-    expect(banner().getAttribute('data-mode')).toBe('design');
-    expect(banner().textContent).toContain('Designing');
-    expect(banner().textContent).toContain('New automation');
+    expect(container.querySelector('textarea')).toBeNull();
+    expect(container.querySelector('select')).toBeNull();
+    expect(container.textContent).not.toContain('Design');
   });
 
   test('a manual automation sends the page, and says when it could not read one', async () => {
@@ -181,7 +176,7 @@ describe('mode is always clear', () => {
 
     readActivePage.mockResolvedValueOnce(null);
     await act(async () => {
-      q<HTMLButtonElement>('.list-toggle').click();
+      button('Close').click();
     });
     await act(async () => {
       button('Log job').click();
@@ -200,7 +195,6 @@ describe('mode is always clear', () => {
     });
     await flush();
     expect(posts('/api/workflows/wf-lead/run')).toHaveLength(1);
-    expect(banner().getAttribute('data-mode')).toBe('run');
     expect(banner().textContent).toContain('Running');
     expect(banner().textContent).toContain('Save as lead');
     await act(async () => {
@@ -208,67 +202,112 @@ describe('mode is always clear', () => {
     });
     await flush();
     expect(banner().textContent).toContain('Finished');
-    expect(banner().getAttribute('data-mode')).toBe('run');
   });
 
-  test('clicking one that is not on designs it and starts no run', async () => {
+  test('clicking one that is not on opens it in the app and starts no run', async () => {
     await render();
     await act(async () => {
       button('Half built').click();
     });
     await flush();
     expect(posts('/api/workflows/wf-draft/run')).toHaveLength(0);
-    expect(banner().getAttribute('data-mode')).toBe('design');
-    expect(banner().textContent).toContain('Half built');
+    expect(openApp).toHaveBeenCalledWith('/automations/wf-draft?mode=design');
   });
 
-  test('designing a live automation warns that changes apply to its next run', async () => {
+  test('setting up a new automation happens in the app', async () => {
     await render();
-    const select = q<HTMLSelectElement>('select');
-    await act(async () => {
-      select.value = 'wf-lead';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flush();
-    expect(banner().textContent).toContain('Save as lead');
-    expect(banner().textContent).toContain('next run');
-  });
-
-  test('new automation clears back to designing something new', async () => {
-    replies['POST /api/workflows/wf-lead/run'] = { body: { run: { id: 'r1', status: 'done' }, steps: [] } };
-    await render();
-    await act(async () => {
-      button('Save as lead').click();
-    });
-    await flush();
-    await act(async () => {
-      q<HTMLButtonElement>('.list-toggle').click();
-    });
     await act(async () => {
       button('Set up a new automation').click();
     });
-    await flush();
-    expect(banner().getAttribute('data-mode')).toBe('design');
-    expect(banner().textContent).toContain('New automation');
+    expect(openApp).toHaveBeenCalledWith('/automate');
   });
 
-  test('sending from the chat after a run switches to designing that automation', async () => {
+  test('a finished run links to its results, and Close goes back to the list', async () => {
     replies['POST /api/workflows/wf-lead/run'] = { body: { run: { id: 'r1', status: 'done' }, steps: [] } };
-    replies['POST /api/workflows/wf-lead/agent'] = { status: 202, body: {} };
     await render();
     await act(async () => {
       button('Save as lead').click();
     });
     await flush();
-    await sendChat('Make the reply shorter');
-    expect(banner().getAttribute('data-mode')).toBe('design');
-    expect(banner().textContent).toContain('Save as lead');
-    expect(posts('/api/workflows/wf-lead/agent')).toHaveLength(1);
-    expect(container.textContent).toContain('Make the reply shorter');
+    await act(async () => {
+      button('See this run in the app').click();
+    });
+    expect(openApp).toHaveBeenCalledWith('/automations/wf-lead?mode=runs&run=r1');
+    await act(async () => {
+      button('Close').click();
+    });
+    expect(group('Automations for this page').textContent).toContain('Save as lead');
   });
 });
 
 describe('running', () => {
+  test('a fast run still shows one step working at a time, for the set pace', async () => {
+    vi.useFakeTimers();
+    try {
+      replies['POST /api/workflows/wf-lead/run'] = {
+        body: {
+          run: { id: 'r1', status: 'done' },
+          steps: [
+            { stepId: 'trigger', status: 'done', why: 'You clicked.' },
+            { stepId: 'approve', status: 'done', why: 'You said yes.' },
+            { stepId: 'draft', status: 'done', why: 'Drafted.' },
+          ],
+        },
+      };
+      await act(async () => {
+        root = createRoot(container);
+        root.render(createElement(ControlPlane, { site: 'gmail', connected: true, openApp, onOpenSettings, stepPace: () => 1500 }));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        button('Save as lead').click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const statuses = () => ['trigger', 'approve', 'draft'].map((id) => q(`[data-step="${id}"]`).getAttribute('data-status'));
+      expect(statuses()).toEqual(['running', 'pending', 'pending']);
+      expect(banner().textContent).toContain('Running');
+      expect(container.textContent).not.toContain('You clicked.');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(statuses()).toEqual(['done', 'running', 'pending']);
+      for (let i = 0; i < 2; i += 1) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1500);
+        });
+      }
+      expect(statuses()).toEqual(['done', 'done', 'done']);
+      expect(banner().textContent).toContain('Finished');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('steps run in flow order, not the order they were added', async () => {
+    const shuffled: Automation = {
+      ...LEAD,
+      steps: [LEAD.steps[1]!, LEAD.steps[0]!],
+      edges: [
+        { from: 'trigger', to: 'approve' },
+        { from: 'approve', to: 'draft' },
+      ],
+    };
+    replies['GET /api/workflows'] = { body: [shuffled] };
+    replies['POST /api/workflows/wf-lead/run'] = () => new Promise<Reply>(() => {});
+    await render();
+    await act(async () => {
+      button('Save as lead').click();
+    });
+    await flush();
+    expect([...container.querySelectorAll('[data-step]')].map((el) => el.getAttribute('data-step'))).toEqual([
+      'trigger',
+      'approve',
+      'draft',
+    ]);
+  });
+
   test('shows live step progress from the event stream', async () => {
     replies['POST /api/workflows/wf-lead/run'] = () => new Promise<Reply>(() => {});
     await render();
@@ -280,13 +319,15 @@ describe('running', () => {
       type: 'run',
       run: { id: 'r1', workflowId: 'wf-lead', status: 'running', kind: 'live' },
     });
-    await emit({
-      type: 'step',
-      stepRun: { runId: 'r1', stepId: 'draft', status: 'running' },
-    });
+    expect(q('[data-step="trigger"]').getAttribute('data-status')).toBe('running');
+    for (const stepId of ['trigger', 'approve']) {
+      await emit({ type: 'step', stepRun: { runId: 'r1', stepId, status: 'done' } });
+      await flush();
+    }
     const row = q('[data-step="draft"]');
     expect(row.getAttribute('data-status')).toBe('running');
     expect(row.textContent).toContain('Draft reply');
+    expect(row.textContent).toContain('Working…');
   });
 
   test('ignores step events from other runs', async () => {
@@ -413,109 +454,5 @@ describe('running', () => {
     await flush();
     expect(posts('/api/workflows/wf-posts/upload')).toHaveLength(1);
     expect(banner().textContent).toContain('Finished');
-  });
-});
-
-describe('designing', () => {
-  test('a first message with nothing selected creates an automation, then sends', async () => {
-    replies['POST /api/workflows'] = { body: { ...DRAFT, id: 'wf-new', name: 'Turn receipts into a sheet' } };
-    replies['POST /api/workflows/wf-new/agent'] = { status: 202, body: {} };
-    await render();
-    await sendChat('Turn receipts into a sheet every Friday please');
-    const created = JSON.parse(posts('/api/workflows')[0]![1].body as string);
-    expect(created).toEqual({
-      name: 'Turn receipts into a sheet every',
-      description: 'Turn receipts into a sheet every Friday please',
-    });
-    const sent = posts('/api/workflows/wf-new/agent')[0]!;
-    expect(JSON.parse(sent[1].body as string)).toEqual({
-      text: 'Turn receipts into a sheet every Friday please',
-    });
-    expect(container.textContent).toContain('Turn receipts into a sheet every Friday please');
-  });
-
-  test('a selected automation is changed in place, with its history shown', async () => {
-    replies['GET /api/workflows/wf-lead/agent'] = {
-      body: [{ role: 'agent', text: 'Built your lead saver.', at: 1 }],
-    };
-    replies['POST /api/workflows/wf-lead/agent'] = { status: 202, body: {} };
-    await render();
-    const select = q<HTMLSelectElement>('select');
-    await act(async () => {
-      select.value = 'wf-lead';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flush();
-    expect(container.textContent).toContain('Built your lead saver.');
-    await sendChat('Add a thank you line');
-    expect(posts('/api/workflows')).toHaveLength(0);
-    expect(posts('/api/workflows/wf-lead/agent')).toHaveLength(1);
-  });
-
-  test('live agent replies and answer chips appear, and a chip sends its answer', async () => {
-    replies['POST /api/workflows/wf-lead/agent'] = { status: 202, body: {} };
-    await render();
-    const select = q<HTMLSelectElement>('select');
-    await act(async () => {
-      select.value = 'wf-lead';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flush();
-    await sendChat('Change it');
-    await emit({ type: 'agent', workflowId: 'wf-lead', event: { type: 'say', text: 'Sure thing.' } });
-    await emit({
-      type: 'agent',
-      workflowId: 'wf-lead',
-      event: { type: 'ask', question: 'Which tone?', options: ['Warm', 'Formal'] },
-    });
-    await emit({ type: 'agent', workflowId: 'other', event: { type: 'say', text: 'Not for you.' } });
-    expect(container.textContent).toContain('Sure thing.');
-    expect(container.textContent).not.toContain('Not for you.');
-    await emit({ type: 'agent', workflowId: 'wf-lead', event: { type: 'done' } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 1600));
-    });
-    await act(async () => {
-      button('Warm').click();
-    });
-    await flush();
-    const calls = posts('/api/workflows/wf-lead/agent');
-    expect(JSON.parse(calls[calls.length - 1]![1].body as string)).toEqual({ text: 'Warm' });
-  });
-
-  test('send stays locked while the agent is working', async () => {
-    replies['POST /api/workflows/wf-lead/agent'] = { status: 202, body: {} };
-    await render();
-    const select = q<HTMLSelectElement>('select');
-    await act(async () => {
-      select.value = 'wf-lead';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flush();
-    await sendChat('Change it');
-    type('Another thing');
-    expect(button('Send').disabled).toBe(true);
-  });
-
-  test('a failed send is removed and explained', async () => {
-    replies['POST /api/workflows/wf-lead/agent'] = { status: 500, body: { error: 'Server broke.' } };
-    await render();
-    const select = q<HTMLSelectElement>('select');
-    await act(async () => {
-      select.value = 'wf-lead';
-      select.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await flush();
-    await sendChat('Change it');
-    expect(container.textContent).toContain('Server broke.');
-    expect(q('[data-testid="transcript"]').textContent).not.toContain('Change it');
-    expect(q<HTMLTextAreaElement>('[aria-label="Chat message"]').value).toBe('Change it');
-    expect(button('Send').disabled).toBe(false);
-  });
-
-  test('an unreachable app is explained', async () => {
-    fetchMock.mockRejectedValue(new Error('offline'));
-    await render();
-    expect(container.textContent).toContain("Can't reach the app");
   });
 });
