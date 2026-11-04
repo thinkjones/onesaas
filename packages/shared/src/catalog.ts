@@ -65,8 +65,15 @@ export const catalog: Record<string, StepDef> = {
     type: 'trigger.manual',
     kind: 'trigger',
     title: 'Manual trigger',
-    description: 'Runs when you start it by hand.',
-    sample: { payload: { hello: 'world' } },
+    description:
+      'Runs when you start it by hand. Started from the Chrome side panel, it reads the page you are on: payload has url, title and text, so use {{trigger.payload.text}} and {{trigger.payload.url}}.',
+    sample: {
+      payload: {
+        url: 'https://example.com/jobs/1234',
+        title: 'Pastry chef at Sweet Bakes',
+        text: 'Pastry chef. Sweet Bakes, Bristol. Full time, £32,000. Posted 3 days ago. Join our small team making celebration cakes.',
+      },
+    },
     configSchema: z.object({}),
     inputSchema: z.object({}),
     outputSchema: z.object({ payload: z.unknown() }),

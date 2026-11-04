@@ -36,12 +36,17 @@ async function readOpenEmail(bridge: ManualRunBridge) {
 /**
  * The real trigger payload for a run Dad starts from the side panel. Unlike
  * "Try it" there is never a sample fallback: a real run on made-up data could
- * save or draft things from an email that doesn't exist.
+ * save or draft things from an email that doesn't exist. `page` is the tab the
+ * panel read when Dad clicked; a manual trigger runs without it if it couldn't.
  */
-export async function manualRunPayload(wf: Workflow, bridge: ManualRunBridge): Promise<unknown> {
+export async function manualRunPayload(
+  wf: Workflow,
+  bridge: ManualRunBridge,
+  page?: { url: string; title: string; text: string },
+): Promise<unknown> {
   switch (wf.trigger.type) {
     case 'trigger.manual':
-      return { payload: {} };
+      return { payload: page ?? {} };
     case 'trigger.gmailButton':
       return { email: await readOpenEmail(bridge) };
     case 'trigger.email': {

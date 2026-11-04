@@ -146,6 +146,16 @@ export function createApp(deps: AppDeps): Hono {
     return c.json(modelConnection.getPublic());
   });
 
+  const manualRunBody = z.object({
+    page: z
+      .object({
+        url: z.string().max(4096),
+        title: z.string().max(2000),
+        text: z.string().max(30_000),
+      })
+      .optional(),
+  });
+
   const modelConnectionBody = z
     .object({
       baseUrl: z.string().optional(),
@@ -650,8 +660,18 @@ export function createApp(deps: AppDeps): Hono {
     if (wf.status !== 'on') return c.json({ error: 'Turn this automation on before running it.' }, 409);
     const problem = checkWorkflow(wf, tables)[0];
     if (problem) return c.json({ error: `This automation needs fixing: ${problem.problem}` }, 409);
+    // The panel's click sends no body when it couldn't read the page.
+    const rawRun = await c.req.text();
+    let runJson: unknown = {};
     try {
-      const payload = await manualRunPayload(wf, bridge);
+      if (rawRun !== '') runJson = JSON.parse(rawRun);
+    } catch {
+      return c.json({ error: 'Invalid run body' }, 400);
+    }
+    const parsedRun = manualRunBody.safeParse(runJson);
+    if (!parsedRun.success) return c.json({ error: 'Invalid run body' }, 400);
+    try {
+      const payload = await manualRunPayload(wf, bridge, parsedRun.data.page);
       const run = await engine.start(id, payload);
       return c.json({ run, steps: repo.getRun(run.id)?.steps ?? [] });
     } catch (err) {

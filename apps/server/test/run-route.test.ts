@@ -26,6 +26,21 @@ const post = (server: ReturnType<typeof createServer>, id: string) =>
   server.app.request(`/api/workflows/${id}/run`, { method: 'POST' });
 
 describe('POST /api/workflows/:id/run', () => {
+  test('a manual run carries the page the panel read, and rejects a bad one', async () => {
+    const { server, id } = setup('trigger.manual', {});
+    turnOn(server, id);
+    const page = { url: 'https://example.com/job', title: 'Job', text: 'Pastry chef' };
+    const send = (body: unknown) =>
+      server.app.request(`/api/workflows/${id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await send({ page: { ...page, text: 'x'.repeat(30_001) } })).status).toBe(400);
+    expect((await send({ page })).status).toBe(200);
+    expect(server.repo.listRuns({ workflowId: id })[0]!.triggerPayload).toEqual({ payload: page });
+  });
+
   test('an unknown automation is a 404', async () => {
     const { server } = setup('trigger.manual', {});
     expect((await post(server, 'nope')).status).toBe(404);

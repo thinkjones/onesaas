@@ -12,6 +12,7 @@ import Send from 'lucide-react/icons/send';
 import Settings from 'lucide-react/icons/settings';
 import { useEffect, useRef, useState } from 'react';
 import { groupAutomations, type Automation, type AutomationStep } from '../../lib/automations.js';
+import { readActivePage } from '../../lib/pageText.js';
 import { SITE_CAPABILITIES, type PanelSite } from '../../lib/sites.js';
 
 // Same origin the background socket uses; covered by host_permissions.
@@ -122,6 +123,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   const [automations, setAutomations] = useState<Automation[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [run, setRun] = useState<ActiveRun | null>(null);
+  const [pageUnread, setPageUnread] = useState(false);
   const [target, setTarget] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -305,6 +307,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   /** Runs `start`, whose response carries the run; the stream fills in progress. */
   async function trackRun(a: Automation, start: () => Promise<Response>) {
     updateRun({ automation: a, id: null, state: 'starting', steps: {}, error: null });
+    setPageUnread(false);
     setViewingDesign(false);
     setListOpen(false);
     setApprovalText(null);
@@ -334,7 +337,13 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
       photoInput.current?.click();
       return;
     }
-    void trackRun(a, () => postJson(`/api/workflows/${encodeURIComponent(a.id)}/run`));
+    void trackRun(a, async () => {
+      const path = `/api/workflows/${encodeURIComponent(a.id)}/run`;
+      if (a.trigger.type !== 'trigger.manual') return postJson(path);
+      const page = await readActivePage();
+      setPageUnread(page === null);
+      return postJson(path, page === null ? undefined : { page });
+    });
   };
 
   const onPhoto = (file: File | undefined) => {
@@ -447,6 +456,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   const runView = shownRun !== null && (
     <div className="run-view" data-testid="run-view">
       {shownRun.error !== null && <p className="error">{shownRun.error}</p>}
+      {pageUnread && <p className="dim">I couldn't read this page, so this run has nothing from it.</p>}
       {shownRun.state !== 'refused' && (
         <ol className="run-steps">
           {[shownRun.automation.trigger, ...shownRun.automation.steps].map((step) => {

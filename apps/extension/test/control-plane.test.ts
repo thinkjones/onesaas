@@ -8,6 +8,9 @@ import type { PanelSite } from '../lib/sites.js';
 
 const API = 'http://127.0.0.1:8787';
 
+const readActivePage = vi.hoisted(() => vi.fn());
+vi.mock('../lib/pageText.js', () => ({ readActivePage }));
+
 const LEAD: Automation = {
   id: 'wf-lead',
   name: 'Save as lead',
@@ -160,6 +163,32 @@ describe('mode is always clear', () => {
     expect(banner().getAttribute('data-mode')).toBe('design');
     expect(banner().textContent).toContain('Designing');
     expect(banner().textContent).toContain('New automation');
+  });
+
+  test('a manual automation sends the page, and says when it could not read one', async () => {
+    const job: Automation = { ...DRAFT, id: 'wf-job', name: 'Log job', status: 'on' };
+    replies['GET /api/workflows'] = { body: [job] };
+    replies['POST /api/workflows/wf-job/run'] = { body: { run: { id: 'r1', status: 'done' }, steps: [] } };
+    const page = { url: 'https://example.com/job', title: 'Job', text: 'Pastry chef' };
+    readActivePage.mockResolvedValueOnce(page);
+    await render();
+    await act(async () => {
+      button('Log job').click();
+    });
+    await flush();
+    expect(JSON.parse(posts('/api/workflows/wf-job/run')[0]![1]!.body as string)).toEqual({ page });
+    expect(container.textContent).not.toContain("couldn't read this page");
+
+    readActivePage.mockResolvedValueOnce(null);
+    await act(async () => {
+      q<HTMLButtonElement>('.list-toggle').click();
+    });
+    await act(async () => {
+      button('Log job').click();
+    });
+    await flush();
+    expect(posts('/api/workflows/wf-job/run')[1]![1]!.body).toBeUndefined();
+    expect(container.textContent).toContain("couldn't read this page");
   });
 
   test('clicking an automation that is on runs it for real and says so', async () => {

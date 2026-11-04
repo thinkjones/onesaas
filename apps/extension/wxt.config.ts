@@ -7,11 +7,8 @@ export default defineConfig({
     name: 'OneSaaS',
     version: '0.1.0',
     permissions: ['storage', 'tabs', 'activeTab', 'scripting', 'identity'],
-    host_permissions: [
-      'https://mail.google.com/*',
-      'https://calendar.google.com/*',
-      'https://business.facebook.com/*',
-      'http://127.0.0.1:8787/*',
-    ],
+    // A run started by hand reads whatever page Dad is on, so any site can be
+    // the source. Only read on his click; content scripts stay on the listed sites.
+    host_permissions: ['<all_urls>'],
   },
 });
