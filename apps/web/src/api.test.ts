@@ -49,7 +49,6 @@ describe('settings', () => {
   const doc = {
     timezone: 'America/New_York',
     textSize: 'normal',
-    sound: { on: true, volume: 0.25 },
     onboarded: false,
     moodFileIds: [],
   };

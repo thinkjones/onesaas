@@ -1,16 +1,15 @@
-import { POPULAR_IDEA_IDS, STAGE_LABEL, STARTER_IDEAS, type StarterIdea, type StarterStage } from '@onesaas/shared';
+import { ideasForOwner, POPULAR_IDEA_IDS, STAGE_LABEL, STARTER_IDEAS, type StarterIdea, type StarterStage } from '@onesaas/shared';
 import { useState } from 'react';
+import { useSettings } from '../api.ts';
 import FlowPreview from './FlowPreview.tsx';
 
-type Filter = 'popular' | StarterStage;
+type Filter = 'for-you' | 'popular' | StarterStage;
+
+const FOR_YOU_COUNT = 8;
 
 const POPULAR = POPULAR_IDEA_IDS.map((id) => STARTER_IDEAS.find((idea) => idea.id === id)!);
 
-function ideasFor(filter: Filter): StarterIdea[] {
-  return filter === 'popular' ? POPULAR : STARTER_IDEAS.filter((idea) => idea.stage === filter);
-}
-
-const FILTERS: { id: Filter; label: string }[] = [
+const FILTERS: { id: Exclude<Filter, 'for-you'>; label: string }[] = [
   { id: 'popular', label: 'Popular' },
   ...(Object.keys(STAGE_LABEL) as StarterStage[]).map((id) => ({ id, label: STAGE_LABEL[id] })),
 ];
@@ -23,13 +22,23 @@ export default function IdeaPicker({
   selectedId?: number;
   onPick: (idea: StarterIdea) => void;
 }) {
-  const [filter, setFilter] = useState<Filter>('popular');
+  const { settings } = useSettings();
+  // What setup learned about the owner comes first, when there's anything to go on.
+  const interests = settings?.interests ?? [];
+  const vertical = settings?.vertical ?? null;
+  const personal = interests.length > 0 || vertical !== null;
+  const forYou = personal ? ideasForOwner(interests, vertical).slice(0, FOR_YOU_COUNT) : [];
+  const [picked, setFilter] = useState<Filter | null>(null);
+  const filter = picked ?? (personal ? 'for-you' : 'popular');
+  const ideasFor = (f: Filter): StarterIdea[] =>
+    f === 'for-you' ? forYou : f === 'popular' ? POPULAR : STARTER_IDEAS.filter((idea) => idea.stage === f);
+  const filters = personal ? [{ id: 'for-you' as const, label: 'For you' }, ...FILTERS] : FILTERS;
   return (
     <div className="idea-picker">
       <div className="idea-picker-head">
         <h3 className="section-label m-0">Or start from an idea</h3>
         <div role="group" aria-label="Filter ideas" className="idea-chips">
-          {FILTERS.map((f) => (
+          {filters.map((f) => (
             <button
               key={f.id}
               type="button"

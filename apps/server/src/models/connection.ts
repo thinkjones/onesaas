@@ -30,6 +30,10 @@ export interface ModelConnectionPatch {
 
 export class ModelConnectionRejected extends Error {}
 
+export type ModelKeyStatus = 'ok' | 'missing' | 'rejected' | 'unknown';
+
+const KEY_CHECK_TIMEOUT_MS = 8000;
+
 /**
  * The saved endpoint lives in its own settings rows, not the settings document,
  * so GET /api/settings can never return the key. An empty patch value clears a
@@ -139,6 +143,23 @@ export function createModelClients(d: { store: ModelConnectionStore; envApiKey?:
       },
     } as Pick<OpenAI, 'images'>,
     metaApiKey,
+    /**
+     * Can the current key sign in? Listing models is free and needs a valid key.
+     * Only a clear no counts as rejected: a server without that route, or one
+     * that's offline, says nothing about the key.
+     */
+    async checkKey(): Promise<ModelKeyStatus> {
+      const c = d.store.get();
+      if (!c.baseUrl && metaApiKey() === undefined) return 'missing';
+      const client = c.baseUrl ? clientFor(c.baseUrl, c.apiKey ?? NO_KEY) : metaClient();
+      try {
+        await client.models.list({ timeout: KEY_CHECK_TIMEOUT_MS, maxRetries: 0 });
+        return 'ok';
+      } catch (err) {
+        const status = (err as { status?: unknown }).status;
+        return status === 401 || status === 403 ? 'rejected' : 'unknown';
+      }
+    },
     /** The model every chat role uses while a custom endpoint is saved. */
     customModel(): string | undefined {
       const c = d.store.get();

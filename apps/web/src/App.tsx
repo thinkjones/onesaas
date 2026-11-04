@@ -6,6 +6,7 @@ import { Toaster } from './components/ui/sonner.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
 import { AltClickExplainRoot } from './explain/Explain.tsx';
 import AppRoutes from './routes.tsx';
+import ModelKeyCheck from './shell/ModelKeyCheck.tsx';
 import DesktopGate from './shell/DesktopGate.tsx';
 import TextSizeProvider from './theme/TextSizeProvider.tsx';
 
@@ -31,10 +32,10 @@ function SettingsTextSize({ children }: { children: ReactNode }) {
   return <TextSizeProvider textSize={settings?.textSize ?? 'normal'}>{children}</TextSizeProvider>;
 }
 
-/** The setup page works on a phone; everything else still needs a bigger screen. */
+/** Setup and the Automate page work on a phone; everything else still needs a bigger screen. */
 function RouteGate({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
-  return <DesktopGate allowNarrow={pathname === '/automate'}>{children}</DesktopGate>;
+  return <DesktopGate allowNarrow={pathname === '/automate' || pathname === '/welcome'}>{children}</DesktopGate>;
 }
 
 function App() {
@@ -45,6 +46,7 @@ function App() {
           <BrowserRouter>
             <LiveEvents />
             <TimezoneSync />
+            <ModelKeyCheck />
             <RouteGate>
               <AppRoutes />
             </RouteGate>

@@ -36,22 +36,6 @@ test('update merges a patch and returns the full settings', () => {
   }
 });
 
-test('a partial sound patch keeps the other field', () => {
-  const db = openDb(':memory:');
-  try {
-    const store = createSettingsStore(db);
-    store.update({ sound: { on: false, volume: 0.5 } });
-    // Partial at runtime (the route requires both fields, the store is lenient).
-    const next = store.update({ sound: { on: true } } as Partial<
-      ReturnType<typeof store.get>
-    >);
-    expect(next.sound).toEqual({ on: true, volume: 0.5 });
-    expect(store.get().sound).toEqual({ on: true, volume: 0.5 });
-  } finally {
-    db.close();
-  }
-});
-
 test('a pre-M5 stored timezone migrates into the new settings', () => {
   const db = openDb(':memory:');
   try {

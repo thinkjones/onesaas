@@ -49,6 +49,7 @@ interface StubData {
   workflows?: Workflow[];
   runs?: Run[];
   failCreate?: boolean;
+  settings?: Record<string, unknown>;
 }
 
 function LocationProbe({
@@ -104,7 +105,7 @@ function renderHome(data?: StubData, opts?: { prefillProbe?: boolean }) {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ timezone: 'America/New_York' }),
+        json: async () => ({ timezone: 'America/New_York', ...data?.settings }),
       } as Response;
     }
     throw new Error(`unexpected fetch: ${method} ${url}`);
@@ -218,6 +219,17 @@ describe('HomePage', () => {
     fireEvent.click(runShop);
     expect(runShop.getAttribute('aria-pressed')).toBe('true');
     expect(ideaTitles()).toEqual(STARTER_IDEAS.filter((i) => i.stage === 'run').map((i) => i.title));
+  });
+
+  test('what setup learned comes first, as For you', async () => {
+    renderHome({ settings: { interests: [20], vertical: 'taxi' } });
+    await screen.findByRole('heading', { name: HEADING });
+    await screen.findByRole('button', { name: 'For you · 8' });
+    expect(ideaTitles().slice(0, 3)).toEqual([
+      'Tell me what needs me each morning',
+      'Text back missed calls',
+      'Let customers book themselves',
+    ]);
   });
 
   test('picking an idea fills the box and selects it, without building', async () => {

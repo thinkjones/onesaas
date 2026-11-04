@@ -153,19 +153,6 @@ export function parseDemoProfile(raw: string, source: string): DemoProfile {
   if (settings['onboarded'] !== undefined && typeof settings['onboarded'] !== 'boolean') {
     throw new Error(`Cannot use ${source}: settings.onboarded must be a boolean`);
   }
-  const sound = settings['sound'];
-  if (sound !== undefined) {
-    if (!isRecord(sound)) throw new Error(`Cannot use ${source}: settings.sound must be an object`);
-    if (sound['on'] !== undefined && typeof sound['on'] !== 'boolean') {
-      throw new Error(`Cannot use ${source}: settings.sound.on must be a boolean`);
-    }
-    if (
-      sound['volume'] !== undefined &&
-      (typeof sound['volume'] !== 'number' || sound['volume'] < 0 || sound['volume'] > 1)
-    ) {
-      throw new Error(`Cannot use ${source}: settings.sound.volume must be a number 0..1`);
-    }
-  }
   if (
     settings['moodFileIds'] !== undefined &&
     (!Array.isArray(settings['moodFileIds']) ||

@@ -218,6 +218,8 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
       },
     },
     modelConnection,
+    checkModelKey: clients.checkKey,
+    envModelKey: apiKey !== undefined,
   });
   return { app, db, tables, views, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
 }

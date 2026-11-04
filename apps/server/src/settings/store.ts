@@ -5,7 +5,7 @@ import {
   type PairingStore,
 } from '../bridge/pairing.js';
 
-/** M5 Task 1: the app-wide settings document (business profile, look, sound). */
+/** M5 Task 1: the app-wide settings document (business profile, look). */
 
 export type TextSize = 'normal' | 'large' | 'xlarge';
 
@@ -15,23 +15,27 @@ export interface Settings {
   /** IANA zone; '' until the web app's first-load sync stores the browser zone. */
   timezone: string;
   textSize: TextSize;
-  sound: { on: boolean; volume: number };
   onboarded: boolean;
   moodFileIds: string[];
+  /** The business type from onboarding, or null if none fits. */
+  vertical: string | null;
+  /** Playbook ids the owner highlighted in onboarding. Nothing is built from them. */
+  interests: number[];
+  interestsNote: string;
 }
 
 /** Key of the JSON settings document in the M1 `settings` key-value table. */
 export const APP_SETTINGS_KEY = 'app';
 
-/** Sound stays silent until the owner's first interaction unlocks it (Task 2); the
- * stored default is on at 0.25 — the unlock gate lives in the web app, not here. */
 export function defaultSettings(): Settings {
   return {
     timezone: '',
     textSize: 'normal',
-    sound: { on: true, volume: 0.25 },
     onboarded: false,
     moodFileIds: [],
+    vertical: null,
+    interests: [],
+    interestsNote: '',
   };
 }
 
@@ -58,13 +62,9 @@ function coerce(stored: unknown, legacyTimezone: string | undefined): Settings {
     'moodFileIds',
     (v) => Array.isArray(v) && v.every((id) => typeof id === 'string'),
   );
-  if (typeof doc['sound'] === 'object' && doc['sound'] !== null) {
-    const sound = doc['sound'] as Record<string, unknown>;
-    if (typeof sound['on'] === 'boolean') base.sound.on = sound['on'];
-    if (typeof sound['volume'] === 'number' && sound['volume'] >= 0 && sound['volume'] <= 1) {
-      base.sound.volume = sound['volume'];
-    }
-  }
+  pick('vertical', (v) => v === null || typeof v === 'string');
+  pick('interests', (v) => Array.isArray(v) && v.every((id) => typeof id === 'number'));
+  pick('interestsNote', (v) => typeof v === 'string');
   return base;
 }
 
@@ -90,10 +90,7 @@ export function createSettingsStore(db: Database, kv?: PairingStore): SettingsSt
   };
   const update = (patch: Partial<Settings>): Settings => {
     const current = get();
-    // Sound patches merge field-wise: { on } must not reset the volume.
-    const sound =
-      patch.sound === undefined ? current.sound : { ...current.sound, ...patch.sound };
-    const next = coerce({ ...current, ...patch, sound }, undefined);
+    const next = coerce({ ...current, ...patch }, undefined);
     // A patch never resurrects the legacy key: once the document exists it
     // is the timezone's home (get() prefers it over the legacy key).
     store.set(APP_SETTINGS_KEY, JSON.stringify(next));

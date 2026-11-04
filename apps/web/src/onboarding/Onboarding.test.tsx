@@ -1,21 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { MOOD_DRAW_TIMEOUT_MS, type Settings } from '../api.ts';
+import { afterEach, expect, test, vi } from 'vitest';
+import type { ModelKeyStatus, Settings } from '../api.ts';
 import AppRoutes from '../routes.tsx';
 import Onboarding from './Onboarding.tsx';
 import type { UseVoiceResult, VoiceState } from '../voice/useVoice.ts';
 
-// M5 Task 5: four-screen onboarding. The sound engine is stubbed: these tests
-// assert the onboarding *calls* unlock/ambient, not that audio plays.
-vi.mock('../sound/sound.ts', () => ({
-  sound: { unlock: vi.fn(), ambient: vi.fn(), chime: vi.fn(), setVolume: vi.fn(), setEnabled: vi.fn() },
-}));
-import { sound } from '../sound/sound.ts';
-
-const SCREEN1_COPY = "Technology has made running a business harder, not easier. That's not your fault.";
-const SCREEN3_COPY = "You've kept a business running through all of it. That's the hard part.";
+const WELCOME = "Technology has made running a business harder, not easier. That's not your fault.";
 
 function settingsDoc(overrides?: Partial<Settings>): Settings {
   return {
@@ -23,80 +15,77 @@ function settingsDoc(overrides?: Partial<Settings>): Settings {
     businessWhat: '',
     timezone: 'America/Los_Angeles',
     textSize: 'normal',
-    sound: { on: true, volume: 0.25 },
     onboarded: false,
     moodFileIds: [],
+    vertical: null,
+    interests: [],
+    interestsNote: '',
     ...overrides,
   };
 }
 
-interface FetchLog {
-  puts: unknown[];
+interface Log {
+  puts: Record<string, unknown>[];
+  connections: Record<string, unknown>[];
+  workflowCreates: number;
   moodPosts: number;
 }
 
-function stubFetch(
-  doc: Settings,
-  log: FetchLog,
-  pairing = { paired: false, connected: false },
-  moodOk = true,
-  putOk = true,
-): void {
+interface Stub {
+  doc?: Settings;
+  pairing?: { paired: boolean; connected: boolean };
+  check?: ModelKeyStatus | (() => ModelKeyStatus);
+  connection?: Record<string, unknown>;
+  putOk?: boolean;
+}
+
+function stubFetch(opts: Stub = {}): Log {
+  const log: Log = { puts: [], connections: [], workflowCreates: 0, moodPosts: 0 };
+  let doc = opts.doc ?? settingsDoc();
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/settings' && (init?.method === undefined || init?.method === 'GET')) {
-        return { ok: true, json: async () => doc } as Response;
-      }
-      if (url === '/api/settings' && init?.method === 'PUT') {
-        log.puts.push(JSON.parse(String(init.body)));
-        if (!putOk) {
+      const method = init?.method ?? 'GET';
+      if (url === '/api/settings' && method === 'GET') return ok(doc);
+      if (url === '/api/settings' && method === 'PUT') {
+        const patch = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        log.puts.push(patch);
+        if (opts.putOk === false) {
           return { ok: false, status: 500, text: async () => '{"error":"boom"}' } as Response;
         }
-        return { ok: true, json: async () => ({ ...doc, ...JSON.parse(String(init.body)) }) } as Response;
+        doc = { ...doc, ...patch };
+        return ok(doc);
       }
-      if (url === '/api/mood/generate' && init?.method === 'POST') {
+      if (url === '/api/mood/generate') {
         log.moodPosts += 1;
-        if (!moodOk) {
-          return { ok: false, status: 500, text: async () => '{"error":"boom"}' } as Response;
-        }
-        return { ok: true, json: async () => ({}) } as Response;
+        return ok({});
+      }
+      if (url === '/api/models/connection' && method === 'GET') {
+        return ok(opts.connection ?? { baseUrl: '', model: '', hasApiKey: false, hasEnvKey: false });
+      }
+      if (url === '/api/models/connection' && method === 'PUT') {
+        log.connections.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return ok({ baseUrl: '', model: '', hasApiKey: true });
+      }
+      if (url === '/api/models/check') {
+        const status = typeof opts.check === 'function' ? opts.check() : (opts.check ?? 'ok');
+        return ok({ status });
       }
       if (url === '/api/pairing/status') {
-        return { ok: true, json: async () => pairing } as Response;
+        return ok({ generation: 1, lastPingAt: null, peer: null, ...(opts.pairing ?? { paired: false, connected: false }) });
       }
-      // TopBar badges + Automate prompt (AppShell-level in the /settings and
-      // finish-path tests): empty runs, healthy models, no chores.
-      if (url === '/api/runs' || url === '/api/models/status' || url === '/api/workflows') {
-        return { ok: true, json: async () => [] } as Response;
+      if (url === '/api/pairing/start') return ok({ code: '482913' });
+      if (url === '/api/workflows' && method === 'POST') {
+        log.workflowCreates += 1;
+        return ok({ id: 'wf-new' });
       }
-      throw new Error(`unexpected fetch: ${url} ${init?.method}`);
+      if (url === '/api/runs' || url === '/api/models/status' || url === '/api/workflows') return ok([]);
+      throw new Error(`unexpected fetch: ${url} ${method}`);
     }),
   );
-}
-
-function renderOnboarding(
-  doc: Settings,
-  log: FetchLog,
-  path = '/welcome',
-  pairing = { paired: false, connected: false },
-  moodOk = true,
-  putOk = true,
-) {
-  stubFetch(doc, log, pairing, moodOk, putOk);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/welcome" element={<Onboarding />} />
-          <Route path="/" element={<div>Home</div>} />
-          <Route path="/automate" element={<div>Automate</div>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
+  return log;
 }
 
 function fakeVoice(): UseVoiceResult {
@@ -110,9 +99,52 @@ function fakeVoice(): UseVoiceResult {
   };
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+function renderSetup(opts: Stub = {}, useVoiceFn: () => UseVoiceResult = fakeVoice) {
+  const log = stubFetch(opts);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/welcome']}>
+        <Routes>
+          <Route path="/welcome" element={<Onboarding useVoiceFn={useVoiceFn} />} />
+          <Route path="/" element={<div>Home</div>} />
+          <Route path="/automate" element={<div>Automate page</div>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { log, ...view };
+}
+
+const press = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+const open = () => document.querySelector('[aria-current="step"]') as HTMLElement;
+const heading = (name: string) => screen.findByRole('heading', { level: 1, name });
+
+async function toBusiness() {
+  await heading(WELCOME);
+  press("Let's fix that");
+  await heading("What's your business, and what do you do?");
+}
+
+async function toInterests(what = 'Taxi and airport transfers') {
+  await toBusiness();
+  fireEvent.change(screen.getByLabelText('Business name'), { target: { value: 'Prestige Transfers' } });
+  fireEvent.change(screen.getByLabelText('What you do'), { target: { value: what } });
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+}
+
+async function toModel() {
+  await toInterests();
+  press('Next');
+  await heading('Can I reach your AI model?');
+}
+
+async function toConnect() {
+  await toModel();
+  fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
+  await heading('Install the Chrome extension');
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -120,372 +152,299 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('first render with onboarded:false shows the screen 1 copy exactly', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  expect(await screen.findByText(SCREEN1_COPY)).not.toBeNull();
-  expect(screen.getByRole('button', { name: "Let's fix that." })).not.toBeNull();
-  expect(screen.getByRole('progressbar', { name: 'Onboarding progress' })).toHaveProperty(
-    'ariaValueNow',
-    '1',
-  );
+test('all six nodes show, with only the current one open', async () => {
+  const { unmount } = renderSetup();
+  await heading(WELCOME);
+  expect(document.querySelectorAll('[aria-current="step"]')).toHaveLength(1);
+  expect(document.querySelectorAll('.onb-node-todo')).toHaveLength(5);
+  expect(screen.getByText('Your Automate page, set up for you')).toBeDefined();
+  const progress = screen.getByRole('progressbar', { name: 'Setup progress' });
+  expect(progress.getAttribute('aria-valuenow')).toBe('1');
+  expect(progress.getAttribute('aria-valuemax')).toBe('5');
+  expect(progress.textContent).toBe('Step 1 of 5');
   unmount();
 });
 
-test('welcome continues to the business screen and unlocks sound', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  expect(sound.unlock).toHaveBeenCalledTimes(1);
-  expect(sound.ambient).toHaveBeenCalledWith(true);
-  expect(await screen.findByText("What's your business called?")).not.toBeNull();
+test('every open step has a ? button that answers in the chat', async () => {
+  const { unmount } = renderSetup();
+  await heading(WELCOME);
+  press('What is this step?');
+  expect(within(screen.getByRole('complementary', { name: 'Chat' })).getByText(/This is where we start/)).toBeDefined();
   unmount();
 });
 
-test('filling screen 2 and pressing Next saves settings and calls the mood endpoint', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
+test('chips and typed messages get an answer in the chat', async () => {
+  const { unmount } = renderSetup();
+  await heading(WELCOME);
+  press('How long will this take?');
+  expect(screen.getByText(/A few minutes/)).toBeDefined();
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Can you do my taxes?' } });
+  press('Send');
+  expect(screen.getByText('Can you do my taxes?')).toBeDefined();
+  expect(screen.getByText(/can't look into that during setup/)).toBeDefined();
+  unmount();
+});
 
-  fireEvent.change(await screen.findByLabelText("What's your business called?"), {
-    target: { value: 'Corner Hardware' },
-  });
-  fireEvent.change(screen.getByLabelText('What do you do?'), {
-    target: { value: 'We run a family hardware store' },
-  });
-  // Timezone comes pre-filled from settings.
-  expect((screen.getByLabelText('Timezone') as HTMLInputElement).value).toBe('America/Los_Angeles');
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
-  expect(log.puts).toContainEqual({
-    businessName: 'Corner Hardware',
-    businessWhat: 'We run a family hardware store',
+test('the business step saves its fields, with the time zone by its real name', async () => {
+  const { log, unmount } = renderSetup();
+  await toInterests();
+  expect(log.puts[0]).toEqual({
+    businessName: 'Prestige Transfers',
+    businessWhat: 'Taxi and airport transfers',
     timezone: 'America/Los_Angeles',
+    vertical: 'taxi',
   });
-  expect(log.moodPosts).toBe(1);
+  expect(screen.getByText('Prestige Transfers runs taxi and airport transfers on Pacific time.')).toBeDefined();
   unmount();
 });
 
-test('screen 2 awaits the settings save before firing the mood POST', async () => {
-  const order: string[] = [];
-  const doc = settingsDoc();
-  // The PUT response stays pending until the test releases it, so any
-  // fire-and-forget POST would land in `order` before 'put-resolved'.
-  let resolvePut!: (res: Response) => void;
-  const putGate = new Promise<Response>((resolve) => {
-    resolvePut = resolve;
-  });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      const url = String(input);
-      if (url === '/api/settings' && (init?.method === undefined || init?.method === 'GET')) {
-        return { ok: true, json: async () => doc } as Response;
-      }
-      if (url === '/api/settings' && init?.method === 'PUT') {
-        order.push('put-request');
-        const res = await putGate;
-        order.push('put-resolved');
-        return res;
-      }
-      if (url === '/api/mood/generate' && init?.method === 'POST') {
-        order.push('mood-post');
-        return { ok: true, json: async () => ({}) } as Response;
-      }
-      if (url === '/api/pairing/status') {
-        return { ok: true, json: async () => ({ paired: false, connected: false }) } as Response;
-      }
-      throw new Error(`unexpected fetch: ${url} ${init?.method}`);
-    }),
-  );
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const { unmount } = render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/welcome']}>
-        <Routes>
-          <Route path="/welcome" element={<Onboarding />} />
-          <Route path="/" element={<div>Home</div>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  // The save is still in flight: the mood POST must not have fired yet.
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(order).not.toContain('mood-post');
-  await act(async () => {
-    resolvePut({ ok: true, json: async () => doc } as Response);
-    await putGate;
-  });
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
-  expect(order).toEqual(['put-request', 'put-resolved', 'mood-post']);
+test('the time zone shows a friendly label and accepts a city', async () => {
+  const { log, unmount } = renderSetup();
+  await toBusiness();
+  const zone = screen.getByLabelText('Your time zone') as HTMLInputElement;
+  expect(zone.value).toBe('Los Angeles (Pacific time)');
+  fireEvent.change(zone, { target: { value: 'Chicago' } });
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+  expect(log.puts[0]?.['timezone']).toBe('America/Chicago');
   unmount();
 });
 
-test('an invalid timezone shows an inline error and does not advance', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  fireEvent.change(await screen.findByLabelText('Timezone'), {
-    target: { value: 'Not/AZone' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  expect(await screen.findByRole('alert')).not.toBeNull();
-  expect(screen.getByRole('alert').textContent).toMatch(/valid timezone/);
-  // Still on screen 2: nothing saved, no mood POST, no advance.
-  expect(screen.getByLabelText("What's your business called?")).not.toBeNull();
-  expect(screen.queryByText(SCREEN3_COPY)).toBeNull();
+test('an unknown time zone shows an inline message and stays put', async () => {
+  const { log, unmount } = renderSetup();
+  await toBusiness();
+  fireEvent.change(screen.getByLabelText('Your time zone'), { target: { value: 'Mars/Olympus' } });
+  press('Looks good');
+  expect(await screen.findByRole('alert')).toBeDefined();
   expect(log.puts).toEqual([]);
-  expect(log.moodPosts).toBe(0);
-
-  // Fixing the zone clears the error and the same click advances.
-  fireEvent.change(screen.getByLabelText('Timezone'), {
-    target: { value: 'America/New_York' },
-  });
-  expect(screen.queryByRole('alert')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
+  expect(open().getAttribute('aria-label')).toBe('Your business');
   unmount();
 });
 
-test('a voice final fills the "What do you do?" field', async () => {
-  const doc = settingsDoc();
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  stubFetch(doc, log);
-  let finalCb: ((text: string) => void) | null = null;
+test('a voice final fills "What you do"', async () => {
+  // The field's mic and the chat's mic share the seam, so deliver to both.
+  const listeners = new Set<(text: string) => void>();
   const voice = fakeVoice();
-  voice.onFinal = vi.fn((cb: (text: string) => void) => {
-    finalCb = cb;
-  });
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const { unmount } = render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/welcome']}>
-        <Onboarding useVoiceFn={() => voice} />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  );
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText('What do you do?');
-  expect(finalCb).not.toBeNull();
-  act(() => {
-    finalCb!('We run a family hardware store');
-  });
-  expect((screen.getByLabelText('What do you do?') as HTMLInputElement).value).toBe(
-    'We run a family hardware store',
-  );
-  unmount();
-});
-
-test('screen 3 shows the reframe copy and three example cards', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
-  expect(screen.getByText(/Think about the chores that eat your evenings/)).not.toBeNull();
-  expect(screen.getByText('Answer customer emails faster')).not.toBeNull();
-  expect(screen.getByText('Keep track of bookings')).not.toBeNull();
-  expect(screen.getByText('Turn a photo into a post')).not.toBeNull();
-  unmount();
-});
-
-test('screen 3 after a fake 20s timer still shows the cards (defaults fallback)', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-
-  try {
-    // Fake timers from here: the Next click below schedules the fallback
-    // on the fake clock. The save it awaits is pure microtasks (no timers
-    // in the stub), so drain them until screen 3 lands — findBy's waitFor
-    // cannot poll under fake timers.
-    vi.useFakeTimers();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await act(async () => {
-      for (let i = 0; i < 100 && screen.queryByText(SCREEN3_COPY) === null; i++) {
-        await Promise.resolve();
-      }
-    });
-    expect(screen.getByText(SCREEN3_COPY)).not.toBeNull();
-    expect(screen.getByText('Drawing your business…')).not.toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(MOOD_DRAW_TIMEOUT_MS);
-    });
-    // The 20s fallback fired: the shimmer is gone but nothing blocks.
-    expect(screen.queryByText('Drawing your business…')).toBeNull();
-    expect(screen.getByText('Answer customer emails faster')).not.toBeNull();
-    expect(screen.getByText('Keep track of bookings')).not.toBeNull();
-    expect(screen.getByText('Turn a photo into a post')).not.toBeNull();
-    // And the backdrop still shows the bundled defaults.
-    const srcs = [...document.querySelectorAll('img')].map((img) => img.getAttribute('src'));
-    expect(srcs).toContain('/mood/default-1.jpg');
-  } finally {
-    vi.useRealTimers();
-  }
-  unmount();
-});
-
-test('a mood event swaps the backdrop to the generated set', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  // A scripted EventSource double: the test drives events through emit().
-  let onmessage: ((msg: MessageEvent) => void) | null = null;
-  vi.stubGlobal(
-    'EventSource',
-    class {
-      onmessage: ((msg: MessageEvent) => void) | null = null;
-      constructor() {
-        onmessage = (msg) => this.onmessage?.(msg);
-      }
-      close(): void {}
+  const useVoiceFn = () => ({
+    ...voice,
+    onFinal: (cb: (text: string) => void) => {
+      listeners.add(cb);
     },
-  );
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-
-  expect(onmessage).not.toBeNull();
-  act(() => {
-    onmessage!({ data: JSON.stringify({ type: 'mood', fileIds: ['aaa', 'bbb'] }) } as MessageEvent);
   });
-  const srcs = [...document.querySelectorAll('img')].map((img) => img.getAttribute('src'));
-  expect(srcs).toContain('/api/files/aaa');
-  expect(srcs).toContain('/api/files/bbb');
+  const { unmount } = renderSetup({}, useVoiceFn);
+  await toBusiness();
+  act(() => listeners.forEach((listen) => listen('We run a bakery')));
+  await waitFor(() => {
+    expect((screen.getByLabelText('What you do') as HTMLInputElement).value).toBe('We run a bakery');
+  });
   unmount();
 });
 
-test('Back is available on screens 2-4', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  await screen.findByText(SCREEN1_COPY);
-  expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
-
-  fireEvent.click(screen.getByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-  expect(await screen.findByText(SCREEN1_COPY)).not.toBeNull();
-
-  fireEvent.click(screen.getByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-  expect(await screen.findByLabelText("What's your business called?")).not.toBeNull();
-
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByRole('button', { name: 'Skip for now' });
-  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
+test('"Sounds like" guesses from the words, and can be changed', async () => {
+  const { log, unmount } = renderSetup();
+  await toBusiness();
+  const what = screen.getByLabelText('What you do');
+  fireEvent.change(what, { target: { value: 'We fix blocked drains' } });
+  const group = screen.getByRole('group', { name: 'Sounds like' });
+  expect(within(group).getByRole('button', { name: 'Plumber' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(within(group).getByRole('button', { name: 'Something else' }));
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+  expect(log.puts[0]?.['vertical']).toBeNull();
   unmount();
 });
 
-test('"Skip for now" on screen 4 sets onboarded:true and navigates to /automate', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+test('interests start with three from the pack, save, and build nothing', async () => {
+  const { log, unmount } = renderSetup();
+  await toInterests();
+  const pressed = () =>
+    [...open().querySelectorAll('.onb-tag[aria-pressed="true"]')].map((el) => el.textContent);
+  expect(screen.getByRole('group', { name: 'Popular with taxi owners' })).toBeDefined();
+  expect(pressed()).toEqual(['Missed calls', 'Taking bookings', 'Licences and insurance']);
+  expect(screen.getByText('3 highlighted')).toBeDefined();
+  press('Missed calls');
+  press('A morning summary');
+  fireEvent.change(screen.getByLabelText(/Anything else/), { target: { value: 'Airport pickups' } });
+  press('Next');
+  await heading('Can I reach your AI model?');
+  expect(log.puts[1]).toEqual({ interests: [3, 19, 20], interestsNote: 'Airport pickups' });
+  expect(log.workflowCreates).toBe(0);
+  expect(screen.getByText("You'd like help with taking bookings, licences and insurance and a morning summary.")).toBeDefined();
+  unmount();
+});
 
+test('Back and a done step both reopen with the saved values', async () => {
+  const { unmount } = renderSetup();
+  await toInterests();
+  press('Back');
+  await heading("What's your business, and what do you do?");
+  expect((screen.getByLabelText('Business name') as HTMLInputElement).value).toBe('Prestige Transfers');
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+  fireEvent.click(screen.getByRole('button', { name: /Prestige Transfers runs/ }));
+  await heading("What's your business, and what do you do?");
+  expect((screen.getByLabelText('What you do') as HTMLInputElement).value).toBe('Taxi and airport transfers');
+  unmount();
+});
+
+test('focus moves into each step that opens', async () => {
+  const { unmount } = renderSetup();
+  await heading(WELCOME);
+  press("Let's fix that");
+  const next = await heading("What's your business, and what do you do?");
+  expect(document.activeElement).toBe(next);
+  unmount();
+});
+
+test('with no key, the model step asks for one before going on', async () => {
+  const { unmount } = renderSetup();
+  await toModel();
+  const primary = screen.getByRole('button', { name: 'Looks good' }) as HTMLButtonElement;
+  expect(primary.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'k' } });
+  expect(primary.disabled).toBe(false);
+  unmount();
+});
+
+test('finishing lands on the Automate page, not Activity, even once the flag is saved', async () => {
+  const { unmount } = renderSetup();
+  await heading(WELCOME);
+  press('Skip setup');
+  expect(await screen.findByText('Automate page')).toBeDefined();
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  expect(screen.queryByText('Home')).toBeNull();
+  unmount();
+});
+
+test('a working key saves, checks and moves on', async () => {
+  const { log, unmount } = renderSetup({ check: 'ok' });
+  await toModel();
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'good-key' } });
+  press('Looks good');
+  await heading('Install the Chrome extension');
+  expect(log.connections[0]).toMatchObject({ apiKey: 'good-key' });
+  expect(screen.getByText("Your AI model answered. I'm ready to think.")).toBeDefined();
+  unmount();
+});
+
+test('a rejected key shows what to fix and keeps the primary shut until edited', async () => {
+  const { unmount } = renderSetup({ check: 'rejected' });
+  await toModel();
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'bad-key' } });
+  press('Looks good');
+  expect(await screen.findByText('Needs a look')).toBeDefined();
+  expect(screen.getByText(/turned down your API key/)).toBeDefined();
+  expect(open().getAttribute('data-failed')).toBe('true');
+  expect((screen.getByRole('button', { name: 'Looks good' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'another' } });
+  expect((screen.getByRole('button', { name: 'Looks good' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(open().getAttribute('data-failed')).toBe('false');
+  unmount();
+});
+
+test('when the check can\'t tell, it warns and lets you carry on', async () => {
+  const { unmount } = renderSetup({ check: 'unknown' });
+  await toModel();
+  fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'k' } });
+  press('Looks good');
+  expect(await screen.findByText(/couldn't check this from here/)).toBeDefined();
+  press('Looks good');
+  await heading('Install the Chrome extension');
+  unmount();
+});
+
+test('a key already set is checked straight away, with nothing to paste', async () => {
+  const { unmount } = renderSetup({ connection: { baseUrl: '', model: '', hasApiKey: false, hasEnvKey: true }, check: 'ok' });
+  await toModel();
+  expect(await screen.findByText(/found a key already set/)).toBeDefined();
+  expect(await screen.findByText("Your model answered. I'm ready to think.")).toBeDefined();
+  press('Looks good');
+  await heading('Install the Chrome extension');
+  unmount();
+});
+
+test('skipping the model marks it Skipped', async () => {
+  const { unmount } = renderSetup();
+  await toConnect();
+  expect(screen.getByText('Skipped for now.')).toBeDefined();
+  expect(screen.getByText('Skipped')).toBeDefined();
+  unmount();
+});
+
+test('the extension step shows its code; Finish waits for pairing and Skip finishes', async () => {
+  const { log, unmount } = renderSetup();
+  await toConnect();
+  expect(await screen.findByText('482 913')).toBeDefined();
+  expect((screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement).disabled).toBe(true);
+  press('Skip for now');
+  expect(await screen.findByText('Automate page')).toBeDefined();
+  expect(log.puts.at(-1)).toEqual({ onboarded: true });
+  unmount();
+});
+
+test('once paired, Finish setup finishes', async () => {
+  const { log, unmount } = renderSetup({ pairing: { paired: true, connected: true } });
+  await toConnect();
+  await waitFor(() => {
+    expect((screen.getByRole('button', { name: 'Finish setup' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+  press('Finish setup');
+  expect(await screen.findByText('Automate page')).toBeDefined();
+  expect(log.puts.at(-1)).toEqual({ onboarded: true });
+  unmount();
+});
+
+test('Skip setup finishes from any step', async () => {
+  const { log, unmount } = renderSetup();
+  await heading(WELCOME);
+  press('Skip setup');
+  expect(await screen.findByText('Automate page')).toBeDefined();
+  expect(log.puts.at(-1)).toEqual({ onboarded: true });
+  unmount();
+});
+
+test('a failed save never blocks setup', async () => {
+  const { unmount } = renderSetup({ putOk: false });
+  await toBusiness();
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+  unmount();
+});
+
+test('no step ever mentions Gmail, and no drawing is requested', async () => {
+  const { log, container, unmount } = renderSetup();
+  await heading(WELCOME);
+  expect(container.textContent).not.toMatch(/gmail/i);
+  await toInterestsFromWelcome();
+  expect(container.textContent).not.toMatch(/gmail/i);
+  press('Next');
+  await heading('Can I reach your AI model?');
+  expect(container.textContent).not.toMatch(/gmail/i);
   fireEvent.click(await screen.findByRole('button', { name: 'Skip for now' }));
-  expect(await screen.findByText('Automate')).not.toBeNull();
-  expect(log.puts).toContainEqual({ onboarded: true });
+  await heading('Install the Chrome extension');
+  expect(await screen.findByText('482 913')).toBeDefined();
+  expect(container.textContent).not.toMatch(/gmail/i);
+  expect(log.moodPosts).toBe(0);
   unmount();
 });
 
-test('"Finish" on screen 4 sets onboarded:true and navigates to /automate', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  fireEvent.click(await screen.findByRole('button', { name: 'Finish' }));
-  expect(await screen.findByText('Automate')).not.toBeNull();
-  expect(log.puts).toContainEqual({ onboarded: true });
-  unmount();
-});
-
-test('a failing mood POST still advances to screen 3', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(
-    settingsDoc(),
-    log,
-    '/welcome',
-    { paired: false, connected: false },
-    false,
-  );
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  // The 500 is swallowed (best-effort): onboarding still advances.
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
-  expect(log.moodPosts).toBe(1);
-  unmount();
-});
-
-test('screen 4 shows a big checkmark once the extension is paired', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log, '/welcome', {
-    paired: true,
-    connected: true,
-  });
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  expect(await screen.findByRole('img', { name: 'Chrome extension paired' })).not.toBeNull();
-  unmount();
-});
-
-test('screen 4 links to the unpacked-extension install instructions', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc(), log);
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  await screen.findByText(SCREEN3_COPY);
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  const link = await screen.findByRole('link', { name: 'Install the extension' });
-  expect(link.getAttribute('href')).toBe(
-    'https://github.com/thinkjones/meta-ai-hackathon-my-dads-ai-agent#loading-the-extension-unpacked',
-  );
-  // Unpaired: the big checkmark stays hidden.
-  expect(screen.queryByRole('img', { name: 'Chrome extension paired' })).toBeNull();
-  unmount();
-});
+async function toInterestsFromWelcome() {
+  press("Let's fix that");
+  await heading("What's your business, and what do you do?");
+  press('Looks good');
+  await heading("Highlight anything you'd like help with");
+}
 
 test('an already-onboarded visit to /welcome goes to /', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(settingsDoc({ onboarded: true }), log);
-  expect(await screen.findByText('Home')).not.toBeNull();
+  const { unmount } = renderSetup({ doc: settingsDoc({ onboarded: true }) });
+  expect(await screen.findByText('Home')).toBeDefined();
   unmount();
 });
 
 test('any route redirects to /welcome when onboarded is false', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  stubFetch(settingsDoc(), log);
+  stubFetch();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const { unmount } = render(
     <QueryClientProvider client={client}>
@@ -494,13 +453,12 @@ test('any route redirects to /welcome when onboarded is false', async () => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  expect(await screen.findByText(SCREEN1_COPY)).not.toBeNull();
+  expect(await screen.findByText(WELCOME)).not.toBeNull();
   unmount();
 });
 
 test('no redirect when onboarded is true', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  stubFetch(settingsDoc({ onboarded: true }), log);
+  stubFetch({ doc: settingsDoc({ onboarded: true }) });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const { unmount } = render(
     <QueryClientProvider client={client}>
@@ -510,13 +468,12 @@ test('no redirect when onboarded is true', async () => {
     </QueryClientProvider>,
   );
   expect(await screen.findByRole('heading', { name: 'Settings' })).not.toBeNull();
-  expect(screen.queryByText(SCREEN1_COPY)).toBeNull();
+  expect(screen.queryByText(WELCOME)).toBeNull();
   unmount();
 });
 
 test('the gate renders Loading… while settings load (no content, no redirect)', async () => {
   const doc = settingsDoc();
-  const log: FetchLog = { puts: [], moodPosts: 0 };
   // The settings GET stays pending until the test releases it.
   let resolveGet!: (res: Response) => void;
   const getGate = new Promise<Response>((resolve) => {
@@ -528,14 +485,6 @@ test('the gate renders Loading… while settings load (no content, no redirect)'
       const url = String(input);
       if (url === '/api/settings' && (init?.method === undefined || init?.method === 'GET')) {
         return getGate;
-      }
-      if (url === '/api/settings' && init?.method === 'PUT') {
-        log.puts.push(JSON.parse(String(init.body)));
-        return { ok: true, json: async () => doc } as Response;
-      }
-      if (url === '/api/mood/generate' && init?.method === 'POST') {
-        log.moodPosts += 1;
-        return { ok: true, json: async () => ({}) } as Response;
       }
       if (url === '/api/pairing/status') {
         return { ok: true, json: async () => ({ paired: false, connected: false }) } as Response;
@@ -555,35 +504,14 @@ test('the gate renders Loading… while settings load (no content, no redirect)'
   // While settings are in flight: the placeholder, and nothing else.
   expect(await screen.findByText('Loading…')).not.toBeNull();
   expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull();
-  expect(screen.queryByText(SCREEN1_COPY)).toBeNull();
+  expect(screen.queryByText(WELCOME)).toBeNull();
 
   // Once settings land, the normal gate behavior resumes (redirect to /welcome).
   await act(async () => {
     resolveGet({ ok: true, json: async () => doc } as Response);
     await getGate;
   });
-  expect(await screen.findByText(SCREEN1_COPY)).not.toBeNull();
+  expect(await screen.findByText(WELCOME)).not.toBeNull();
   unmount();
 });
 
-test('a failing settings PUT still advances to screen 3 and fires the mood POST', async () => {
-  const log: FetchLog = { puts: [], moodPosts: 0 };
-  const { unmount } = renderOnboarding(
-    settingsDoc(),
-    log,
-    '/welcome',
-    { paired: false, connected: false },
-    true,
-    false,
-  );
-  fireEvent.click(await screen.findByRole('button', { name: "Let's fix that." }));
-  await screen.findByLabelText("What's your business called?");
-  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-
-  // The 500 is swallowed by the try/catch (never-block): onboarding still
-  // advances and the mood POST still fires.
-  expect(await screen.findByText(SCREEN3_COPY)).not.toBeNull();
-  expect(log.puts).toHaveLength(1);
-  expect(log.moodPosts).toBe(1);
-  unmount();
-});

@@ -40,8 +40,6 @@ import { formatRunStart, runDisplayName } from '../runtime/format.ts';
 import { isRunsMode, preferredRun, resolveStepId } from '../runtime/params.ts';
 import RunsList from '../runtime/RunsList.tsx';
 import BarActions from '../shell/BarActions.tsx';
-import { sound } from '../sound/sound.ts';
-import { useSound } from '../sound/useSound.ts';
 import AppButton from './AppButton.tsx';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';
 import EmptyState from './EmptyState.tsx';
@@ -72,7 +70,7 @@ export interface DesignViewProps {
   /** Shown in the Runs view (the photo drop for upload flows). */
   runsExtra?: ReactNode;
   /**
-   * Fired when an agent-built step lands on the canvas (the M5 chime hook).
+   * Fired when an agent-built step lands on the canvas.
    * No-op by default.
    */
   onBuilt?(info: BuiltInfo): void;
@@ -191,9 +189,6 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
   const { mutateAsync } = op;
   const testRun = useTestRun(workflowId);
   const deleteWorkflow = useDeleteWorkflow();
-  // Ambient loops while the design screen is mounted; unmounting (e.g.
-  // switching to runtime mode) stops them.
-  useSound(true);
   const [ghosts, setGhosts] = useState<GhostStep[]>([]);
   const [ghostEdges, setGhostEdges] = useState<Edge[]>([]);
   const [matchedGhostIds, setMatchedGhostIds] = useState<string[]>([]);
@@ -295,7 +290,6 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
               usedSample: runDetail.run.usedSample,
               story: runDetail.story,
             });
-            sound.chime('done');
           },
           () => toast.error("Couldn't load the test results."),
         );
@@ -344,7 +338,6 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
     for (const id of resolved) {
       if (!builtFired.current.has(id)) {
         builtFired.current.add(id);
-        sound.chime('step');
         onBuilt?.({ stepId: id, title: stepsById.get(id)!.title });
         logActivity(`Built "${stepsById.get(id)!.title}".`);
       }
@@ -709,7 +702,6 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
     testRun.mutate(undefined, {
       onSuccess: (res) => {
         setTestResult(res);
-        sound.chime('done');
       },
       onError: (err) => toastOpError(err),
     });

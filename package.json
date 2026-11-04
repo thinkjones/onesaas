@@ -4,6 +4,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.9",
   "scripts": {
+    "start": "pnpm --filter @onesaas/extension build && pnpm --filter @onesaas/server --filter @onesaas/web --parallel dev",
     "dev": "pnpm -r --parallel dev",
     "dev:desktop": "pnpm --filter @onesaas/server --filter @onesaas/web --parallel dev",
     "dev:desktop:pre": "mkdir -p src-tauri/resources && touch src-tauri/resources/dev-placeholder.txt && mkdir -p src-tauri/bin && TRIPLE=$(uname -m | sed s/arm64/aarch64/)-apple-darwin && [ -f src-tauri/bin/server-$TRIPLE ] || cp \"$(node -p process.execPath)\" src-tauri/bin/server-$TRIPLE",

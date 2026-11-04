@@ -60,7 +60,6 @@ async function seedLivedIn(dataDir: string): Promise<{ moodId: string }> {
       businessWhat: 'a family hardware store',
       timezone: 'America/New_York',
       textSize: 'large',
-      sound: { on: true, volume: 0.25 },
       onboarded: true,
     });
     const ref = await files.saveUpload(await tinyJpeg(), 'image/jpeg', { id: 'mood-test-1' });
@@ -260,13 +259,6 @@ describe('corrupt demo profiles fail loudly and delete nothing', () => {
     {
       name: 'scalar garbage: onboarded',
       corrupt: (p) => ({ ...p, settings: { ...p.settings, onboarded: 'yes' } }),
-    },
-    {
-      name: 'scalar garbage: sound.volume',
-      corrupt: (p) => ({
-        ...p,
-        settings: { ...p.settings, sound: { on: true, volume: 'loud' } },
-      }),
     },
   ];
 

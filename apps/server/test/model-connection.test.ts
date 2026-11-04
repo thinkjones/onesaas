@@ -22,7 +22,7 @@ describe('/api/models/connection', () => {
     const expected = { baseUrl: 'https://llm.example/v1', model: 'gpt-x', hasApiKey: true };
     expect(await res.json()).toEqual(expected);
     const got = await server.app.request('/api/models/connection');
-    expect(await got.json()).toEqual(expected);
+    expect(await got.json()).toMatchObject(expected);
     const settings = await (await server.app.request('/api/settings')).text();
     expect(settings).not.toContain('sk-secret');
   });
@@ -33,7 +33,7 @@ describe('/api/models/connection', () => {
     expect((await put(server, { ...CUSTOM, baseUrl: 'nope' })).status).toBe(400);
     expect((await put(server, { baseUrl: 'https://llm.example/v1' })).status).toBe(400);
     const got = await server.app.request('/api/models/connection');
-    expect(await got.json()).toEqual({ baseUrl: '', model: '', hasApiKey: false });
+    expect(await got.json()).toMatchObject({ baseUrl: '', model: '', hasApiKey: false });
   });
 
   test('moving endpoint forgets the old key, and editing the model keeps it', async () => {

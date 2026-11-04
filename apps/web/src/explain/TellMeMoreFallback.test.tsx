@@ -85,12 +85,10 @@ function renderShell(
     if (url === '/api/runs') return ok([]);
     if (url === '/api/views') return ok([]);
     if (url === '/api/lists') return ok([]);
-    // Full shape: DesignView's useSound reads settings.sound.
     if (url === '/api/settings')
       return ok({
         timezone: 'America/New_York',
         textSize: 'normal',
-        sound: { on: false, volume: 0.5 },
         onboarded: true,
         moodFileIds: [],
       });
@@ -284,7 +282,6 @@ describe('TellMeMoreFallback', () => {
         return ok({
           timezone: 'America/New_York',
           textSize: 'normal',
-          sound: { on: false, volume: 0.5 },
           onboarded: true,
           moodFileIds: [],
         });

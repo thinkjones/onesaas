@@ -46,7 +46,7 @@ export const UI_DESCRIPTIONS: Record<string, string> = {
     'Automate is where you describe a chore and build a new automation, and see your automations and pinned numbers at a glance.',
   'nav-data': 'Data is the things your business keeps track of, like customers and bookings.',
   'nav-settings':
-    'Settings is where you tell the app about your business and how you want it to look and sound.',
+    'Settings is where you tell the app about your business and how you want it to look.',
 };
 
 const EXPLAIN_SYSTEM =

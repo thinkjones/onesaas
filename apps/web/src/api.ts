@@ -208,13 +208,15 @@ export interface Settings {
   /** IANA zone; '' until the first-load sync stores the browser zone. */
   timezone: string;
   textSize: 'normal' | 'large' | 'xlarge';
-  sound: { on: boolean; volume: number };
   onboarded: boolean;
   moodFileIds: string[];
+  vertical: string | null;
+  interests: number[];
+  interestsNote: string;
 }
 
-/** PUT /api/settings takes a partial patch; sound is always sent whole. */
-export type SettingsPatch = Partial<Omit<Settings, 'sound'>> & { sound?: Settings['sound'] };
+/** PUT /api/settings takes a partial patch. */
+export type SettingsPatch = Partial<Settings>;
 
 /** GET /api/settings: the full settings document. */
 export function getSettings(): Promise<Settings> {
@@ -244,6 +246,8 @@ export interface ModelConnection {
   baseUrl: string;
   model: string;
   hasApiKey: boolean;
+  /** A key in MODEL_API_KEY. GET only. */
+  hasEnvKey?: boolean;
 }
 
 export function getModelConnection(): Promise<ModelConnection> {
@@ -305,7 +309,6 @@ export function useSettings(): {
         client.setQueryData<Settings>(['settings'], {
           ...previous,
           ...patch,
-          sound: patch.sound ?? previous.sound,
         });
       }
       return { previous };
@@ -419,6 +422,13 @@ export interface ModelStatus {
   model: string;
   healthy: boolean;
   note?: string;
+}
+
+export type ModelKeyStatus = 'ok' | 'missing' | 'rejected' | 'unknown';
+
+/** GET /api/models/check: can the current key sign in to the AI model? */
+export function getModelKeyCheck(): Promise<{ status: ModelKeyStatus }> {
+  return getJson('/api/models/check');
 }
 
 /** GET /api/models/status: the per-role rows for Settings → Thinking. */

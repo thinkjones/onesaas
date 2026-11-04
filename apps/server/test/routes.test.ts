@@ -133,9 +133,11 @@ test('GET /api/settings returns the default document on a fresh server', async (
   expect(await res.json()).toEqual({
     timezone: '',
     textSize: 'normal',
-    sound: { on: true, volume: 0.25 },
     onboarded: false,
     moodFileIds: [],
+    vertical: null,
+    interests: [],
+    interestsNote: '',
   });
 });
 
@@ -209,14 +211,13 @@ test('PUT /api/settings rejects whitespace-only and non-IANA zones and persists 
   ).toBe('Europe/Paris');
 });
 
-test('PUT /api/settings rejects bad text size, sound, legacy theme and unknown keys', async () => {
+test('PUT /api/settings rejects bad text size, legacy theme and unknown keys', async () => {
   const { app } = createServer({ dbFile: ':memory:' });
   const before = await (await app.request('/api/settings')).json();
   for (const body of [
     '{"theme":"evening"}',
     '{"textSize":"huge"}',
-    '{"sound":{"on":true}}',
-    '{"sound":{"on":true,"volume":2}}',
+    '{"sound":{"on":true,"volume":0.5}}',
     '{"onboarded":"yes"}',
     '{"bogus":1}',
   ]) {

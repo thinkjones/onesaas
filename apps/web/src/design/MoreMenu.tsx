@@ -1,6 +1,5 @@
 import Ellipsis from 'lucide-react/icons/ellipsis';
 import { useEffect, useRef, useState } from 'react';
-import { useSettings } from '../api.ts';
 
 const ARM_MS = 5000;
 
@@ -25,7 +24,6 @@ export default function MoreMenu({
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   const root = useRef<HTMLDivElement | null>(null);
-  const { settings, update } = useSettings();
 
   useEffect(() => {
     if (!open) return;
@@ -53,14 +51,13 @@ export default function MoreMenu({
     setOpen(false);
     fn();
   };
-  const soundOn = settings?.sound.on ?? false;
 
   return (
     <div ref={root} className="more-menu">
       <button
         type="button"
         className="ic"
-        aria-label="More: rename, copy, sound, delete"
+        aria-label="More: rename, copy, delete"
         aria-haspopup="menu"
         aria-expanded={open}
         style={{ background: 'transparent', border: 0, boxShadow: 'none', padding: 0 }}
@@ -79,15 +76,6 @@ export default function MoreMenu({
           <button type="button" role="menuitem" onClick={run(onCopy)}>
             Copy name and id
           </button>
-          {settings && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => update({ sound: { ...settings.sound, on: !soundOn } })}
-            >
-              {soundOn ? 'Turn sound off' : 'Turn sound on'}
-            </button>
-          )}
           {onUnpublish && (
             <button type="button" role="menuitem" onClick={run(onUnpublish)}>
               Unpublish

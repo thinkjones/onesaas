@@ -6,10 +6,9 @@ import PlugIcon from 'lucide-react/icons/plug';
 import PaletteIcon from 'lucide-react/icons/palette';
 import RotateCcwIcon from 'lucide-react/icons/rotate-ccw';
 import ServerIcon from 'lucide-react/icons/server';
-import Volume2Icon from 'lucide-react/icons/volume-2';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import Pairing from '../Pairing.tsx';
 import {
@@ -17,6 +16,7 @@ import {
   ApiError,
   getDebugEvents,
   getModelConnection,
+  getModelKeyCheck,
   getPairingStatus,
   isTauri,
   putModelConnection,
@@ -28,10 +28,10 @@ import {
   type Settings,
   type SettingsPatch,
 } from '../api.ts';
-import { Switch } from '../components/ui/switch.tsx';
 import AppButton from '../design/AppButton.tsx';
 import ArmableButton from '../design/ArmableButton.tsx';
 import CardHeading from '../design/CardHeading.tsx';
+import { KEY_PROBLEM } from '../shell/fixModelKey.ts';
 import type { TextSize } from '../theme/TextSizeProvider.tsx';
 
 const inputClass =
@@ -176,51 +176,6 @@ function LookSection({
   );
 }
 
-function SoundSection({
-  settings,
-  update,
-}: {
-  settings: Settings;
-  update: (patch: SettingsPatch) => void;
-}) {
-  const percent = Math.round(settings.sound.volume * 100);
-  return (
-    <section className="panel" aria-label="Sound">
-      <CardHeading icon={Volume2Icon} title="Sound" />
-      <div className="mt-2 space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <label htmlFor="settings-sound-on" className="text-sm font-medium">
-            Play background sound and chimes
-          </label>
-          <Switch
-            id="settings-sound-on"
-            checked={settings.sound.on}
-            onCheckedChange={(on) => update({ sound: { ...settings.sound, on } })}
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <label htmlFor="settings-sound-volume" className="shrink-0 text-sm font-medium">
-            Volume
-          </label>
-          <input
-            id="settings-sound-volume"
-            type="range"
-            min={0}
-            max={100}
-            value={percent}
-            disabled={!settings.sound.on}
-            onChange={(e) =>
-              update({ sound: { ...settings.sound, volume: Number(e.target.value) / 100 } })
-            }
-            className="w-full accent-[hsl(var(--primary))] disabled:opacity-40"
-          />
-          <span className="w-12 shrink-0 text-right text-sm tabular-nums">{percent}%</span>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 const ROLE_LABELS: Record<ModelStatus['role'], string> = {
   builder: 'Building automations',
   planner: 'Big plans',
@@ -241,7 +196,7 @@ function modelDisplayName(row: ModelStatus): string {
   return META_MODEL_NAMES[row.model] ?? row.model;
 }
 
-function ModelEndpointForm({ saved }: { saved: ModelConnection }) {
+function ModelEndpointForm({ saved, focusKey }: { saved: ModelConnection; focusKey: boolean }) {
   const queryClient = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(saved.baseUrl);
   const [model, setModel] = useState(saved.model);
@@ -251,6 +206,7 @@ function ModelEndpointForm({ saved }: { saved: ModelConnection }) {
     onSuccess: (next) => {
       queryClient.setQueryData(['model-connection'], next);
       void queryClient.invalidateQueries({ queryKey: ['model-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['model-check'] });
       setBaseUrl(next.baseUrl);
       setModel(next.model);
       setApiKey('');
@@ -294,6 +250,8 @@ function ModelEndpointForm({ saved }: { saved: ModelConnection }) {
           id="settings-model-key"
           className={inputClass}
           type="password"
+          // Sent here to fix the key, so it's ready to paste into.
+          autoFocus={focusKey}
           placeholder={saved.hasApiKey ? 'Saved. Type to replace it.' : 'Paste your key'}
           autoComplete="off"
           value={apiKey}
@@ -337,13 +295,55 @@ function ModelEndpointForm({ saved }: { saved: ModelConnection }) {
   );
 }
 
+/** Sent here from launch when the key doesn't work: the fix comes first. */
+function ModelKeyNotice() {
+  const { data } = useQuery({
+    queryKey: ['model-check'],
+    queryFn: getModelKeyCheck,
+    staleTime: Infinity,
+  });
+  if (data === undefined) return null;
+  const problem = data.status === 'missing' || data.status === 'rejected' ? KEY_PROBLEM[data.status] : undefined;
+  if (problem !== undefined) {
+    return (
+      <div role="alert" className="mt-2 rounded-[var(--radius-s)] bg-danger-soft p-3 text-destructive">
+        <p className="m-0">{problem}</p>
+        <p className="m-0 mt-1 text-sm">
+          Get a key at{' '}
+          <a href="https://api.meta.ai" target="_blank" rel="noreferrer" className="underline">
+            api.meta.ai
+          </a>
+          , or use any OpenAI-compatible service.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-s)] bg-success-soft p-3 text-success">
+      <span>
+        {data.status === 'ok' ? 'Your key works.' : "Saved. I couldn't check it from here, so try building something."}
+      </span>
+      <Link to="/" className="font-semibold underline">
+        Continue
+      </Link>
+    </div>
+  );
+}
+
 function ModelEndpointSection() {
   const { data, isError } = useQuery({ queryKey: ['model-connection'], queryFn: getModelConnection });
+  const [params] = useSearchParams();
+  const fixing = params.get('fix') === 'model';
+  const section = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (fixing) section.current?.scrollIntoView?.({ block: 'start' });
+  }, [fixing]);
   return (
-    <section className="panel" aria-label="AI model endpoint">
+    <section ref={section} className="panel scroll-mt-20" aria-label="AI model endpoint">
       <CardHeading icon={PlugIcon} title="AI model endpoint" />
+      {fixing && <ModelKeyNotice />}
       {data !== undefined ? (
-        <ModelEndpointForm saved={data} />
+        <ModelEndpointForm saved={data} focusKey={fixing} />
       ) : (
         <p className="mt-2 text-muted-foreground">
           {isError ? "Couldn't load the model endpoint." : 'Loading…'}
@@ -558,7 +558,6 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-semibold">Settings</h1>
       <BusinessSection settings={settings} update={update} />
       <LookSection settings={settings} update={update} />
-      <SoundSection settings={settings} update={update} />
       <section aria-label="Chrome">
         <Pairing />
       </section>

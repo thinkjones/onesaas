@@ -20,7 +20,7 @@ import { FileNotFoundError, FileRejectedError, type FileStore } from './files/st
 import { ManualRunRefused, manualRunPayload } from './engine/manualRun.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { Gateway, ModelStatus } from './models/gateway.js';
-import { ModelConnectionRejected, type ModelConnectionStore } from './models/connection.js';
+import { ModelConnectionRejected, type ModelConnectionStore, type ModelKeyStatus } from './models/connection.js';
 import type { ImageModels } from './models/image.js';
 import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
 import type { SettingsStore } from './settings/store.js';
@@ -113,6 +113,8 @@ export function createApp(deps: AppDeps): Hono {
   const image = deps.image as ImageModels | undefined;
   const resetData = deps.resetData as (() => void) | undefined;
   const modelConnection = deps.modelConnection as ModelConnectionStore | undefined;
+  const envModelKey = deps.envModelKey as boolean | undefined;
+  const checkModelKey = deps.checkModelKey as (() => Promise<ModelKeyStatus>) | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees the owner's edits);
@@ -143,7 +145,12 @@ export function createApp(deps: AppDeps): Hono {
   // whether a key is saved, never the key itself.
   app.get('/api/models/connection', (c) => {
     if (!modelConnection) return c.json({ error: 'Server not configured' }, 500);
-    return c.json(modelConnection.getPublic());
+    return c.json({ ...modelConnection.getPublic(), hasEnvKey: envModelKey === true });
+  });
+
+  // The app asks once on launch, and again after a key is saved.
+  app.get('/api/models/check', async (c) => {
+    return c.json({ status: checkModelKey ? await checkModelKey() : 'unknown' });
   });
 
   const manualRunBody = z.object({
@@ -230,9 +237,11 @@ export function createApp(deps: AppDeps): Hono {
       businessWhat: z.string().optional(),
       timezone: z.string().optional(),
       textSize: z.enum(['normal', 'large', 'xlarge']).optional(),
-      sound: z.object({ on: z.boolean(), volume: z.number().min(0).max(1) }).strict().optional(),
       onboarded: z.boolean().optional(),
       moodFileIds: z.array(z.string()).optional(),
+      vertical: z.string().nullable().optional(),
+      interests: z.array(z.number().int()).optional(),
+      interestsNote: z.string().optional(),
     })
     .strict();
 
