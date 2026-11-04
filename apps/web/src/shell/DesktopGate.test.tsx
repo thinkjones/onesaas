@@ -53,3 +53,13 @@ test('it follows resizes across the 1280px boundary', () => {
   });
   expect(getByText('the app')).toBeTruthy();
 });
+
+test('a page that works on a phone can opt out', () => {
+  setViewportWidth(390);
+  const { getByText } = render(
+    <DesktopGate allowNarrow>
+      <p>the app</p>
+    </DesktopGate>,
+  );
+  expect(getByText('the app')).toBeTruthy();
+});

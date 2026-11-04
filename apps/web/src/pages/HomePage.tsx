@@ -1,39 +1,35 @@
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { cn } from 'cn';
+import Plus from 'lucide-react/icons/plus';
+import X from 'lucide-react/icons/x';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { workflowNameFromSentence } from '../agent/useAgent.ts';
-import { useCreateWorkflow, useWorkflows } from '../api.ts';
-import { Textarea } from '../components/ui/textarea.tsx';
+import { getRuns, useCreateWorkflow, useWorkflows } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
-import MicButton from '../voice/MicButton.tsx';
-import ReducerCards from '../home/ReducerCards.tsx';
-import Suggestions from '../home/Suggestions.tsx';
+import AutomationCards from '../home/AutomationCards.tsx';
+import { automationsSummary } from '../home/needsYou.ts';
+import SetupBox from '../home/SetupBox.tsx';
 
-// Home (M5 Task 6): the centred Nunito prompt, a 72 px mic, a wide text box
-// and four suggestion cards. Submitting text — or a spoken sentence — creates
-// a workflow and navigates to it in design mode with the message sent (the
-// M3 flow: the opening send happens on the workflow page via location state,
-// so the panel's optimistic row keeps Dad's first message in the transcript).
-// Bug #7: with no chores yet this is the first-time landing — the pure
-// prompt, centred, with no reducer cards (the sidebar hides too, in
-// AppShell); the cards appear under the prompt once a chore exists.
+const OPEN_TRANSITION = { duration: 0.18, ease: [0.4, 0, 0.2, 1] } as const;
 
-export const HOME_PROMPT = 'What do you want to achieve today?';
-
+// Automate: with no automations, the setup box alone. With some, a header and
+// the cards, and Add new opens the box in place above them.
 export default function HomePage() {
   const create = useCreateWorkflow();
   const workflowsQuery = useWorkflows();
+  const runsQuery = useQuery({ queryKey: ['runs'], queryFn: () => getRuns() });
   const navigate = useNavigate();
   const location = useLocation();
-  // TellMeMoreFallback's last resort: with no reducers yet there is no
-  // helper panel to send to, so "Tell me more" lands here with the message
-  // already in the box — Dad presses Build it to create one and send it.
-  // Box text (not an auto-send), so the state needs no consuming. Applied
-  // via the previous-render pattern (not an initializer): a same-path
-  // re-navigation — already Home when it fires — re-renders without
-  // remounting, and the prefill must land then too. A prefill lands only on a
-  // CHANGED value into an untouched box (empty, or still showing the previous
-  // prefill): neither re-renders nor a new prefill arriving mid-sentence
-  // clobbers Dad's typing.
+  const [adding, setAdding] = useState(false);
+  const [boxSettled, setBoxSettled] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  // TellMeMoreFallback's last resort lands here with a message for the box
+  // (not an auto-send). Applied via the previous-render pattern: a same-path
+  // re-navigation re-renders without remounting, and the prefill must land
+  // then too. It only lands on a CHANGED value into an untouched box, so it
+  // never clobbers Dad's typing.
   const [sentence, setSentence] = useState('');
   const [appliedPrefill, setAppliedPrefill] = useState<string | undefined>(undefined);
   const locationState = location.state as { homePrefill?: unknown } | null;
@@ -41,14 +37,28 @@ export default function HomePage() {
     typeof locationState?.homePrefill === 'string' ? locationState.homePrefill : undefined;
   if (homePrefill !== appliedPrefill) {
     setAppliedPrefill(homePrefill);
-    if (
-      homePrefill !== undefined &&
-      (sentence === '' || sentence === appliedPrefill)
-    ) {
+    if (homePrefill !== undefined && (sentence === '' || sentence === appliedPrefill)) {
       setSentence(homePrefill);
+      setAdding(true);
     }
   }
   const [error, setError] = useState<string | null>(null);
+
+  const closeBox = (): void => {
+    setAdding(false);
+    toggle.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!adding) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      setAdding(false);
+      toggle.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [adding]);
 
   const handleStart = (raw: string): void => {
     const text = raw.trim();
@@ -69,65 +79,78 @@ export default function HomePage() {
   if (workflowsQuery.isPending) {
     return <p className="text-base text-muted-foreground">Loading…</p>;
   }
-  // A failed list degrades to the prompt-only view (the prefill box must
-  // still work when the reducers list can't load).
-  const firstTime = (workflowsQuery.data?.length ?? 0) === 0;
 
-  const prompt = (
-    <div className="flex flex-col items-center gap-4 text-center">
-      <h1
-        className={
-          firstTime
-            ? 'font-display text-[44px] leading-tight font-semibold text-balance'
-            : 'font-display text-2xl font-semibold'
-        }
-      >
-        {firstTime ? HOME_PROMPT : 'Set up a new automation'}
-      </h1>
-      <MicButton sizePx={firstTime ? 72 : 56} onSend={(text) => handleStart(text)} />
-      <Textarea
-        aria-label={HOME_PROMPT}
-        placeholder="For example: when a customer emails me, save them and draft a reply for me to check"
-        rows={firstTime ? 3 : 2}
-        value={sentence}
-        disabled={create.isPending}
-        onChange={(e) => setSentence(e.target.value)}
-        className="w-full text-left"
-      />
-      {error && (
-        <p role="alert" className="text-base text-destructive">
-          {error}
-        </p>
-      )}
-      <AppButton variant="brand" onClick={() => handleStart(sentence)} disabled={create.isPending}>
-        {create.isPending ? 'Starting…' : 'Build it'}
-      </AppButton>
-    </div>
-  );
-  const suggestions = (
-    <Suggestions
-      onPick={(s) => {
-        setSentence(s);
-        setError(null);
-      }}
-    />
-  );
+  const box = {
+    value: sentence,
+    onChange: (text: string) => {
+      setSentence(text);
+      setError(null);
+    },
+    onBuild: handleStart,
+    pending: create.isPending,
+    error,
+  };
 
-  if (firstTime) {
+  // A failed list degrades to the setup box: it must still work without the list.
+  const workflows = workflowsQuery.data ?? [];
+  if (workflows.length === 0) {
     return (
-      <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center gap-8">
-        {prompt}
-        {suggestions}
+      <div className="automate-empty">
+        <SetupBox {...box} headingLevel="h1" />
       </div>
     );
   }
+
+  const runs = runsQuery.data ?? [];
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-8">
-      <ReducerCards />
-      <div className="panel mx-auto flex w-full max-w-3xl flex-col gap-6">
-        {prompt}
-        {suggestions}
+    <MotionConfig reducedMotion="user">
+      <div className="automate-page">
+        <header className="automate-header">
+          <div>
+            <h1 className="page-title">
+              Automations <span className="count">· {workflows.length}</span>
+            </h1>
+            {runsQuery.isSuccess && (
+              <p className="m-0 mt-1 text-[var(--text-dim)]">{automationsSummary(workflows, runs)}</p>
+            )}
+          </div>
+          {/* One element in both states, so focus can come back to it. */}
+          <AppButton
+            ref={toggle}
+            variant={adding ? 'outline' : 'brand'}
+            className={cn(
+              'automate-toggle h-[2.824rem] font-bold',
+              adding && 'border-[var(--border-strong)] bg-[var(--bg-raised)] font-semibold dark:border-[var(--border-strong)] dark:bg-[var(--bg-raised)]',
+            )}
+            onClick={() => (adding ? closeBox() : setAdding(true))}
+          >
+            {adding ? <X aria-hidden /> : <Plus aria-hidden />}
+            {adding ? 'Not now' : 'Add new'}
+          </AppButton>
+        </header>
+        <AnimatePresence initial={false}>
+          {adding && (
+            <motion.div
+              key="setup"
+              initial={{ height: 0 }}
+              animate={{ height: 'auto' }}
+              exit={{ height: 0 }}
+              transition={OPEN_TRANSITION}
+              // Clipped only while it moves, or the open box loses its shadow.
+              style={{ overflow: boxSettled ? 'visible' : 'hidden' }}
+              onAnimationStart={() => setBoxSettled(false)}
+              onAnimationComplete={() => setBoxSettled(true)}
+            >
+              <SetupBox {...box} heading="What else should I take off your hands?" focusOnOpen />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="automate-list">
+          {adding && <h2 className="section-label m-0">Your automations · {workflows.length}</h2>}
+          {runsQuery.isError && <p role="alert">Couldn&apos;t load the latest runs. Try again.</p>}
+          <AutomationCards workflows={workflows} runs={runs} />
+        </div>
       </div>
-    </div>
+    </MotionConfig>
   );
 }

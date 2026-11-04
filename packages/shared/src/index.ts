@@ -4,4 +4,5 @@ export * from './protocol.js';
 export * from './bindings.js';
 export * from './columns.js';
 export * from './catalog.js';
+export * from './starterIdeas.js';
 export * from './pingAge.js';

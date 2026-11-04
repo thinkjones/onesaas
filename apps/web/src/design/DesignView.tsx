@@ -30,7 +30,7 @@ import type { StepNodeData } from '../canvas/StepNode.tsx';
 import { Switch } from '../components/ui/switch.tsx';
 import { Textarea } from '../components/ui/textarea.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
-import Suggestions from '../home/Suggestions.tsx';
+import IdeaPicker from '../home/IdeaPicker.tsx';
 import MicButton from '../voice/MicButton.tsx';
 import ApprovalCard from '../runtime/ApprovalCard.tsx';
 import FailureCard from '../runtime/FailureCard.tsx';
@@ -86,6 +86,7 @@ export interface DesignViewProps {
  */
 function DesignStart({ send, busy }: { send: (text: string) => void; busy: boolean }) {
   const [input, setInput] = useState('');
+  const [pickedId, setPickedId] = useState<number | undefined>(undefined);
   const submit = useCallback(
     (text: string) => {
       if (text.trim().length === 0 || busy) return;
@@ -94,7 +95,7 @@ function DesignStart({ send, busy }: { send: (text: string) => void; busy: boole
     [busy, send],
   );
   return (
-    <div className="mx-auto flex max-w-2xl flex-col items-center gap-6 py-16 text-center">
+    <div className="mx-auto my-auto flex w-full max-w-3xl flex-col items-center gap-6 py-16 text-center">
       <h2 className="font-display text-4xl font-bold">What should this automation do?</h2>
       <div className="flex w-full flex-col gap-2 rounded-[var(--radius)] border border-border bg-card p-4 text-left shadow-sm">
         <Textarea
@@ -118,7 +119,13 @@ function DesignStart({ send, busy }: { send: (text: string) => void; busy: boole
           </AppButton>
         </div>
       </div>
-      <Suggestions onPick={setInput} />
+      <IdeaPicker
+        selectedId={pickedId}
+        onPick={(idea) => {
+          setInput(idea.ownerAsk);
+          setPickedId(idea.id);
+        }}
+      />
     </div>
   );
 }
@@ -935,7 +942,7 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
             className="relative h-full w-full"
           >
             {titleBar}
-            <div className="flex h-full items-center justify-center overflow-y-auto p-8 pt-20">
+            <div className="flex h-full overflow-y-auto p-8 pt-20">
               <DesignStart send={handleStartSubmit} busy={agent.busy} />
             </div>
           </motion.div>

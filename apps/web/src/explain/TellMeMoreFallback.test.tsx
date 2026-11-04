@@ -189,7 +189,7 @@ describe('TellMeMoreFallback', () => {
     });
     expect(location().state).toEqual({ homePrefill: 'Tell me more about Settings' });
     const box = (await screen.findByRole('textbox', {
-      name: 'What do you want to achieve today?',
+      name: 'Describe the chore',
     })) as HTMLTextAreaElement;
     expect(box.value).toBe('Tell me more about Settings');
   });
@@ -201,7 +201,7 @@ describe('TellMeMoreFallback', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
     // Same-path re-navigation: the prefill lands without a remount…
     const box = (await screen.findByRole('textbox', {
-      name: 'What do you want to achieve today?',
+      name: 'Describe the chore',
     })) as HTMLTextAreaElement;
     await waitFor(() => {
       expect(box.value).toBe('Tell me more about Automate');
@@ -237,7 +237,7 @@ describe('TellMeMoreFallback', () => {
     });
     expect(location().state).toEqual({ homePrefill: 'Tell me more about Email' });
     const box = (await screen.findByRole('textbox', {
-      name: 'What do you want to achieve today?',
+      name: 'Describe the chore',
     })) as HTMLTextAreaElement;
     expect(box.value).toBe('Tell me more about Email');
   });

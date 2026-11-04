@@ -15,7 +15,7 @@ test('API health is reachable directly and through the web proxy', async ({ requ
 test('automate shows the one-sentence start box', async ({ page }) => {
   await page.goto('/automate');
   await expect(
-    page.getByRole('heading', { name: 'What do you want to achieve today?' }),
+    page.getByRole('heading', { name: 'What chore should I take off your hands?' }),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Build it' })).toBeVisible();
 });

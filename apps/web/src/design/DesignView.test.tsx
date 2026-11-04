@@ -589,13 +589,13 @@ describe('DesignView start', () => {
     expect(screen.queryByRole('heading', { name: 'What should this automation do?' })).toBeNull();
   });
 
-  test('a suggestion chip fills the Start box without submitting', async () => {
+  test('an idea fills the Start box without submitting', async () => {
     const agent = makeAgent();
     renderDesign(detail([]), { agent });
-    fireEvent.click(await screen.findByRole('button', { name: 'Keep track of bookings' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Text back missed calls' }));
     expect(
       (screen.getByRole('textbox', { name: 'Describe the automation' }) as HTMLTextAreaElement).value,
-    ).toBe('Keep track of bookings');
+    ).toBe('When I miss a call, text them back straight away and find out what they need.');
     expect(agent.send).not.toHaveBeenCalled();
   });
 

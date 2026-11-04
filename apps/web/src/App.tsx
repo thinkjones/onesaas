@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { BrowserRouter } from 'react-router';
+import { BrowserRouter, useLocation } from 'react-router';
 import { useLiveEvents, useSettings, useTimezoneSync } from './api.ts';
 import { Toaster } from './components/ui/sonner.tsx';
 import { TooltipProvider } from './components/ui/tooltip.tsx';
 import { AltClickExplainRoot } from './explain/Explain.tsx';
 import AppRoutes from './routes.tsx';
+import DesktopGate from './shell/DesktopGate.tsx';
 import TextSizeProvider from './theme/TextSizeProvider.tsx';
 
 const queryClient = new QueryClient();
@@ -30,6 +31,12 @@ function SettingsTextSize({ children }: { children: ReactNode }) {
   return <TextSizeProvider textSize={settings?.textSize ?? 'normal'}>{children}</TextSizeProvider>;
 }
 
+/** The setup page works on a phone; everything else still needs a bigger screen. */
+function RouteGate({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <DesktopGate allowNarrow={pathname === '/automate'}>{children}</DesktopGate>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -38,7 +45,9 @@ function App() {
           <BrowserRouter>
             <LiveEvents />
             <TimezoneSync />
-            <AppRoutes />
+            <RouteGate>
+              <AppRoutes />
+            </RouteGate>
           </BrowserRouter>
         </SettingsTextSize>
         <AltClickExplainRoot />

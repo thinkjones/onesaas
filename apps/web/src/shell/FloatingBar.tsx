@@ -9,6 +9,7 @@ import { getRuns, isTauri, useModelStatus, useSettings, useWorkflows } from '../
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { BAR_SLOT_ID } from './barSlot.ts';
 import './FloatingBar.css';
+import { countNeedingYou } from '../home/needsYou.ts';
 
 const MODES = [
   { to: '/', label: 'Activity', end: true, explainId: 'nav-activity', Icon: ActivityIcon, match: ['/'] },
@@ -72,7 +73,9 @@ export default function FloatingBar() {
   const { settings } = useSettings();
   const models = useModelStatus();
   const runs = useQuery({ queryKey: ['runs'], queryFn: () => getRuns() });
-  const needsYou = (runs.data ?? []).filter((r) => r.status === 'failed' || r.status === 'waiting').length;
+  const allRuns = runs.data ?? [];
+  // Per automation, so it agrees with the cards on the Automate page.
+  const needsYou = countNeedingYou([...new Set(allRuns.map((r) => r.workflowId))], allRuns);
   const onCanvas = useMatch('/reducers/:workflowId') !== null;
 
   useEffect(() => {

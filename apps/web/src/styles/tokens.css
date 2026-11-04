@@ -32,6 +32,7 @@
   --board-design: radial-gradient(hsl(262 70% 88%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(263 85% 95%) 0, var(--bg) 260px);
   --board-runs: radial-gradient(hsl(331 65% 86%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(331 85% 94%) 0, hsl(331 70% 98%) 260px);
   --board-runs-frame: inset 0 0 0 4px var(--accent-2);
+  --board-dot-design: hsl(262 70% 88%);
 
   /* Status */
   --success: hsl(158 88% 25%);
@@ -90,6 +91,7 @@
     --accent-2-soft: hsl(345 100% 72% / 0.16);
     --board-design: radial-gradient(hsl(258 25% 18%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(262 50% 16%) 0, var(--bg) 260px);
     --board-runs: radial-gradient(hsl(330 25% 20%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(330 45% 15%) 0, var(--bg) 260px);
+    --board-dot-design: hsl(258 25% 18%);
     --success: hsl(155 70% 58%);   --success-soft: hsl(155 70% 58% / 0.16);
     --warning: hsl(38 100% 62%);   --warning-soft: hsl(38 100% 62% / 0.16);
     --danger: hsl(350 95% 72%);    --danger-soft: hsl(350 95% 72% / 0.16);

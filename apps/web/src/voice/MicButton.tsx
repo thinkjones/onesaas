@@ -14,6 +14,8 @@ export interface MicButtonProps {
   sizePx?: number;
   /** The compact "Hold to talk" pill, for sitting beside a text box. */
   pill?: boolean;
+  /** Just the round button, for sitting inside an input row. */
+  bare?: boolean;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface MicButtonProps {
  * pulsing ring and the live partial transcript. A non-empty final goes to
  * `onSend`; an empty one shows a hint instead.
  */
-export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill = false }: MicButtonProps) {
+export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill = false, bare = false }: MicButtonProps) {
   const voice = useVoiceFn();
   const [hint, setHint] = useState<string | null>(null);
 
@@ -42,6 +44,7 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill 
     });
   }, [voice, onSend]);
 
+  const inline = pill || bare;
   const listening = voice.state === 'listening';
   const thinking = voice.state === 'thinking';
   const pressRef = useRef<{ downAt: number } | null>(null);
@@ -91,7 +94,7 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill 
   };
 
   return (
-    <div className={pill ? 'relative flex-none' : 'flex flex-col items-center gap-1'}>
+    <div className={inline ? 'relative flex-none' : 'flex flex-col items-center gap-1'}>
       <button
         type="button"
         aria-label="Hold to talk"
@@ -102,7 +105,9 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill 
         onClick={handleClick}
         style={sizePx === undefined ? undefined : { width: sizePx, height: sizePx }}
         className={
-          pill
+          bare
+            ? 'mic-bare'
+            : pill
             ? 'relative flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-primary px-4 text-[0.824rem] font-semibold text-primary-foreground shadow-none hover:brightness-110'
             : 'relative flex h-16 w-16 items-center justify-center rounded-full border-0 bg-primary text-primary-foreground shadow-sm transition-all hover:brightness-110'
         }
@@ -113,12 +118,12 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill 
             className="absolute inset-0 rounded-full bg-primary/30 motion-safe:animate-ping"
           />
         )}
-        <Mic aria-hidden className={pill ? 'relative h-[18px] w-[18px]' : 'relative h-7 w-7'} />
+        <Mic aria-hidden className={bare ? 'relative size-[1.294rem]' : pill ? 'relative h-[18px] w-[18px]' : 'relative h-7 w-7'} />
         {pill && <span className="relative">Hold to talk</span>}
       </button>
-      {!pill && <span className="text-sm text-muted-foreground">Hold to talk</span>}
+      {!inline && <span className="text-sm text-muted-foreground">Hold to talk</span>}
       {/* Beside a text box there's no room below, so what the mic says floats above it. */}
-      <div className={pill ? 'absolute bottom-full left-0 mb-2 w-64 rounded-[var(--radius-s)] bg-card empty:hidden' : 'contents'}>
+      <div className={inline ? 'absolute bottom-full left-0 mb-2 w-64 rounded-[var(--radius-s)] bg-card empty:hidden' : 'contents'}>
         {listening && voice.partial.length > 0 && (
           <p aria-live="polite" className="max-w-56 text-center text-sm text-muted-foreground italic">
             {voice.partial}
