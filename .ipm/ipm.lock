@@ -19,6 +19,20 @@ sha = "2bfe1b06c79c7c94f820881ede6525cdfb657817"
 source = "null"
 
 [[item]]
+id = "plugin:anthropics/claude-plugins-official#browser-use"
+type = "plugin"
+name = "browser-use"
+repo = "anthropics/claude-plugins-official"
+source = "{\"author\":{\"name\":\"Browser Use\"},\"category\":\"automation\",\"description\":\"Give Claude a real browser — your Chrome or a Browser Use Cloud browser. Use it whenever a task involves a website or web app: browsing, scraping and data extraction, filling forms, testing sites, taking screenshots, automating web workflows.\",\"homepage\":\"https://browser-use.com\",\"name\":\"browser-use\",\"source\":{\"path\":\"browser-use\",\"ref\":\"main\",\"sha\":\"4749bcbfe456e5384b98281a8a66119352197f59\",\"source\":\"git-subdir\",\"url\":\"https://github.com/browser-use/plugins.git\"}}"
+
+[[item]]
+id = "plugin:anthropics/claude-plugins-official#chrome-devtools-mcp"
+type = "plugin"
+name = "chrome-devtools-mcp"
+repo = "anthropics/claude-plugins-official"
+source = "{\"category\":\"development\",\"description\":\"Control and inspect a live Chrome browser from your coding agent. Record performance traces, analyze network requests, check console messages with source-mapped stack traces, and automate browser actions with Puppeteer.\",\"homepage\":\"https://github.com/ChromeDevTools/chrome-devtools-mcp\",\"name\":\"chrome-devtools-mcp\",\"source\":{\"sha\":\"a878bcad39584337e055778353246820deafa7c0\",\"source\":\"url\",\"url\":\"https://github.com/ChromeDevTools/chrome-devtools-mcp.git\"}}"
+
+[[item]]
 id = "plugin:anthropics/claude-plugins-official#shopify-ai-toolkit"
 type = "plugin"
 name = "shopify-ai-toolkit"
@@ -96,12 +110,124 @@ sha = "bb92a77741419a4ab5f06e711a283343f1ada0c3"
 parts = ["hook:obra/superpowers:hooks/hooks.json", "skill:obra/superpowers:skills/brainstorming", "skill:obra/superpowers:skills/diagnosing-superpowers", "skill:obra/superpowers:skills/dispatching-parallel-agents", "skill:obra/superpowers:skills/executing-plans", "skill:obra/superpowers:skills/finishing-a-development-branch", "skill:obra/superpowers:skills/receiving-code-review", "skill:obra/superpowers:skills/requesting-code-review", "skill:obra/superpowers:skills/subagent-driven-development", "skill:obra/superpowers:skills/systematic-debugging", "skill:obra/superpowers:skills/test-driven-development", "skill:obra/superpowers:skills/using-git-worktrees", "skill:obra/superpowers:skills/using-superpowers", "skill:obra/superpowers:skills/verification-before-completion", "skill:obra/superpowers:skills/writing-plans", "skill:obra/superpowers:skills/writing-skills"]
 
 [[item]]
+id = "skill:github/awesome-copilot:skills/chrome-devtools"
+type = "skill"
+name = "chrome-devtools"
+repo = "github/awesome-copilot"
+path = "skills/chrome-devtools"
+sha = "cb64ad12e32737ae764becd6885462e9b4c7cb00"
+
+[[item]]
 id = "skill:oil-oil/beautify-github-readme:skills/beautify-github-readme"
 type = "skill"
 name = "beautify-github-readme"
 repo = "oil-oil/beautify-github-readme"
 path = "skills/beautify-github-readme"
 sha = "d6562a5f5c484d069f8560b39c215c9cda4b5a55"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-bridge"
+type = "skill"
+name = "browser-bridge"
+repo = "sickn33/agentic-awesome-skills"
+path = "plugins/agentic-awesome-skills-claude/skills/browser-bridge"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-extension-builder"
+type = "skill"
+name = "browser-extension-builder"
+repo = "sickn33/agentic-awesome-skills"
+path = "plugins/agentic-awesome-skills-claude/skills/browser-extension-builder"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills-claude/skills/browser-testing-with-devtools"
+type = "skill"
+name = "browser-testing-with-devtools"
+repo = "sickn33/agentic-awesome-skills"
+path = "plugins/agentic-awesome-skills-claude/skills/browser-testing-with-devtools"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills/skills/browser-extension-launch"
+type = "skill"
+name = "browser-extension-launch"
+repo = "sickn33/agentic-awesome-skills"
+path = "plugins/agentic-awesome-skills/skills/browser-extension-launch"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:plugins/agentic-awesome-skills/skills/chrome-extension-developer"
+type = "skill"
+name = "chrome-extension-developer"
+repo = "sickn33/agentic-awesome-skills"
+path = "plugins/agentic-awesome-skills/skills/chrome-extension-developer"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-act"
+type = "skill"
+name = "browser-act"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-act"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-automation"
+type = "skill"
+name = "browser-automation"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-automation"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-bridge"
+type = "skill"
+name = "browser-bridge"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-bridge"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-extension-builder"
+type = "skill"
+name = "browser-extension-builder"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-extension-builder"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-extension-launch"
+type = "skill"
+name = "browser-extension-launch"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-extension-launch"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-extension-reverse"
+type = "skill"
+name = "browser-extension-reverse"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-extension-reverse"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-harness"
+type = "skill"
+name = "browser-harness"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-harness"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
+
+[[item]]
+id = "skill:sickn33/agentic-awesome-skills:skills/browser-testing-with-devtools"
+type = "skill"
+name = "browser-testing-with-devtools"
+repo = "sickn33/agentic-awesome-skills"
+path = "skills/browser-testing-with-devtools"
+sha = "c564f9f4aee8a143c48218805b65f0f6956c6264"
 
 [[item]]
 id = "skill:thinkjones/fs-skills:packs/book-factory/skills/diagram-design"

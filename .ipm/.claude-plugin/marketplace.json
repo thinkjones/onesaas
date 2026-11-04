@@ -147,6 +147,41 @@
         "ipm",
         "vendor-meta-hackathon"
       ]
+    },
+    {
+      "category": "development",
+      "description": "Control and inspect a live Chrome browser from your coding agent. Record performance traces, analyze network requests, check console messages with source-mapped stack traces, and automate browser actions with Puppeteer.",
+      "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "name": "vendor-meta-hackathon-chrome-devtools-mcp",
+      "source": {
+        "sha": "a878bcad39584337e055778353246820deafa7c0",
+        "source": "url",
+        "url": "https://github.com/ChromeDevTools/chrome-devtools-mcp.git"
+      },
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
+    },
+    {
+      "author": {
+        "name": "Browser Use"
+      },
+      "category": "automation",
+      "description": "Give Claude a real browser — your Chrome or a Browser Use Cloud browser. Use it whenever a task involves a website or web app: browsing, scraping and data extraction, filling forms, testing sites, taking screenshots, automating web workflows.",
+      "homepage": "https://browser-use.com",
+      "name": "vendor-meta-hackathon-browser-use",
+      "source": {
+        "path": "browser-use",
+        "ref": "main",
+        "sha": "4749bcbfe456e5384b98281a8a66119352197f59",
+        "source": "git-subdir",
+        "url": "https://github.com/browser-use/plugins.git"
+      },
+      "tags": [
+        "ipm",
+        "vendor-meta-hackathon"
+      ]
     }
   ]
 }

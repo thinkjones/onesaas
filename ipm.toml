@@ -38,3 +38,6 @@ items = [
 target = "claude"
 path = "."
 scope = "project"
+
+[[packs.vendor-meta-hackathon.installs]]
+target = "muse"

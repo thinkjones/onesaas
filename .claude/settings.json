@@ -1,2 +1,10 @@
 {
+  "extraKnownMarketplaces": {
+    "meta-ai-hackathon-my-dads-ai-agent-ipm": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/thinkjones/dev/repos/__labs/meta-ai-hackathon-my-dads-ai-agent/.ipm"
+      }
+    }
+  }
 }
