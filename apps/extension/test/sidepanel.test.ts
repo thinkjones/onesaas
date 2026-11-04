@@ -57,7 +57,18 @@ function hasButton(text: string): boolean {
 
 async function openSettings() {
   await act(async () => {
-    buttonByText('Settings').click();
+    buttonByText('Pairing options').click();
+  });
+  await flush();
+}
+
+// Paired panels open on the ControlPlane; the connection panel these tests
+// cover sits behind its gear. A no-op on the unpaired view (no gear there).
+async function openConnectionPanel() {
+  const gear = container.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
+  if (!gear) return;
+  await act(async () => {
+    gear.click();
   });
   await flush();
 }
@@ -122,6 +133,7 @@ async function renderPanel() {
     root.render(createElement(App));
   });
   await flush();
+  await openConnectionPanel();
 }
 
 describe('sidepanel paired view', () => {
@@ -129,7 +141,7 @@ describe('sidepanel paired view', () => {
     status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
     const text = container.textContent ?? '';
-    expect(text).toContain("My Dad's AI Agent");
+    expect(text).toContain('OneSaaS');
     expect(text).toContain('Paired ✓');
     expect(text).toContain('Connected ✓');
     expect(text).toContain('Chrome profile: priya@gmail.com');
@@ -138,7 +150,7 @@ describe('sidepanel paired view', () => {
     // Pair again / Unpair hide behind the Settings toggle (Tweaks).
     expect(hasButton('Unpair')).toBe(false);
     expect(hasButton('Pair again')).toBe(false);
-    const toggle = buttonByText('Settings');
+    const toggle = buttonByText('Pairing options');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     await openSettings();
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -186,7 +198,10 @@ describe('sidepanel paired view', () => {
       buttonByText('Pair again').click();
     });
     await flush();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://127.0.0.1:8787/api/pairing/revoke',
+      expect.anything(),
+    );
     expect(sendMessage).toHaveBeenCalledWith({ action: 'unpair' });
     expect(container.querySelector('input')).not.toBeNull();
   });
@@ -211,7 +226,8 @@ describe('sidepanel unpaired view', () => {
     });
     await flush();
     expect(sendMessage).toHaveBeenCalledWith({ action: 'pair', code: '123456' });
-    expect(container.textContent ?? '').toContain('Paired ✓');
+    await openConnectionPanel();
+expect(container.textContent ?? '').toContain('Paired ✓');
   });
 
   test('a spinner shows while the pair request is in flight', async () => {
@@ -235,7 +251,8 @@ describe('sidepanel unpaired view', () => {
       resolvePair({ ok: true });
     });
     await flush();
-    expect(container.textContent ?? '').toContain('Paired ✓');
+    await openConnectionPanel();
+expect(container.textContent ?? '').toContain('Paired ✓');
   });
 });
 
@@ -395,7 +412,8 @@ describe('sidepanel pair logging + retry', () => {
       await new Promise((r) => setTimeout(r, 800));
     });
     await flush();
-    expect(container.textContent ?? '').toContain('Paired ✓');
+    await openConnectionPanel();
+expect(container.textContent ?? '').toContain('Paired ✓');
     expect(container.textContent ?? '').not.toContain('No answer');
     expect(pairCalls()).toHaveLength(2);
     const log = container.querySelector('details')!.textContent ?? '';
@@ -452,6 +470,7 @@ describe('sidepanel worker correlation', () => {
       buttonByText('Pair').click();
     });
     await flush();
+    await openConnectionPanel();
     const log = container.querySelector('details')!.textContent ?? '';
     expect(log).toContain('pair ok');
     expect(log).toContain('worker wkr123');
@@ -483,7 +502,8 @@ describe('sidepanel pair/status correlation', () => {
       await new Promise((r) => setTimeout(r, 1500));
     });
     await flush();
-    expect(container.textContent ?? '').toContain('Paired ✓');
+    await openConnectionPanel();
+expect(container.textContent ?? '').toContain('Paired ✓');
     const log = container.querySelector('details')!.textContent ?? '';
     expect(log).toContain('matches pair');
   });
@@ -550,7 +570,8 @@ describe('sidepanel pair/status correlation', () => {
       await new Promise((r) => setTimeout(r, 2600));
     });
     await flush();
-    expect(container.textContent ?? '').toContain('Paired ✓');
+    await openConnectionPanel();
+expect(container.textContent ?? '').toContain('Paired ✓');
     expect(container.textContent ?? '').not.toContain('This view is stale.');
   });
 });
@@ -598,9 +619,16 @@ describe('sidepanel automation buttons', () => {
     vi.spyOn(window, 'close').mockImplementation(() => {});
   });
 
+  test('settings has no automation buttons when paired', async () => {
+    status = { paired: true, connected: true, lastPingAt: null };
+    await renderPanel();
+    expect(container.textContent).toContain('Paired ✓');
+    expect(container.textContent).not.toContain('Create an automation for this page');
+    expect(container.textContent).not.toContain('Change an existing automation');
+  });
+
   test('create opens the desktop app at Automate', async () => {
     focusResult = { focused: true };
-    status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
     await act(async () => {
       buttonByText('Create an automation for this page').click();
@@ -615,7 +643,6 @@ describe('sidepanel automation buttons', () => {
 
   test('create falls back to the Automate page in a tab', async () => {
     focusResult = { focused: false };
-    status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
     await act(async () => {
       buttonByText('Create an automation for this page').click();
@@ -626,7 +653,6 @@ describe('sidepanel automation buttons', () => {
 
   test('change opens the desktop app at the reducer list', async () => {
     focusResult = { focused: true };
-    status = { paired: true, connected: true, lastPingAt: null };
     await renderPanel();
     await act(async () => {
       buttonByText('Change an existing automation').click();

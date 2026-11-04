@@ -11,6 +11,7 @@ import { describe, expect, test } from 'vitest';
 const here = dirname(fileURLToPath(import.meta.url));
 const panelCss = readFileSync(join(here, '../entrypoints/sidepanel/panel.css'), 'utf8');
 const appSource = readFileSync(join(here, '../entrypoints/sidepanel/App.tsx'), 'utf8');
+const controlSource = readFileSync(join(here, '../entrypoints/sidepanel/ControlPlane.tsx'), 'utf8');
 
 // Every token App.tsx may reference — each must exist in panel.css.
 const TOKENS = [
@@ -40,5 +41,6 @@ describe('sidepanel theme', () => {
   test('App references tokens, never hardcoded colors', () => {
     expect(appSource).toContain('var(--');
     expect(appSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(controlSource).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
   });
 });

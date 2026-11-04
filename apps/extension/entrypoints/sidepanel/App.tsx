@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatPingAge } from '@dad/shared';
 import type { BgDebugEvent } from '../../lib/background.js';
+import ControlPlane from './ControlPlane.tsx';
 import { SITE_CAPABILITIES, siteOfUrl, type PanelSite } from '../../lib/sites.js';
 
 interface Status {
@@ -65,7 +66,8 @@ async function profileEmail(): Promise<string | null> {
 }
 
 // Pairing panel (Bug #5): status, Chrome profile, what/why info, a link to
-// manage the app, and unpair/re-pair. Covered by test/panel.test.ts.
+// manage the app, and unpair/re-pair. Shown when unpaired; once paired the
+// ControlPlane is the default view and this sits behind its Settings gear.
 function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const [live, setLive] = useState<boolean | null>(null);
@@ -87,6 +89,8 @@ function App() {
   // Settings toggle (paired view): Pair again / Unpair hide behind it so the
   // connected panel just shows status.
   const [showSettings, setShowSettings] = useState(false);
+  // Paired only: the connection details behind the ControlPlane's gear.
+  const [showPanel, setShowPanel] = useState(false);
   // The supported site in the active tab (null = elsewhere or unknown).
   const [site, setSite] = useState<PanelSite | null>(null);
 
@@ -226,6 +230,7 @@ function App() {
     try {
       const res = await sendPair(code);
       if (res?.ok) {
+        setShowPanel(false);
         const pid = typeof res.workerId === 'string' ? res.workerId : null;
         logPanel(`pair ok (${Date.now() - started}ms${pid !== null ? `, worker ${pid}` : ''})`);
         // Old workers stamp no id: single refresh, as before. New workers get
@@ -451,7 +456,7 @@ function App() {
     const valid = /^\d{6}$/.test(code);
     return (
       <div style={box}>
-        <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
+        <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>OneSaaS</h1>
         {info}
         {manageLink}
         {onThisPage}
@@ -491,9 +496,26 @@ function App() {
     );
   }
 
+  if (!showPanel) {
+    return (
+      <ControlPlane
+        site={site}
+        connected={status.connected && live !== false}
+        openApp={openApp}
+        onOpenSettings={() => setShowPanel(true)}
+      />
+    );
+  }
+
   return (
     <div style={box}>
-      <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>My Dad&apos;s AI Agent</h1>
+      <button
+        onClick={() => setShowPanel(false)}
+        style={{ ...buttonStyle, marginTop: 0, marginBottom: 12, width: 'auto', padding: '4px 10px' }}
+      >
+        ← Back
+      </button>
+      <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>OneSaaS</h1>
       <p style={{ margin: '0 0 4px' }}>Paired ✓</p>
       <p style={{ margin: '0 0 4px' }}>
         {status.connected && live !== false ? 'Connected ✓' : 'Not connected — is the app running?'}
@@ -503,13 +525,12 @@ function App() {
       {info}
       {manageLink}
       {onThisPage}
-      {automationButtons}
       <button
         onClick={() => setShowSettings((s) => !s)}
         aria-expanded={showSettings}
         style={buttonStyle}
       >
-        Settings
+        Pairing options
       </button>
       {showSettings && (
         <>

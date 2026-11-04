@@ -1,6 +1,6 @@
 {
   "name": "@dad/extension",
-  "description": "Gmail adapter for My Dad's AI Agent",
+  "description": "Chrome side panel and site adapters for OneSaaS",
   "private": true,
   "version": "0.0.0",
   "type": "module",

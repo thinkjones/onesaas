@@ -4,7 +4,7 @@ import { defineConfig } from 'wxt';
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
-    name: "My Dad's AI Agent",
+    name: 'OneSaaS',
     version: '0.1.0',
     permissions: ['storage', 'tabs', 'activeTab', 'scripting', 'identity'],
     host_permissions: [
