@@ -1,6 +1,7 @@
 // Bundles apps/server for the Tauri sidecar into src-tauri/resources/:
 //   app/dist/server.mjs  esbuild ESM bundle (natives + ws external)
 //   assets/              server disk assets (sample photo)
+//   extension/           the built Chrome extension
 //   node_modules/        native closure (sharp, better-sqlite3, ws + runtime deps)
 // Plus node installed as src-tauri/bin/server-<triple>: shell().sidecar("server")
 // spawns the node binary with app/dist/server.mjs as its arg.
@@ -41,6 +42,11 @@ execFileSync(
 );
 
 cpSync(path.join(root, 'apps', 'server', 'assets'), path.join(out, 'assets'), {
+  recursive: true,
+});
+
+// The built Chrome extension, for setup to copy somewhere Chrome can load it from.
+cpSync(path.join(root, 'apps', 'extension', '.output', 'chrome-mv3'), path.join(out, 'extension'), {
   recursive: true,
 });
 
@@ -88,6 +94,7 @@ for (const f of [
   'node_modules/sharp',
   'node_modules/ws',
   'assets/sample-mug.jpg',
+  'extension/manifest.json',
 ]) {
   if (!existsSync(path.join(out, f))) throw new Error(`missing sidecar output: ${f}`);
 }

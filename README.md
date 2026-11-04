@@ -53,6 +53,8 @@ Then open **<http://localhost:5173>** and follow the setup steps. `pnpm start` a
 3. Click **Load unpacked** and choose the `apps/extension/.output/chrome-mv3` folder in this repo.
 4. Pin **OneSaaS** to your toolbar and click its icon to open the side panel.
 
+Using the desktop app instead? The extension comes with it: the **Chrome extension** step of setup has a **Get the extension** button that puts it in `~/OneSaaS Extension` and shows you these same steps.
+
 ### 3. Pair it with the app
 
 1. The **Chrome extension** step of setup shows a 6-digit code. If you skipped it, click **Connect Chrome** on the **Chrome extension** card in **Settings**.

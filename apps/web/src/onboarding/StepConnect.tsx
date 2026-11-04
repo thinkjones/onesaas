@@ -3,11 +3,8 @@ import Globe from 'lucide-react/icons/globe';
 import Monitor from 'lucide-react/icons/monitor';
 import { useEffect, useRef, useState } from 'react';
 import AppButton from '../design/AppButton.tsx';
+import GetExtension from '../GetExtension.tsx';
 import { usePairing } from '../usePairing.ts';
-
-/** GitHub-rendered README section with the install steps. */
-const EXTENSION_INSTALL_URL =
-  'https://github.com/thinkjones/meta-ai-hackathon-my-dads-ai-agent#2-install-the-chrome-extension';
 
 const WEBSITE_TAGS = ['Booking sites', 'Supplier portals', 'Permit offices', 'Any website'];
 
@@ -100,9 +97,8 @@ export default function StepConnect({
       )}
       <ol className="onb-pair">
         <PairItem done={paired} n={1}>
-          <a href={EXTENSION_INSTALL_URL} target="_blank" rel="noreferrer">
-            Add the OneSaaS extension to Chrome.
-          </a>
+          <span>Add the OneSaaS extension to Chrome.</span>
+          {!paired && <GetExtension />}
         </PairItem>
         <PairItem done={paired} n={2}>
           <span>Click the OneSaaS icon in Chrome&apos;s toolbar and type this code.</span>
@@ -133,12 +129,6 @@ export default function StepConnect({
           <span className="onb-meta">{paired ? 'Done' : 'Not started'}</span>
         </PairItem>
       </ol>
-      <details className="onb-details">
-        <summary>Setting up from source code</summary>
-        <p className="m-0 mt-2">
-          Open <code>chrome://extensions</code>, turn on Developer mode, choose Load unpacked and pick <code>apps/extension/.output/chrome-mv3</code>.
-        </p>
-      </details>
       <div className="onb-footer">
         {footerStart}
         <span className="onb-footer-end">

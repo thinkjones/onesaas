@@ -3,6 +3,7 @@ import { formatPingAge } from '@onesaas/shared';
 import type { PairingStatus } from './api.ts';
 import AppButton from './design/AppButton.tsx';
 import CardHeading from './design/CardHeading.tsx';
+import GetExtension from './GetExtension.tsx';
 import CheckIcon from 'lucide-react/icons/check';
 import PuzzleIcon from 'lucide-react/icons/puzzle';
 import { usePairing } from './usePairing.ts';
@@ -68,8 +69,8 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           <p>The app reaches Gmail through the Chrome extension. Pair it once:</p>
           <ol className="list-decimal pl-6">
             <li>
-              Load the extension in Chrome: open chrome://extensions, enable Developer
-              mode, and Load unpacked from apps/extension/.output/chrome-mv3.
+              Load the extension in Chrome.
+              <GetExtension />
             </li>
             <li>Click Connect Chrome below to get a 6-digit code.</li>
             <li>Click the extension icon in Chrome&apos;s toolbar, enter the code, and press Pair.</li>

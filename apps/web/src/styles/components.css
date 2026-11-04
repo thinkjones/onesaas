@@ -925,3 +925,16 @@
   pointer-events: none;
 }
 .board-hint svg { width: 0.941rem; height: 0.941rem; }
+
+/* ---- Getting the Chrome extension */
+.get-extension { display: flex; flex-direction: column; gap: 0.471rem; margin-top: 0.353rem; font-size: 0.824rem; }
+.get-extension code { font-family: var(--font-mono); font-size: 0.765rem; }
+.get-extension-copy {
+  padding: 0;
+  font-size: 0.765rem;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+}

@@ -426,6 +426,11 @@ export interface ModelStatus {
 
 export type ModelKeyStatus = 'ok' | 'missing' | 'rejected' | 'unknown';
 
+/** POST /api/extension/install: where the Chrome extension is ready to load from. */
+export function installExtension(): Promise<{ path: string }> {
+  return postJson('/api/extension/install', {});
+}
+
 /** GET /api/models/check: can the current key sign in to the AI model? */
 export function getModelKeyCheck(): Promise<{ status: ModelKeyStatus }> {
   return getJson('/api/models/check');

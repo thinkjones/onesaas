@@ -80,6 +80,8 @@ const globalTimers: Timers = {
 };
 
 export const WS_URL = 'ws://127.0.0.1:8787/ext';
+const FOCUS_URL = 'http://127.0.0.1:8787/api/app/focus';
+const DEV_APP_ORIGIN = 'http://localhost:5173';
 export const TOKEN_KEY = 'onesaasExtToken';
 const EARLIER_TOKEN_KEY = 'dadExtToken';
 export const GMAIL_TAB_QUERY = 'https://mail.google.com/*';
@@ -708,6 +710,26 @@ export function createBackground(deps: {
     return { ok: true };
   }
 
+  /**
+   * Shows a page of the app. The desktop app serves its pages inside its own
+   * window, so ask it to go there; only a dev web app has them at a web address.
+   */
+  async function openApp(path: string): Promise<{ ok: true }> {
+    let focused = false;
+    try {
+      const res = await fetch(FOCUS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      focused = res.ok && ((await res.json()) as { focused?: boolean }).focused === true;
+    } catch {
+      // The server isn't up: the dev address is all that's left to try.
+    }
+    if (!focused) await browser.tabs.create({ url: `${DEV_APP_ORIGIN}${path}`, active: true });
+    return { ok: true };
+  }
+
   browser.runtime.onMessage.addListener((message: unknown) => {
     const msg = (message ?? {}) as Record<string, unknown>;
     if (msg['action'] === 'pair') return pair(String(msg['code'] ?? ''));
@@ -720,6 +742,7 @@ export function createBackground(deps: {
       return Promise.resolve({ paired: token !== null, connected: isOpen(), lastPingAt, workerId });
     }
     if (msg['action'] === 'ping') return pingProbe();
+    if (msg['action'] === 'openApp') return openApp(String(msg['path'] ?? '/'));
     if (msg['action'] === 'getDebugLog') return Promise.resolve({ events: [...debugLog], workerId });
     if (msg['action'] === 'trigger') {
       // Flat Task-9 shape: the content script's readOpenEmail object passes

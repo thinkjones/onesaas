@@ -13,7 +13,7 @@
     "e2e": "pnpm --filter @onesaas/e2e test",
     "e2e:video": "pnpm --filter @onesaas/e2e test:video",
     "demo:reset": "tsx scripts/demo-reset.ts",
-    "build:desktop": "pnpm --filter @onesaas/web build && pnpm build:desktop-server",
+    "build:desktop": "pnpm --filter @onesaas/web build && pnpm --filter @onesaas/extension build && pnpm build:desktop-server",
     "build:desktop-server": "node scripts/build-desktop-server.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build --bundles app"

@@ -62,6 +62,7 @@ export default defineContentScript({
             String(msg['workflowId']),
             msg['status'] as RunStatus,
             typeof msg['runId'] === 'string' ? msg['runId'] : undefined,
+            (path) => void browser.runtime.sendMessage({ action: 'openApp', path }),
           );
         }
         return undefined;

@@ -109,8 +109,18 @@ describe('setButtonStatus', () => {
     expect(pill.textContent).toBe('Waiting for you');
     expect(pill.tagName).toBe('A');
     expect(pill.getAttribute('href')).toBe(
-      'http://localhost:5173/automations/wf_lead?mode=runtime&run=run-1',
+      'http://localhost:5173/automations/wf_lead?mode=runs&run=run-1',
     );
+  });
+
+  it('clicking the pill asks to open the run in the app, without firing the button', () => {
+    const open = vi.fn();
+    setButtonStatus(document, 'wf_lead', 'waiting', 'run-1', open);
+    const pill = document.querySelector<HTMLElement>('button[data-workflow-id="wf_lead"] .onesaas-status-pill')!;
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    pill.dispatchEvent(click);
+    expect(open).toHaveBeenCalledWith('/automations/wf_lead?mode=runs&run=run-1');
+    expect(click.defaultPrevented).toBe(true);
   });
 
   it('without a run id the pill is plain text, not a link', () => {

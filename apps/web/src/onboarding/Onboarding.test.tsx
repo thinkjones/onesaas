@@ -77,6 +77,7 @@ function stubFetch(opts: Stub = {}): Log {
         return ok({ generation: 1, lastPingAt: null, peer: null, ...(opts.pairing ?? { paired: false, connected: false }) });
       }
       if (url === '/api/pairing/start') return ok({ code: '482913' });
+      if (url === '/api/extension/install') return ok({ path: '/Users/me/OneSaaS Extension' });
       if (url === '/api/workflows' && method === 'POST') {
         log.workflowCreates += 1;
         return ok({ id: 'wf-new' });
@@ -381,6 +382,17 @@ test('the extension step shows its code; Finish waits for pairing and Skip finis
   press('Skip for now');
   expect(await screen.findByText('Automate page')).toBeDefined();
   expect(log.puts.at(-1)).toEqual({ onboarded: true });
+  unmount();
+});
+
+test('the extension comes with the app: Get it says where it is and how to load it', async () => {
+  const { unmount } = renderSetup();
+  await toConnect();
+  press('Get the extension');
+  expect(await screen.findByText('/Users/me/OneSaaS Extension')).toBeDefined();
+  expect(screen.getByText('chrome://extensions')).toBeDefined();
+  expect(screen.getByText(/Click Load unpacked/)).toBeDefined();
+  expect(document.querySelector('a[href*="github.com"]')).toBeNull();
   unmount();
 });
 

@@ -180,6 +180,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('opening the app', () => {
+  const send = (t: ReturnType<typeof makeBrowser>) => t.runtimeMessage({ action: 'openApp', path: '/automations/a?mode=runs&run=1' });
+
+  it('uses the desktop window when one is listening', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ focused: true }) })));
+    const t = makeBrowser();
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    await send(t);
+    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8787/api/app/focus', expect.objectContaining({ method: 'POST' }));
+    expect(t.created).toEqual([]);
+    bg.dispose();
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to the dev address when no desktop window is listening', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ focused: false }) })));
+    const t = makeBrowser();
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    await send(t);
+    expect(t.created[0]).toMatchObject({ url: 'http://localhost:5173/automations/a?mode=runs&run=1', active: true });
+    bg.dispose();
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('boot', () => {
   it('carries over a pairing saved under the earlier name', async () => {
     const t = makeBrowser();

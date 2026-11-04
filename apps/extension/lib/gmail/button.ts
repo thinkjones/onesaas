@@ -14,9 +14,9 @@ const STATUS_PILLS: Record<RunStatus, string> = {
   failed: 'Needs a look',
 };
 
-/** Deep link into the runtime view for one run (local dev web app). */
+/** One run in the app. Clicks go through the background, which can reach the desktop app. */
 export function runtimeUrl(workflowId: string, runId: string): string {
-  return `http://localhost:5173/automations/${encodeURIComponent(workflowId)}?mode=runtime&run=${encodeURIComponent(runId)}`;
+  return `http://localhost:5173/automations/${encodeURIComponent(workflowId)}?mode=runs&run=${encodeURIComponent(runId)}`;
 }
 
 /**
@@ -76,6 +76,8 @@ export function setButtonStatus(
   workflowId: string,
   status: RunStatus,
   runId?: string,
+  /** Opens the run's path in the app; without it the link opens as a plain tab. */
+  onOpenRun?: (path: string) => void,
 ): void {
   const container = doc.querySelector(SELECTORS.buttonsContainer);
   if (!container) return;
@@ -120,7 +122,13 @@ export function setButtonStatus(
   link.rel = 'noopener';
   // The pill sits INSIDE the trigger button: without this, clicking it would
   // bubble up and fire the workflow trigger as well.
-  link.addEventListener('click', (e) => e.stopPropagation());
+  link.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!onOpenRun) return;
+    e.preventDefault();
+    const { pathname, search } = new URL(link.href);
+    onOpenRun(`${pathname}${search}`);
+  });
   link.textContent = STATUS_PILLS[status];
   button.appendChild(link);
 }
