@@ -24,15 +24,6 @@ function renderNode(data: StepNodeData) {
 }
 
 describe('StepNode', () => {
-  test('waiting status shows "Waiting for you" with data-status="waiting"', () => {
-    renderNode({ step: STEP, kind: 'act', status: 'waiting' });
-    const badge = screen.getByText('Waiting for you');
-    expect(badge.getAttribute('data-status')).toBe('waiting');
-    const node = screen.getByText('Check the reply').closest('[data-step-id]');
-    expect(node?.getAttribute('data-step-id')).toBe('approve');
-    expect(node?.getAttribute('data-status')).toBe('waiting');
-  });
-
   test('renders kind icon, title and summary without a status', () => {
     renderNode({ step: STEP, kind: 'act' });
     expect(screen.getByText('Check the reply')).toBeDefined();
@@ -82,17 +73,25 @@ describe('StepNode', () => {
     expect(screen.queryByText('Works while Gmail is open in Chrome.')).toBeNull();
   });
 
-  test('an outcome caption renders under the status badge', () => {
-    renderNode({ step: STEP, kind: 'act', status: 'done', outcome: 'Saved the lead.' });
-    const caption = screen.getByText('Saved the lead.');
-    expect(caption.getAttribute('data-outcome')).toBe('true');
-    // The badge comes first in the card: outcome annotates, never replaces.
-    const badge = screen.getByText('Done');
-    expect(badge.compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  test('in Runs a finished step leads with what happened', () => {
+    renderNode({ step: STEP, kind: 'act', status: 'done', runs: true, number: 3, outcome: 'Saved the lead.' });
+    expect(screen.getByText('Saved the lead.').getAttribute('data-outcome')).toBe('true');
+    expect(screen.getByText(`3 · ${STEP.title}`)).toBeDefined();
   });
 
-  test('no caption renders without an outcome', () => {
-    const { container } = renderNode({ step: STEP, kind: 'act', status: 'done' });
+  test('in Runs a step not reached says so', () => {
+    renderNode({ step: STEP, kind: 'act', runs: true });
+    expect(screen.getByText('Not started.')).toBeDefined();
+  });
+
+  test('a waiting step grows in place to hold its card', () => {
+    renderNode({ step: STEP, kind: 'act', status: 'waiting', runs: true, expanded: <p>Check this</p> });
+    expect(screen.getByText('Waiting for you')).toBeDefined();
+    expect(screen.getByText('Check this').closest('.step-expanded')).not.toBeNull();
+  });
+
+  test('design cards show no run details', () => {
+    const { container } = renderNode({ step: STEP, kind: 'act' });
     expect(container.querySelector('[data-outcome]')).toBeNull();
   });
 });

@@ -1,15 +1,42 @@
 import type { ColumnType } from '@dad/shared';
+import { isLevelColumn } from './levels.ts';
 
-/** One list cell: photos as thumbnails, datetimes in the business timezone. */
+const LEVELS: Record<string, 'high' | 'normal' | 'low'> = {
+  high: 'high',
+  urgent: 'high',
+  normal: 'normal',
+  medium: 'normal',
+  low: 'low',
+};
+
+/** A level like High / Normal / Low, or undefined when it's any other text. */
+function levelOf(value: unknown): 'high' | 'normal' | 'low' | undefined {
+  return typeof value === 'string' ? LEVELS[value.trim().toLowerCase()] : undefined;
+}
+
+/** One list cell: photos as thumbnails, levels as pills, datetimes in the business timezone. */
 export function CellValue({
   type,
   value,
   timezone,
+  column,
 }: {
   type: ColumnType;
   value: unknown;
   timezone: string | null;
+  /** The column's name: urgency-style columns show their levels as pills. */
+  column?: string;
 }) {
+  if (column !== undefined && isLevelColumn(column)) {
+    const level = levelOf(value);
+    if (level) {
+      return (
+        <span className="level-pill" data-level={level}>
+          {String(value)}
+        </span>
+      );
+    }
+  }
   const thumb = imageUrlOf(value);
   if (thumb !== null) {
     return (

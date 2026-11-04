@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './tokens.css';
+@import './components.css' layer(components);
 
 @theme inline {
   --color-background: hsl(var(--background));
@@ -23,6 +24,10 @@
   --color-success: var(--success);
   --color-info: hsl(var(--info));
   --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-2: var(--accent-2);
+  --color-accent-2-soft: var(--accent-2-soft);
+  --color-well: var(--bg-well);
   --color-danger-soft: var(--danger-soft);
   --color-warning-soft: var(--warning-soft);
   --color-success-soft: var(--success-soft);
@@ -40,7 +45,7 @@
   --default-border-color: var(--border);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --radius-sm: var(--radius-s);
 }
 
 @layer base {
@@ -286,10 +291,10 @@
   .font-display {
     font-family: var(--font-heading);
   }
-  /* The board: dots over the canvas gradient, behind every screen. */
+  /* The board: Design's violet dots behind every screen. Runs mode lays its coral
+     board over this (see .board-runs). */
   .board {
-    background-image: radial-gradient(var(--border-strong) 1px, transparent 1px), var(--canvas);
-    background-size: 22px 22px, 100% 100%;
+    background: var(--board-design), var(--bg);
   }
   /* Sky canvas gradient behind the main panel (Bug #2, CRM look). */
   .bg-canvas {

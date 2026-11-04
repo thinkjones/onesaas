@@ -74,30 +74,22 @@ describe('ApprovalCard', () => {
     renderCard();
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
     expect(screen.getByRole('button', { name: 'Looks good' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: 'Use my changes' }).hasAttribute('disabled')).toBe(
-      true,
-    );
     expect(screen.getByText('The reply is empty')).toBeDefined();
     // Skip is the escape hatch for an empty proposal, so it stays enabled.
     expect(screen.getByRole('button', { name: 'Skip' }).hasAttribute('disabled')).toBe(false);
   });
 
-  test('"Use my changes" is disabled until the text is edited, then sends {action:edit,text}', async () => {
+  test('Looks good sends the edited text when it was changed', async () => {
     const fetch = stubFetchOk();
     vi.stubGlobal('fetch', fetch);
     renderCard();
-    const editButton = screen.getByRole('button', { name: 'Use my changes' });
-    expect(editButton.hasAttribute('disabled')).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Hi Sarah, thanks a lot!' } });
-    expect(editButton.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(editButton);
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Proposed reply' }), {
+      target: { value: 'Edited reply' },
     });
-    expect(fetch.mock.calls[0]![0]).toBe('/api/runs/run-1/steps/approve/approval');
-    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({
-      action: 'edit',
-      text: 'Hi Sarah, thanks a lot!',
+    fireEvent.click(screen.getByRole('button', { name: 'Looks good' }));
+    await waitFor(() => {
+      const call = fetch.mock.calls.find((c) => String(c[0]).includes('/approval'));
+      expect(JSON.parse(String((call![1] as RequestInit).body))).toEqual({ action: 'edit', text: 'Edited reply' });
     });
   });
 
@@ -144,9 +136,6 @@ describe('ApprovalCard', () => {
         true,
       );
     });
-    expect(screen.getByRole('button', { name: 'Use my changes' }).hasAttribute('disabled')).toBe(
-      true,
-    );
     expect(screen.getByRole('button', { name: 'Skip' }).hasAttribute('disabled')).toBe(true);
   });
 });

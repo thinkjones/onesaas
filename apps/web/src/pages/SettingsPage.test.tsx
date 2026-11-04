@@ -100,7 +100,7 @@ test('healthy glimmer shows the on-this-computer sentence plus one line per role
   expect(
     await screen.findByText(/Inbox sorting runs on this computer/),
   ).toBeDefined();
-  expect(await screen.findByText('Building chore reducers: Muse Spark')).toBeDefined();
+  expect(await screen.findByText('Building automations: Muse Spark')).toBeDefined();
   expect(await screen.findByText('Big plans: Muse Wonder')).toBeDefined();
   expect(await screen.findByText('Reading web pages: Muse Spark')).toBeDefined();
 });
@@ -112,7 +112,7 @@ test('spark fallback shows the fallback sentence', async () => {
       "Inbox sorting is using Muse Spark (Glimmer isn't running on this computer).",
     ),
   ).toBeDefined();
-  expect(await screen.findByText('Building chore reducers: Muse Spark')).toBeDefined();
+  expect(await screen.findByText('Building automations: Muse Spark')).toBeDefined();
   expect(await screen.findByText('Big plans: Muse Wonder')).toBeDefined();
 });
 
@@ -152,7 +152,7 @@ test('unknown model ids render raw instead of guessing a family', async () => {
           : r,
     ),
   );
-  expect(await screen.findByText('Building chore reducers: muse-spark-9.9-future')).toBeDefined();
+  expect(await screen.findByText('Building automations: muse-spark-9.9-future')).toBeDefined();
   expect(await screen.findByText('Big plans: muse-wonder-next')).toBeDefined();
 });
 

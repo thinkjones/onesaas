@@ -75,3 +75,30 @@ export function runDisplayName(triggerPayload: unknown): string {
 export function formatDuration(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)} s`;
 }
+
+/** "Started today at 07:44 PM from Gmail", from the run's start and trigger. */
+export function formatRunStart(iso: string, triggerType: string | undefined): string {
+  const when = formatRunListTime(iso).replace(/^Today /, 'today at ').replace(/^Yesterday /, 'yesterday at ');
+  const from: Record<string, string> = {
+    'trigger.gmailButton': ' from Gmail',
+    'trigger.email': ' from a new email',
+    'trigger.upload': ' from a photo',
+  };
+  return `Started ${when}${(triggerType && from[triggerType]) ?? ''}`;
+}
+
+const MACHINE_TEXT = /(^|:\s*)[[{].*$/s;
+const PLAIN_FAILURE = "Something in this step didn't look right to me.";
+
+/** A failure in plain words: a raw machine error never reaches the owner. */
+export function plainError(error: string): string {
+  return /^\s*[[{]/.test(error) ? PLAIN_FAILURE : error;
+}
+
+/** A story line in plain words: no joining arrows and no raw machine errors. */
+export function plainLine(line: string): string {
+  return line
+    .replace(MACHINE_TEXT, (_, lead: string) => `${lead}${PLAIN_FAILURE}`)
+    .replace(/\s*→\s*/g, ' ')
+    .trim();
+}

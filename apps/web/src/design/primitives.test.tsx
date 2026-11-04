@@ -34,11 +34,10 @@ describe('StatusBadge', () => {
 });
 
 describe('AppButton', () => {
-  test('is at least 40px tall with 16px+ text', () => {
+  test('full-size buttons are at least 40px tall', () => {
     render(<AppButton>Do it</AppButton>);
     const button = screen.getByRole('button', { name: 'Do it' });
     expect(button.classList.contains('min-h-10')).toBe(true);
-    expect(button.classList.contains('text-base')).toBe(true);
   });
 });
 

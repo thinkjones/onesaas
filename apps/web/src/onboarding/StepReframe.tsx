@@ -25,8 +25,8 @@ export default function StepReframe({
         You&apos;ve kept a business running through all of it. That&apos;s the hard part.
       </h1>
       <p className="mt-4 text-xl text-muted-foreground">
-        Think about the chores that eat your evenings. We&apos;ll call them{' '}
-        <strong className="text-foreground">chore reducers</strong>.
+        Think about the chores that eat your evenings. We&apos;ll turn them into{' '}
+        <strong className="text-foreground">automations</strong>.
       </p>
       {drawing && (
         <p

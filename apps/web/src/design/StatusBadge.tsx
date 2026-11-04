@@ -1,5 +1,6 @@
 import type { StepRunStatus } from '@dad/shared';
 import { cn } from 'cn';
+import { STATUS_LABEL } from './statusLabels.ts';
 
 /**
  * The one status language for the whole app (M2 Global Constraints).
@@ -9,18 +10,9 @@ import { cn } from 'cn';
  * statuses, and every status needs its own tint anyway — a plain pill keeps
  * the status → label → colour mapping in exactly one place.
  */
-const STATUS_LABEL: Record<StepRunStatus, string> = {
-  pending: 'Not started',
-  running: 'Working…', // U+2026 ELLIPSIS — match byte-exact, not "...".
-  waiting: 'Waiting for you',
-  done: 'Done',
-  failed: 'Needs a look',
-  skipped: 'Skipped',
-};
-
 const STATUS_TINT: Record<StepRunStatus, string> = {
   pending: 'bg-muted text-muted-foreground',
-  running: 'motion-safe:animate-pulse bg-accent-soft text-primary',
+  running: 'motion-safe:animate-pulse bg-accent-2-soft text-accent-2',
   waiting: 'bg-warning-soft text-warning',
   done: 'bg-success-soft text-success',
   failed: 'bg-danger-soft text-destructive',

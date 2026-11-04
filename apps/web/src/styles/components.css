@@ -1,0 +1,399 @@
+/* OneSaaSDesignSystem components that Tailwind utilities would make unreadable.
+ * Sizes are rem so the Normal / Large / Extra large setting still scales them:
+ * at the 17px root, 0.882rem is the system's 15px, 1.647rem its 28px, and so on. */
+
+.section-label {
+  font-size: 0.706rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.page-title { margin: 0; font-size: 2rem; font-weight: 700; }
+.page-title .count { font-weight: 500; color: var(--text-dim); }
+
+/* ---- Runs board: same board, coral. Sits behind the canvas. */
+.board-runs {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--board-runs), var(--bg);
+  box-shadow: var(--board-runs-frame);
+  pointer-events: none;
+}
+.react-flow { background: transparent; }
+.react-flow__node { transition: transform var(--dur) var(--ease); }
+
+/* ---- Design / Runs switch (bar and panel) */
+.mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-well);
+  border-radius: var(--radius-pill);
+}
+.mode-switch[data-mode='runs'] { background: var(--accent-2-soft); }
+.mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.824rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-pill);
+}
+.mode-switch button[aria-pressed='true'][data-segment='design'] { color: var(--on-accent); background: var(--accent); }
+.mode-switch button[aria-pressed='true'][data-segment='runs'] { color: var(--on-accent); background: var(--accent-2); }
+.mode-switch .waiting-dot {
+  width: 0.47rem;
+  height: 0.47rem;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+/* ---- Step cards */
+.step-card {
+  position: relative;
+  box-sizing: border-box;
+  width: 470px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+.step-card[data-selected='true'] {
+  padding: 13px 15px;
+  border: 2px solid var(--accent);
+  box-shadow: var(--ring-selected), var(--shadow-dialog);
+}
+.step-card .num { flex: none; width: 14px; font-size: 0.706rem; font-weight: 700; color: var(--text-dim); }
+.step-card[data-selected='true'] .num { color: var(--accent); }
+.step-card .kind-tile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-s);
+}
+.step-card .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.step-card .title { font-size: 0.941rem; font-weight: 700; overflow-wrap: anywhere; }
+.step-card .desc { font-size: 0.824rem; color: var(--text-dim); overflow-wrap: anywhere; }
+.step-card .small-pill, .you-decide {
+  flex: none;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.647rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-radius: var(--radius-pill);
+}
+
+/* Runs: finished steps shrink, unstarted steps are outlines. */
+.step-card[data-run] { padding: 12px 16px; gap: 12px; box-shadow: none; min-height: 66px; }
+.step-card[data-run='pending'], .step-card[data-run='skipped'] {
+  background: transparent;
+  border: 1.5px dashed var(--pending-line);
+  color: var(--text-dim);
+}
+.step-card[data-run='running'] { border-color: var(--accent-2); }
+.step-card .label { font-size: 0.765rem; font-weight: 600; color: var(--text-dim); overflow-wrap: anywhere; }
+.step-card .outcome { font-size: 0.882rem; font-weight: 600; overflow-wrap: anywhere; }
+.step-card[data-run='pending'] .outcome, .step-card[data-run='skipped'] .outcome { font-weight: 400; }
+
+.status-dot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--on-accent);
+  font-weight: 800;
+}
+.status-dot[data-status='done'] { background: var(--success); }
+.status-dot[data-status='waiting'] { background: var(--warning); }
+.status-dot[data-status='failed'] { background: var(--danger); }
+.status-dot[data-status='running'] { box-sizing: border-box; border: 3px solid var(--accent-2); }
+.status-dot[data-status='pending'], .status-dot[data-status='skipped'] { box-sizing: border-box; border: 2px dashed var(--pending-line); }
+@media (prefers-reduced-motion: no-preference) {
+  .status-dot[data-status='running'] { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+}
+
+/* The step that needs you grows in place. Room is left for the 360px panel. */
+.step-expanded {
+  box-sizing: border-box;
+  width: min(790px, calc(100vw - 640px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px;
+  background: var(--bg-raised);
+  border-radius: var(--radius-l);
+  cursor: default;
+}
+.step-expanded[data-status='waiting'] { border: 2px solid var(--warning); box-shadow: var(--ring-waiting), var(--shadow-dialog); }
+.step-expanded[data-status='failed'] { border: 2px solid var(--danger); box-shadow: var(--ring-failed), var(--shadow-dialog); }
+.step-expanded .head { display: flex; align-items: center; gap: 10px; }
+.step-expanded .head .label { font-size: 0.765rem; font-weight: 600; color: var(--text-dim); }
+.step-expanded .head > :last-child:not(:nth-child(3)) { margin-left: auto; }
+.step-expanded .question { margin: 0; font-size: 1.647rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.step-expanded .context { margin: 0; font-size: 0.941rem; line-height: 1.5; }
+.fix-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  font-size: 0.882rem;
+  background: var(--bg-well);
+  border-radius: var(--radius-s);
+}
+.fix-step b { flex: none; width: 22px; font-size: 0.824rem; color: var(--accent); }
+
+/* ---- Run progress */
+.run-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.run-strip span { height: 6px; border-radius: 3px; background: var(--border); }
+.run-strip span[data-status='done'] { background: var(--success); }
+.run-strip span[data-status='waiting'] { background: var(--warning); }
+.run-strip span[data-status='failed'] { background: var(--danger); }
+.run-strip span[data-status='running'] { background: var(--accent-2); }
+.run-line { width: 4px; border-radius: 2px; background: var(--accent-2); }
+
+/* ---- Connector label */
+.edge-label {
+  position: absolute;
+  padding: 0 6px;
+  font-size: 0.706rem;
+  color: var(--text-dim);
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+/* ---- Runs list */
+.runs-list-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  cursor: pointer;
+}
+.runs-list-row:hover { background: var(--bg-hover); }
+.runs-list-row[aria-selected='true'] { background: var(--accent-2-soft); box-shadow: inset 3px 0 0 var(--accent-2); }
+.runs-list-row .who { font-size: 0.882rem; font-weight: 600; overflow-wrap: anywhere; }
+.runs-list-row[aria-selected='true'] .who { font-weight: 700; }
+.runs-list-row .state { font-size: 0.706rem; font-weight: 600; }
+.state[data-status='done'] { color: var(--success); }
+.state[data-status='waiting'] { color: var(--warning); }
+.state[data-status='failed'] { color: var(--danger); }
+.state[data-status='running'] { color: var(--accent-2); }
+.state[data-status='pending'], .state[data-status='skipped'] { color: var(--text-dim); }
+
+/* ---- Add-a-step rail */
+.tool-rail {
+  position: absolute;
+  top: 300px;
+  left: 14px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
+}
+.tool-rail > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-s);
+}
+.tool-rail > button:hover { filter: brightness(0.96); }
+.flyout {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  width: 17rem;
+  max-height: 22rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+}
+.flyout button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-s);
+}
+.flyout button:hover { background: var(--bg-hover); }
+.flyout .t { font-weight: 600; }
+.flyout .d { font-size: 0.765rem; color: var(--text-dim); }
+
+/* ---- Step settings popover */
+.step-popover {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 22px);
+  z-index: 30;
+  box-sizing: border-box;
+  width: 320px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-dialog);
+  cursor: default;
+}
+.step-popover-arrow {
+  position: absolute;
+  top: 26px;
+  left: calc(100% + 16px);
+  z-index: 31;
+  width: 12px;
+  height: 12px;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+
+/* ---- ⋯ menu */
+.more-menu { position: relative; display: inline-flex; }
+.more-menu [role='menu'] {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-dialog);
+}
+.more-menu [role='menuitem'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 8px;
+}
+.more-menu [role='menuitem']:hover { background: var(--bg-hover); }
+.more-menu [role='menuitem'][data-danger='true'] { color: var(--danger); }
+.more-menu .rule { height: 1px; margin: 4px 0; background: var(--border); }
+
+/* ---- Activity */
+.needs-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px 20px;
+  color: inherit;
+  background: var(--bg-raised);
+  border-radius: 18px;
+}
+.needs-card[data-status='waiting'] { border: 2px solid var(--warning); box-shadow: var(--ring-waiting); }
+.needs-card[data-status='failed'] { border: 2px solid var(--danger); box-shadow: var(--ring-failed); }
+
+/* ---- Data */
+.tables-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-s);
+}
+.tables-item:hover { background: var(--bg-hover); }
+.tables-item[aria-current='true'] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
+.chip {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.765rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  box-shadow: none;
+  border-radius: var(--radius-pill);
+}
+.chip[aria-pressed='true'] { color: var(--bg); background: var(--text); border-color: var(--text); }
+.level-pill {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.706rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+.level-pill[data-level='high'] { color: var(--danger); background: var(--danger-soft); }
+.level-pill[data-level='normal'] { color: var(--accent-ink); background: var(--accent-soft); }
+.level-pill[data-level='low'] { color: var(--text-dim); background: var(--bg-well); }
+.concept-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 16px;
+  padding: 12px 14px;
+  font-size: 0.824rem;
+  color: var(--text-dim);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+.concept-bar .tag {
+  flex: none;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.647rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-radius: var(--radius-pill);
+}

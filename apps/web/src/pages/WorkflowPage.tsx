@@ -10,6 +10,7 @@ import { useAgent } from '../agent/useAgent.ts';
 import { uploadPhoto, useAgentEvents, useWorkflow, type AgentEvent } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import DesignView from '../design/DesignView.tsx';
+import { isRunsMode } from '../runtime/params.ts';
 import { TELL_ME_MORE_EVENT } from '../explain/useAltClickExplain.ts';
 import EmptyState from '../design/EmptyState.tsx';
 import type { FixStepInfo } from '../design/DesignView.tsx';
@@ -50,7 +51,8 @@ export interface WorkflowPageProps {
  */
 export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {}) {
   const { workflowId } = useParams();
-  const [, setParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const runsMode = isRunsMode(params);
   const location = useLocation();
   const navigate = useNavigate();
   const workflowQuery = useWorkflow(workflowId ?? '');
@@ -120,6 +122,7 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
       setParams((prev) => {
         const updated = new URLSearchParams(prev);
         updated.set('mode', 'design');
+        updated.delete('run');
         updated.set('step', info.stepId);
         return updated;
       });
@@ -158,12 +161,20 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
       if (typeof message !== 'string' || message.trim().length === 0) return;
       if (!workflowQuery.isPending && !workflowQuery.data) return;
       setPanelCollapsed(false);
+      // The chat only exists in Design: the answer needs it on screen.
+      setParams((prev) => {
+        if (!isRunsMode(prev)) return prev;
+        const updated = new URLSearchParams(prev);
+        updated.set('mode', 'design');
+        updated.delete('run');
+        return updated;
+      });
       tellMeMoreNonce.current += 1;
       setTellMeMore({ text: message.trim(), nonce: tellMeMoreNonce.current, workflowId });
     };
     window.addEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
     return () => window.removeEventListener(TELL_ME_MORE_EVENT, onTellMeMore);
-  }, [workflowId, workflowQuery.data, workflowQuery.isPending]);
+  }, [setParams, workflowId, workflowQuery.data, workflowQuery.isPending]);
 
   // Consume-once for the opening prompt (mirrors the prefill seam, but the
   // panel's own once-guard dies on collapse/reopen, so the PAGE must clear
@@ -181,13 +192,13 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     }
   }, [location.pathname, location.search, location.state, navigate]);
 
-  if (workflowQuery.isPending) return <p className="text-base">Loading chore reducer…</p>;
+  if (workflowQuery.isPending) return <p className="text-base">Loading automation…</p>;
   if (workflowQuery.isError || !workflowQuery.data) {
     if (workflowQuery.isError) {
       return (
         <EmptyState
           icon={TriangleAlert}
-          title="Couldn't load this chore reducer"
+          title="Couldn't load this automation"
           hint="Check the server is running and try again."
         />
       );
@@ -195,8 +206,8 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     return (
       <EmptyState
         icon={SearchX}
-        title="Chore reducer not found"
-        hint={`There is no chore reducer with id "${workflowId}".`}
+        title="Automation not found"
+        hint={`There is no automation with id "${workflowId}".`}
       />
     );
   }
@@ -230,17 +241,17 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
           ) : undefined
         }
       />
-      {panelCollapsed ? (
+      {runsMode ? null : panelCollapsed ? (
         <AppButton
           variant="outline"
-          className="absolute right-3 bottom-4 z-20 shadow-md"
+          className="absolute right-3.5 bottom-3.5 z-20 shadow-md"
           onClick={() => setPanelCollapsed(false)}
         >
           <PanelRightOpen />
           Show chat
         </AppButton>
       ) : (
-        <div className="absolute top-20 right-3 bottom-4 z-20 flex w-[360px] flex-col gap-3">
+        <div className="absolute top-20 right-3.5 bottom-3.5 z-20 flex w-[360px] flex-col gap-3">
           {activity.length > 0 && <ActivityLog entries={activity} />}
           <AgentPanel
             agent={agent}

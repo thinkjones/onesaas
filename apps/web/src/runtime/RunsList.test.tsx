@@ -62,25 +62,18 @@ describe('RunsList', () => {
     expect(onSelect).toHaveBeenCalledWith('run-1');
   });
 
+  test('shows the coloured status with the time', () => {
+    render(<RunsList runs={[SARAH_RUN]} selectedRunId="run-1" onSelect={() => {}} />);
+    expect(screen.getByRole('option').querySelector('.state')!.textContent).toMatch(/^Waiting for you|^Done|^Needs a look|^Working/);
+  });
+
   test('an invalid startedAt falls back to the raw string instead of crashing the list', () => {
     const bad: Run = { ...SARAH_RUN, id: 'run-bad', startedAt: 'not-a-date' };
     render(
       <RunsList runs={[bad, MANUAL_RUN]} selectedRunId="run-2" onSelect={() => {}} />,
     );
-    expect(screen.getByText('not-a-date')).toBeDefined();
+    expect(screen.getByText(/not-a-date/)).toBeDefined();
     expect(screen.getByText('Sarah Lee')).toBeDefined();
     expect(screen.getByText('Manual run')).toBeDefined();
-  });
-
-  test('shows the story last line for the run when provided', () => {
-    render(
-      <RunsList
-        runs={[SARAH_RUN]}
-        selectedRunId="run-1"
-        onSelect={() => {}}
-        lastLineByRunId={{ 'run-1': 'Saved the reply as a draft in Gmail.' }}
-      />,
-    );
-    expect(screen.getByText('Saved the reply as a draft in Gmail.')).toBeDefined();
   });
 });

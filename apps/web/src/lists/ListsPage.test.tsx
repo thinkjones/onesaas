@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ListsPage from './ListsPage.tsx';
@@ -157,10 +157,11 @@ describe('ListsPage', () => {
     expect(screen.getByText('Jordan Lee')).toBeDefined();
   });
 
-  test('with no table chosen it shows every table to pick from', async () => {
+  test('every table is listed beside the chosen one, defaulting to the first', async () => {
     renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=nope' });
-    expect(await screen.findByRole('region', { name: 'Your tables' })).toBeDefined();
-    fireEvent.click(screen.getByRole('link', { name: /Orders/ }));
+    const list = await screen.findByRole('complementary', { name: 'Your tables' });
+    expect(await screen.findByRole('region', { name: TABLE.label })).toBeDefined();
+    fireEvent.click(within(list).getByRole('button', { name: /Orders/ }));
     expect(await screen.findByRole('region', { name: 'Orders' })).toBeDefined();
     expect(screen.getByTestId('loc-search').textContent).toBe('?table=orders');
   });

@@ -1,6 +1,6 @@
 import type { Run, StepInstance, StepRun, Workflow } from '@dad/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { RunDetail, WorkflowDetail } from '../api.ts';
@@ -174,10 +174,10 @@ describe('WorkflowPage fix-this-step seam', () => {
 
     // Design mode, with the failed step selected…
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
-    expect(
-      await screen.findByRole('heading', { name: 'Settings for Pick out the details' }),
-    ).toBeDefined();
+    expect((await screen.findAllByText('Pick out the details')).length).toBeGreaterThan(0);
+    expect(await screen.findByTestId('design-inspector')).toBeDefined();
     expect(search).toContain('mode=design');
+    expect(search).not.toContain('run=');
     expect(search).toContain('step=extract');
     // …and the agent input pre-filled with the exact handoff string. Task 7's
     // panel consumes this from WorkflowPage's agentPrefill state.
@@ -275,8 +275,18 @@ describe('WorkflowPage photo drop zone', () => {
     return { uploads, search: () => search };
   }
 
+  test('chat is there while designing and gone in Runs', async () => {
+    renderUploadPage({ search: '?mode=design', steps: [EXTRACT] });
+    expect(await screen.findByRole('region', { name: 'Chat' })).toBeDefined();
+    cleanup();
+    renderUploadPage({ search: '?mode=runs', steps: [EXTRACT] });
+    await screen.findByTestId('runs-panel');
+    expect(screen.queryByRole('region', { name: 'Chat' })).toBeNull();
+    expect(screen.getByTestId('board-runs')).toBeDefined();
+  });
+
   test('the runs panel shows the trigger prompt drop zone', async () => {
-    renderUploadPage({ search: '?runs=1', steps: [EXTRACT] });
+    renderUploadPage({ search: '?mode=runs', steps: [EXTRACT] });
     expect(await screen.findByText('Drop the mug shot here')).toBeDefined();
   });
 
@@ -288,7 +298,7 @@ describe('WorkflowPage photo drop zone', () => {
   });
 
   test('dropping a photo posts it and jumps to the new run', async () => {
-    const page = renderUploadPage({ search: '?runs=1', steps: [EXTRACT] });
+    const page = renderUploadPage({ search: '?mode=runs', steps: [EXTRACT] });
     const zone = await screen.findByText('Drop the mug shot here');
     const file = new File(['fake-image-bytes'], 'mug.jpg', { type: 'image/jpeg' });
     fireEvent.drop(zone, { dataTransfer: { files: [file] } });
@@ -301,7 +311,7 @@ describe('WorkflowPage photo drop zone', () => {
 
   test('a rejected photo shows the server message', async () => {
     renderUploadPage({
-      search: '?runs=1',
+      search: '?mode=runs',
       steps: [EXTRACT],
       uploadError: "That doesn't look like a photo.",
     });

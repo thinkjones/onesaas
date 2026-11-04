@@ -74,7 +74,7 @@ export default function DesignPreviewPage() {
           <EmptyState
             icon={Inbox}
             title="No runs yet"
-            hint="Runs will show up here once this chore reducer starts."
+            hint="Runs will show up here once this automation starts."
             action={{ label: 'Run now', onClick: () => setClicks((n) => n + 1) }}
           />
         </AppCard>

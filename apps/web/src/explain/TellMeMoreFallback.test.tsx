@@ -214,7 +214,7 @@ describe('TellMeMoreFallback', () => {
   test('on a bad reducer id, "Tell me more" routes to the most-recent reducer instead of dying', async () => {
     const { agentPosts, location } = renderShell('/reducers/badId', [OLDER]);
     // The page settled on not-found (its listener leaves the event alone)…
-    expect(await screen.findByText('Chore reducer not found')).toBeDefined();
+    expect(await screen.findByText('Automation not found')).toBeDefined();
     window.dispatchEvent(
       new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
     );
@@ -311,7 +311,7 @@ describe('TellMeMoreFallback', () => {
       </QueryClientProvider>,
     );
     // Pending: the page shows loading and claims the event (pending counts)…
-    expect(await screen.findByText('Loading chore reducer…')).toBeDefined();
+    expect(await screen.findByText('Loading automation…')).toBeDefined();
     window.dispatchEvent(
       new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
     );

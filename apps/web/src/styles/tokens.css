@@ -1,87 +1,117 @@
-/* OneSaaS design tokens: electric violet with a coral-pink second accent, on
- * violet-tinted neutrals. Token names follow design-system-prompt §2.
- * Light/dark follows the OS (prefers-color-scheme); there is no in-app theme
- * switcher. System fonts only — no web-font imports (see main.tsx).
- *
- * Three layers (design-system skill): the §2 block below is primitives +
- * semantic; the alias block after it re-expresses the SAME values under the
- * Tailwind/shadcn pipeline names (triplets feed the `hsl(var(--x))` mappings
- * in app.css @theme). Keep both layers value-identical.
- */
+/* OneSaaSDesignSystem tokens (Option D, refined OneSaaS). Light/dark follows the
+ * OS. The first two blocks come from the design system; the "still used" lines and
+ * the alias layer keep the Tailwind/shadcn pipeline working. Keep values in step. */
 :root {
   color-scheme: light dark;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
   --font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
   font-family: var(--font-ui);
+
+  /* Surfaces */
   --bg: hsl(270 50% 98.5%);
   --bg-well: hsl(268 45% 95%);
   --bg-raised: hsl(0 0% 100%);
-  --bg-hover: hsl(266 45% 91%);
+  --bg-hover: hsl(266 45% 93%);
+  --bg-input: hsl(266 45% 96%);
+  --border: hsl(266 40% 91%);
+  --border-strong: hsl(264 35% 85%);
+  --text: hsl(258 50% 12%);
+  --text-dim: hsl(258 12% 38%);
+
+  /* Brand */
+  --accent: hsl(265 83% 50%);              /* violet: Design mode, links, focus, owner chat */
+  --accent-soft: hsl(265 83% 50% / 0.11);
+  --accent-ink: hsl(265 85% 37%);          /* NEW: violet text on soft violet */
+  --on-accent: hsl(0 0% 100%);
+  --accent-2: hsl(331 90% 45%);            /* coral: Runs mode / real run */
+  --accent-2-soft: hsl(331 90% 45% / 0.11);
+  --gradient-brand: linear-gradient(115deg, var(--accent), var(--accent-2)); /* wordmark + the one primary action per screen only */
+
+  /* Mode boards — NEW */
+  --board-design: radial-gradient(hsl(262 70% 88%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(263 85% 95%) 0, var(--bg) 260px);
+  --board-runs: radial-gradient(hsl(331 65% 86%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(331 85% 94%) 0, hsl(331 70% 98%) 260px);
+  --board-runs-frame: inset 0 0 0 4px var(--accent-2);
+
+  /* Status */
+  --success: hsl(158 88% 25%);
+  --success-soft: hsl(158 50% 91%);
+  --warning: hsl(28 95% 32%);
+  --warning-soft: hsl(30 70% 92%);
+  --danger: hsl(349 86% 44%);
+  --danger-soft: hsl(350 80% 94%);
+  --pending-line: hsl(330 30% 80%);        /* NEW: dashed outline for not-started steps */
+
+  /* Step kinds — NEW (icon tile tint / icon colour) */
+  --kind-trigger-bg: hsl(265 83% 95%);  --kind-trigger-fg: var(--accent);
+  --kind-fetch-bg: hsl(214 80% 94%);    --kind-fetch-fg: hsl(214 75% 44%);
+  --kind-enrich-bg: hsl(328 75% 94%);   --kind-enrich-fg: hsl(331 90% 36%);
+  --kind-store-bg: hsl(152 45% 92%);    --kind-store-fg: var(--success);
+  --kind-act-bg: hsl(30 70% 92%);       --kind-act-fg: var(--warning);
+
+  /* Elevation, shape, motion */
+  --shadow-card: 0 3px 10px hsl(262 60% 25% / 0.06);
+  --shadow-float: 0 2px 8px hsl(262 60% 25% / 0.08);
+  --shadow-dialog: 0 18px 48px hsl(262 60% 25% / 0.12), 0 2px 8px hsl(262 60% 25% / 0.06);
+  --ring-waiting: 0 0 0 6px hsl(28 95% 32% / 0.14);   /* NEW */
+  --ring-failed: 0 0 0 6px hsl(349 86% 44% / 0.12);   /* NEW */
+  --ring-selected: 0 0 0 5px hsl(265 83% 50% / 0.14); /* NEW */
+  --radius-l: 20px;   /* NEW: expanded step (approval / failure) */
+  --radius: 16px;     /* cards, panels, step cards */
+  --radius-s: 12px;   /* inputs, list rows */
+  --radius-pill: 999px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 180ms;
+
+  /* Still used by the app; not part of the new palette. */
   --bg-window: hsl(264 35% 88%);
   --bg-sidebar: hsl(268 55% 96.5%);
-  --bg-canvas: linear-gradient(180deg, hsl(262 95% 90%) 0%, hsl(335 90% 95%) 240px, var(--bg) 520px);
-  --bg-input: hsl(266 45% 95%);
-  --border: hsl(264 35% 87%);
-  --border-strong: hsl(262 28% 75%);
-  --text: hsl(258 45% 11%);
-  --text-dim: hsl(258 15% 38%);
-  --accent: hsl(262 85% 50%);
-  --accent-soft: hsl(262 85% 50% / 0.13);
-  --on-accent: hsl(0 0% 100%);
-  --accent-2: hsl(335 90% 45%);
-  --accent-2-soft: hsl(335 90% 45% / 0.13);
-  --gradient-brand: linear-gradient(115deg, hsl(262 85% 50%), hsl(335 90% 45%));
-  --danger: hsl(350 85% 44%);
-  --danger-soft: hsl(350 85% 44% / 0.12);
-  --warning: hsl(28 95% 33%);
-  --warning-soft: hsl(28 95% 33% / 0.16);
-  --success: hsl(158 85% 24%);
-  --success-soft: hsl(158 85% 24% / 0.13);
   --term-bg: hsl(258 40% 10%);
   --term-text: hsl(264 40% 92%);
   --scrim: hsl(262 60% 25% / 0.16);
-  --shadow-card: 0 1px 2px hsl(262 60% 25% / 0.05), 0 3px 10px hsl(262 60% 25% / 0.05);
-  --shadow-float: 0 1px 2px hsl(262 60% 25% / 0.06), 0 2px 6px hsl(262 60% 25% / 0.05);
-  --shadow-dialog: 0 18px 48px hsl(262 60% 25% / 0.16), 0 2px 8px hsl(262 60% 25% / 0.06);
-  --radius: 14px;
-  --radius-s: 8px;
-  --radius-pill: 999px;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: hsl(258 35% 8%);
     --bg-well: hsl(258 32% 11%);
-    --bg-raised: hsl(258 30% 15%);
-    --bg-hover: hsl(258 28% 21%);
-    --bg-window: hsl(258 40% 5%);
-    --bg-sidebar: hsl(258 34% 10%);
-    --bg-canvas: linear-gradient(180deg, hsl(262 60% 22%) 0%, hsl(320 40% 13%) 240px, var(--bg) 520px);
-    --bg-input: hsl(258 26% 18%);
-    --border: hsl(258 24% 22%);
-    --border-strong: hsl(258 20% 32%);
+    --bg-raised: hsl(258 30% 14%);
+    --bg-hover: hsl(258 28% 19%);
+    --bg-input: hsl(258 30% 10%);
+    --border: hsl(258 24% 21%);
+    --border-strong: hsl(258 20% 30%);
     --text: hsl(264 40% 96%);
     --text-dim: hsl(260 18% 72%);
     --accent: hsl(262 100% 76%);
-    --accent-soft: hsl(262 100% 76% / 0.2);
+    --accent-soft: hsl(262 100% 76% / 0.16);
+    --accent-ink: hsl(262 100% 84%);
     --on-accent: hsl(258 60% 8%);
-    --accent-2: hsl(350 100% 74%);
-    --accent-2-soft: hsl(350 100% 74% / 0.2);
-    --gradient-brand: linear-gradient(115deg, hsl(262 100% 76%), hsl(350 100% 74%));
-    --danger: hsl(350 95% 70%);
-    --danger-soft: hsl(350 95% 70% / 0.18);
-    --warning: hsl(38 100% 62%);
-    --warning-soft: hsl(38 100% 62% / 0.18);
-    --success: hsl(155 70% 58%);
-    --success-soft: hsl(155 70% 58% / 0.18);
+    --accent-2: hsl(345 100% 72%);
+    --accent-2-soft: hsl(345 100% 72% / 0.16);
+    --board-design: radial-gradient(hsl(258 25% 18%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(262 50% 16%) 0, var(--bg) 260px);
+    --board-runs: radial-gradient(hsl(330 25% 20%) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(180deg, hsl(330 45% 15%) 0, var(--bg) 260px);
+    --success: hsl(155 70% 58%);   --success-soft: hsl(155 70% 58% / 0.16);
+    --warning: hsl(38 100% 62%);   --warning-soft: hsl(38 100% 62% / 0.16);
+    --danger: hsl(350 95% 72%);    --danger-soft: hsl(350 95% 72% / 0.16);
+    --pending-line: hsl(330 15% 35%);
+    --kind-trigger-bg: hsl(262 60% 22%); --kind-trigger-fg: var(--accent);
+    --kind-fetch-bg: hsl(214 50% 20%);   --kind-fetch-fg: hsl(214 90% 75%);
+    --kind-enrich-bg: hsl(330 45% 20%);  --kind-enrich-fg: hsl(330 95% 78%);
+    --kind-store-bg: hsl(155 40% 16%);   --kind-store-fg: var(--success);
+    --kind-act-bg: hsl(35 45% 17%);      --kind-act-fg: var(--warning);
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.35);
+    --shadow-float: 0 2px 8px hsl(0 0% 0% / 0.4);
+    --shadow-dialog: 0 18px 48px hsl(0 0% 0% / 0.55);
+    --ring-waiting: 0 0 0 6px hsl(38 100% 62% / 0.16);
+    --ring-failed: 0 0 0 6px hsl(350 95% 72% / 0.14);
+    --ring-selected: 0 0 0 5px hsl(262 100% 76% / 0.18);
+    --bg-window: hsl(258 40% 5%);
+    --bg-sidebar: hsl(258 34% 10%);
     --term-bg: hsl(258 40% 5%);
     --scrim: hsl(220 30% 3% / 0.5);
-    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.35);
-    --shadow-float: 0 1px 2px hsl(0 0% 0% / 0.4);
-    --shadow-dialog: 0 18px 48px hsl(0 0% 0% / 0.55);
   }
 }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
@@ -97,41 +127,36 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --background: 270 50% 98.5%;
-  --foreground: 258 45% 11%;
+  --foreground: 258 50% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 258 45% 11%;
+  --card-foreground: 258 50% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 258 45% 11%;
-  --primary: 262 85% 50%;
+  --popover-foreground: 258 50% 12%;
+  --primary: 265 83% 50%;
   --primary-foreground: 0 0% 100%;
   --secondary: 268 45% 95%;
-  --secondary-foreground: 258 45% 11%;
+  --secondary-foreground: 258 50% 12%;
   --muted: 268 45% 95%;
-  --muted-foreground: 258 15% 38%;
-  --accent-foreground: 258 45% 11%;
-  --destructive: 350 85% 44%;
+  --muted-foreground: 258 12% 38%;
+  --accent-foreground: 258 50% 12%;
+  --destructive: 349 86% 44%;
   --destructive-foreground: 0 0% 100%;
-  --info: 262 85% 50%;
-  --input: 266 45% 95%;
-  --ring: 262 85% 50%;
+  --info: 265 83% 50%;
+  --input: 266 45% 96%;
+  --ring: 265 83% 50%;
   --window: 264 35% 88%;
   --sidebar: 268 55% 96.5%;
-  --canvas: linear-gradient(
-    180deg,
-    hsl(262 95% 90%) 0%,
-    hsl(335 90% 95%) 240px,
-    hsl(270 50% 98.5%) 520px
-  );
-  --shadow-sm: 0 1px 2px hsl(262 60% 25% / 0.05), 0 3px 10px hsl(262 60% 25% / 0.05);
-  --shadow-md: 0 18px 48px hsl(262 60% 25% / 0.16), 0 2px 8px hsl(262 60% 25% / 0.06);
+  --canvas: linear-gradient(180deg, hsl(263 85% 95%) 0, hsl(270 50% 98.5%) 260px);
+  --shadow-sm: 0 3px 10px hsl(262 60% 25% / 0.06);
+  --shadow-md: 0 18px 48px hsl(262 60% 25% / 0.12), 0 2px 8px hsl(262 60% 25% / 0.06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --background: 258 35% 8%;
     --foreground: 264 40% 96%;
-    --card: 258 30% 15%;
+    --card: 258 30% 14%;
     --card-foreground: 264 40% 96%;
-    --popover: 258 30% 15%;
+    --popover: 258 30% 14%;
     --popover-foreground: 264 40% 96%;
     --primary: 262 100% 76%;
     --primary-foreground: 258 60% 8%;
@@ -140,19 +165,14 @@
     --muted: 258 32% 11%;
     --muted-foreground: 260 18% 72%;
     --accent-foreground: 264 40% 96%;
-    --destructive: 350 95% 70%;
+    --destructive: 350 95% 72%;
     --destructive-foreground: 0 0% 100%;
     --info: 262 100% 76%;
-    --input: 258 26% 18%;
+    --input: 258 30% 10%;
     --ring: 262 100% 76%;
     --window: 258 40% 5%;
     --sidebar: 258 34% 10%;
-    --canvas: linear-gradient(
-      180deg,
-      hsl(262 60% 22%) 0%,
-      hsl(320 40% 13%) 240px,
-      hsl(258 35% 8%) 520px
-    );
+    --canvas: linear-gradient(180deg, hsl(262 50% 16%) 0, hsl(258 35% 8%) 260px);
     --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.35);
     --shadow-md: 0 18px 48px hsl(0 0% 0% / 0.55);
   }

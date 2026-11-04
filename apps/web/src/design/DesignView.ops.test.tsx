@@ -8,6 +8,7 @@ import { Toaster, toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { WorkflowDetail } from '../api.ts';
 import type { UseAgentResult } from '../agent/useAgent.ts';
+import type { StepNodeData } from '../canvas/StepNode.tsx';
 import DesignView from './DesignView.tsx';
 
 function makeAgent(): UseAgentResult {
@@ -146,6 +147,7 @@ function renderOps(entry = '/reducers/flow-1') {
 
 beforeEach(() => {
   ReactFlowMock.mockClear();
+  ReactFlowMock.mockImplementation(() => null);
   // Sonner's toast store is module-global: a previous test's still-alive
   // toast would re-render in the next test's fresh Toaster.
   toast.dismiss();
@@ -345,16 +347,20 @@ describe('DesignView canvas ops', () => {
       expect(ReactFlowMock.mock.calls.length).toBeGreaterThan(0);
     });
     lastFlowProps().onNodesChange!([{ id: 'trigger', type: 'remove' }]);
-    expect(await screen.findByText("The start of the reducer can't be deleted.")).toBeDefined();
+    expect(await screen.findByText("The start of the automation can't be deleted.")).toBeDefined();
     expect(opsCalls(fetch)).toEqual([]);
   });
 
   test('saving the settings form sends updateStep', async () => {
+    // React Flow is mocked here, so draw just the selected card's settings.
+    ReactFlowMock.mockImplementation(((props: ReactFlowProps) => (
+      <>{props.nodes?.map((n) => (n.data as StepNodeData).design?.settings)}</>
+    )) as never);
     const { fetch } = renderOps('/reducers/flow-1?step=s1');
     fireEvent.change(await screen.findByLabelText('Instructions'), {
       target: { value: 'Read the catering enquiry.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByText('Done'));
     await waitFor(() => {
       expect(opsCalls(fetch)).toEqual([
         {

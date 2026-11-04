@@ -88,35 +88,38 @@ afterEach(() => {
 });
 
 describe('ActivityPage', () => {
-  test('shows runs as a table, newest first, with automation, story line and status', async () => {
+  test('what needs you is a card; everything else is a table row', async () => {
     renderActivity([
       run('run-old', 'wf-2', daysAgo(10), 'done'),
       run('run-new', 'wf-1', daysAgo(0), 'waiting'),
     ]);
-    await screen.findByText('Drafted a reply for approval');
+    const card = (await screen.findByText('Drafted a reply for approval')).closest('a')!;
+    expect(card.textContent).toContain('Leads');
+    expect(card.getAttribute('href')).toBe('/reducers/wf-1?mode=runs&run=run-new');
     expect(screen.getByRole('columnheader', { name: 'What happened' })).toBeDefined();
     const rows = screen.getAllByRole('row').slice(1);
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.textContent).toContain('Leads');
-    expect(rows[0]!.textContent).toContain('Drafted a reply for approval');
-    expect(rows[1]!.textContent).toContain('Bookings');
-    expect(rows[1]!.textContent).toContain('Sarah Lee');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.textContent).toContain('Bookings');
+    expect(rows[0]!.textContent).toContain('Sarah Lee');
+    expect(screen.getByText('Today your automations did one thing. One needs you.')).toBeDefined();
   });
 
-  test('filters narrow the table by status and automation', async () => {
+  test('filters narrow by what needs you and by automation', async () => {
     renderActivity([
       run('run-old', 'wf-2', daysAgo(10), 'done'),
       run('run-new', 'wf-1', daysAgo(0), 'waiting'),
     ]);
     await screen.findByText('Drafted a reply for approval');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by status' }), {
-      target: { value: 'waiting' },
-    });
-    expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Needs you' }));
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText('Drafted a reply for approval')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByText('Drafted a reply for approval')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Needs you' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter by automation' }), {
       target: { value: 'wf-2' },
     });
-    expect(await screen.findByText('No runs match these filters.')).toBeDefined();
+    expect(await screen.findByText(/Nothing needs you right now/)).toBeDefined();
   });
 
   test('clicking a row opens its automation with that run overlaid', async () => {
@@ -125,7 +128,7 @@ describe('ActivityPage', () => {
     await waitFor(() => {
       expect(location().pathname).toBe('/reducers/wf-1');
     });
-    expect(location().search).toBe('?mode=design&run=run-new');
+    expect(location().search).toBe('?mode=runs&run=run-new');
   });
 
   test('empty activity points to Automate', async () => {

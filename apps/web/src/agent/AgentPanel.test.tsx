@@ -150,7 +150,7 @@ describe('AgentPanel transcript', () => {
 
   test('an empty transcript shows a plain-words hint', async () => {
     renderPanel({ transcript: [] });
-    expect(await screen.findByText('Tell me what you want this chore reducer to do.')).toBeDefined();
+    expect(await screen.findByText('Tell me what you want this automation to do.')).toBeDefined();
   });
 });
 
@@ -159,7 +159,7 @@ describe('AgentPanel ask chips', () => {
 
   test('renders 3 chips for an ask with 3 options', async () => {
     renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     act(() => emitAgent('flow-1', ASK));
     expect(await screen.findByText('Which inbox should I watch?')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Gmail' })).toBeDefined();
@@ -169,7 +169,7 @@ describe('AgentPanel ask chips', () => {
 
   test('clicking a chip sends its text as a Dad message', async () => {
     const { posts } = renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     act(() => emitAgent('flow-1', ASK));
     fireEvent.click(await screen.findByRole('button', { name: 'Outlook' }));
     await waitFor(() => {
@@ -181,7 +181,7 @@ describe('AgentPanel ask chips', () => {
 
   test('only the latest ask has clickable chips', async () => {
     const { posts } = renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     act(() => emitAgent('flow-1', { type: 'ask', question: 'First?', options: ['A1', 'A2'] }));
     await screen.findByText('First?');
     act(() => emitAgent('flow-1', { type: 'ask', question: 'Second?', options: ['B1', 'B2'] }));
@@ -197,7 +197,7 @@ describe('AgentPanel ask chips', () => {
 
   test('chips are disabled while busy', async () => {
     renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
     await waitFor(() => {
@@ -275,7 +275,7 @@ describe('AgentPanel send errors', () => {
       transcript: [],
       agentPost: () => ({ status: 409, body: { error: 'Still thinking about your last message.' } }),
     });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
     await waitFor(() => {
@@ -292,7 +292,7 @@ describe('AgentPanel send errors', () => {
 
   test('a network failure shows a fallback and re-enables the input', async () => {
     renderPanel({ transcript: [], failPost: true });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
     expect(await screen.findByText("Couldn't reach the server. Try again.")).toBeDefined();
@@ -305,7 +305,7 @@ describe('AgentPanel send errors', () => {
 describe('AgentPanel input', () => {
   test('Enter sends, Shift+Enter does not', async () => {
     const { posts } = renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter', shiftKey: true });
     expect(posts).toHaveLength(0);
@@ -317,7 +317,7 @@ describe('AgentPanel input', () => {
 
   test('empty messages are not sent', async () => {
     const { posts } = renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
     fireEvent.change(textarea(), { target: { value: '   ' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
@@ -329,7 +329,7 @@ describe('AgentPanel input', () => {
 
   test('the Send button sends the typed text', async () => {
     const { posts } = renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() => {
@@ -373,7 +373,7 @@ describe('AgentPanel prefill', () => {
   test('prefill fills the input and clears the seam on consume and on send', async () => {
     const onPrefillConsumed = vi.fn();
     const { posts } = renderPanel({ transcript: [], prefill: 'Fix it please', onPrefillConsumed });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     expect((textarea() as HTMLTextAreaElement).value).toBe('Fix it please');
     expect(onPrefillConsumed).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
@@ -387,7 +387,7 @@ describe('AgentPanel prefill', () => {
 describe('AgentPanel chrome', () => {
   test('the mic button offers push-to-talk', async () => {
     renderPanel({ transcript: [] });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     const mic = screen.getByRole('button', { name: 'Hold to talk' }) as HTMLButtonElement;
     expect(mic.disabled).toBe(false);
   });
@@ -395,7 +395,7 @@ describe('AgentPanel chrome', () => {
   test('the collapse button reports back to the page', async () => {
     const onCollapse = vi.fn();
     renderPanel({ transcript: [], onCollapse });
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     fireEvent.click(screen.getByRole('button', { name: 'Hide chat' }));
     expect(onCollapse).toHaveBeenCalledTimes(1);
   });
@@ -442,7 +442,7 @@ describe('AgentPanel history loading states', () => {
   test('a failed transcript GET shows a plain-words error, not the empty hint', async () => {
     renderPanel({ failGet: true });
     expect(await screen.findByText("Couldn't load earlier messages.")).toBeDefined();
-    expect(screen.queryByText('Tell me what you want this chore reducer to do.')).toBeNull();
+    expect(screen.queryByText('Tell me what you want this automation to do.')).toBeNull();
   });
 
   test('a slow transcript GET shows Loading… until rows arrive (never the empty hint)', async () => {
@@ -452,7 +452,7 @@ describe('AgentPanel history loading states', () => {
     });
     renderPanel({ transcript: PERSISTED, getGate });
     expect(await screen.findByText('Loading…')).toBeDefined();
-    expect(screen.queryByText('Tell me what you want this chore reducer to do.')).toBeNull();
+    expect(screen.queryByText('Tell me what you want this automation to do.')).toBeNull();
     await act(async () => {
       release();
     });
@@ -538,7 +538,7 @@ describe('AgentPanel remount', () => {
       </QueryClientProvider>
     );
     const first = render(panel);
-    await screen.findByText('Tell me what you want this chore reducer to do.');
+    await screen.findByText('Tell me what you want this automation to do.');
     expect(getCount).toBe(1);
 
     // Complete a turn (mocked): Dad sends, the agent answers, done settles.

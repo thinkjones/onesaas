@@ -74,7 +74,7 @@ export default function NodeChat({
       if (s.title.toLowerCase().includes(q)) {
         out.push({
           pick: { kind: 'step', stepId: s.id, title: s.title },
-          group: 'In this reducer',
+          group: 'In this automation',
           title: s.title,
           summary: 'Add a copy after this step',
         });

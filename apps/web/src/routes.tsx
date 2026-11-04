@@ -35,7 +35,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 /** Runs now live over the automation's own canvas. */
 function RunsRedirect() {
   const { workflowId = '' } = useParams();
-  return <Navigate to={`/reducers/${workflowId}?mode=design&runs=1`} replace />;
+  return <Navigate to={`/reducers/${workflowId}?mode=runs`} replace />;
 }
 
 export default function AppRoutes() {

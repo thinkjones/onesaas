@@ -20,12 +20,17 @@ export default function GridView({
   rows,
   timezone,
   columns,
+  selectedRow,
+  onSelectRow,
 }: {
   table: ListTable;
   rows: Record<string, unknown>[];
   timezone: string | null;
   /** Saved column pick; all columns when omitted (the automatic grid). */
   columns?: string[];
+  selectedRow?: Record<string, unknown>;
+  /** Clicking a row opens its details. */
+  onSelectRow?(row: Record<string, unknown>): void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const defs = useMemo((): ColumnDef<Record<string, unknown>, unknown>[] => {
@@ -36,7 +41,7 @@ export default function GridView({
       id: col.name,
       header: col.label,
       accessorFn: (row: Record<string, unknown>) => row[col.name],
-      cell: (info) => <CellValue type={col.type} value={info.getValue()} timezone={timezone} />,
+      cell: (info) => <CellValue type={col.type} value={info.getValue()} timezone={timezone} column={col.name} />,
     }));
   }, [table.columns, columns, timezone]);
   const data = useMemo(() => rows, [rows]);
@@ -44,10 +49,10 @@ export default function GridView({
 
   if (rows.length === 0) return <p>Nothing here yet.</p>;
   return (
-    <table className="w-full text-base">
+    <table className="w-full text-[0.882rem]">
       <thead>
         {grid.getHeaderGroups().map((group) => (
-          <tr key={group.id}>
+          <tr key={group.id} className="bg-background">
             {group.headers.map((header) => {
               const col = table.columns.find((c) => c.name === header.column.id);
               const target = { kind: 'column' as const, id: header.column.id, context: table.name };
@@ -56,7 +61,7 @@ export default function GridView({
                 <th
                   key={header.id}
                   data-explain={dataExplainValue(target, label)}
-                  className="border-b p-2 text-left font-semibold"
+                  className="border-y border-border px-5 py-2 text-left text-[0.765rem] font-bold text-muted-foreground"
                 >
                   <span className="inline-flex items-center gap-1">
                     <button
@@ -83,9 +88,14 @@ export default function GridView({
       </thead>
       <tbody>
         {grid.getRowModel().rows.map((row) => (
-          <tr key={row.id} className="border-b">
+          <tr
+            key={row.id}
+            aria-selected={selectedRow !== undefined && row.original === selectedRow}
+            className={`border-b border-border aria-selected:bg-accent-soft aria-selected:shadow-[inset_3px_0_0_var(--accent)] ${onSelectRow ? 'cursor-pointer hover:bg-accent' : ''}`}
+            onClick={onSelectRow ? () => onSelectRow(row.original) : undefined}
+          >
             {row.getVisibleCells().map((cell) => (
-              <td key={cell.id} className="p-2">
+              <td key={cell.id} className="px-5 py-3 break-words">
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </td>
             ))}

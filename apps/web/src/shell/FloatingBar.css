@@ -1,15 +1,15 @@
 /* The universal bar: one floating strip, top left, on every screen. */
 .floatbar {
   position: absolute;
-  top: 0.75rem;
-  left: 0.75rem;
+  top: 14px;
+  left: 14px;
   z-index: 40;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   max-width: calc(100vw - 1.5rem);
-  padding: 0.4rem 0.5rem;
+  padding: 6px 8px 6px 14px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -18,8 +18,7 @@
 /* Clears the macOS traffic lights under Tauri's overlay title bar. */
 .floatbar.tauri { left: 5.5rem; max-width: calc(100vw - 6.25rem); }
 .floatbar .wordmark {
-  padding: 0 0.35rem;
-  font-size: 1.05rem;
+  font-size: 1.118rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   background: var(--gradient-brand);
@@ -30,38 +29,46 @@
 .floatbar .modes {
   display: flex;
   gap: 2px;
-  padding: 2px;
+  margin-left: 6px;
+  padding: 3px;
   background: var(--bg-well);
-  border-radius: var(--radius-s);
+  border-radius: 10px;
 }
 .floatbar .mode {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.9rem;
-  font-weight: 500;
+  min-width: 34px;
+  height: 32px;
+  font-size: 0.824rem;
+  font-weight: 600;
   color: var(--text-dim);
-  border-radius: calc(var(--radius-s) - 2px);
+  border-radius: 8px;
 }
 .floatbar .mode:hover { color: var(--text); }
 .floatbar .mode.active {
-  color: var(--on-accent);
-  background: var(--gradient-brand);
-  font-weight: 600;
-}
-.floatbar .picker {
-  max-width: 15rem;
-  padding: 0.3rem 0.45rem;
-  font-size: 0.9rem;
-  font-weight: 600;
+  padding: 0 10px;
   color: var(--text);
   background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-float);
 }
+.floatbar .mode.active svg { color: var(--accent); }
+.floatbar .picker {
+  appearance: none;
+  field-sizing: content;
+  max-width: 18rem;
+  padding: 6px 24px 6px 8px;
+  font-size: 0.882rem;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 6px center;
+  border: 0;
+  cursor: pointer;
+}
+.floatbar .picker:focus { background-color: transparent; }
 .floatbar .slot { display: contents; }
-.floatbar .sep { width: 1px; height: 1.4rem; background: var(--border); }
+.floatbar .sep { width: 1px; height: 24px; background: var(--border); }
 .floatbar .ic {
   display: inline-flex;
   align-items: center;
@@ -76,9 +83,9 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.65rem;
-  font-size: 0.78rem;
-  font-weight: 600;
+  padding: 7px 12px;
+  font-size: 0.765rem;
+  font-weight: 700;
   white-space: nowrap;
   border-radius: var(--radius-pill);
 }

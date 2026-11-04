@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 import { ApiError, useApprove } from '../api.ts';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
-import AppCard from '../design/AppCard.tsx';
 
 export interface ApprovalCardProps {
   runId: string;
@@ -12,24 +11,10 @@ export interface ApprovalCardProps {
   question: string;
   /** stepRun.output.proposed.text — the text awaiting approval. */
   proposedText: string;
+  /** Who this run is about, when known: "To Priya Nair. Change anything…" */
+  recipient?: string;
 }
 
-/**
- * The card under a `waiting` node: the approval question, the proposed text as
- * an editable textarea, and Looks good / Use my changes / Skip.
- *
- * Bodies match the server's strict union EXACTLY ({action:'approve'} |
- * {action:'edit',text} | {action:'skip'}) — surplus keys 400. Empty (incl.
- * whitespace-only) disables the approve buttons with "The reply is empty",
- * mirroring the server's 422; Skip stays enabled as the escape hatch for an
- * empty proposal. Every button disables while the mutation is in flight, so a
- * double-click can't fire twice (a loser that still slips through — e.g.
- * resolved from another tab — surfaces the server message as an error toast).
- *
- * Key={status} on the node remounts this card on a status flip, discarding an
- * in-flight textarea edit — accepted: only another client resolving mid-edit
- * triggers it, and a local approve/edit sends before the flip lands.
- */
 /** Surfaces the parsed server message; network failures get a plain-words fallback. */
 function toastMutationError(error: Error): void {
   toast.error(
@@ -39,50 +24,74 @@ function toastMutationError(error: Error): void {
   );
 }
 
-export default function ApprovalCard({ runId, stepId, question, proposedText }: ApprovalCardProps) {
+/**
+ * The body of a waiting step: the question, the proposed text to edit, and
+ * Looks good / Skip. "Looks good" sends whatever is in the box, so an edit
+ * needs no second button.
+ *
+ * Bodies match the server's strict union EXACTLY ({action:'approve'} |
+ * {action:'edit',text} | {action:'skip'}) — surplus keys 400. Empty (incl.
+ * whitespace-only) disables Looks good, mirroring the server's 422; Skip stays
+ * enabled as the escape hatch. Every button disables while the mutation is in
+ * flight, so a double-click can't fire twice.
+ */
+export default function ApprovalCard({ runId, stepId, question, proposedText, recipient }: ApprovalCardProps) {
   const [text, setText] = useState(proposedText);
   const approve = useApprove(runId, stepId);
   const empty = text.trim().length === 0;
-  const changed = text !== proposedText;
   const busy = approve.isPending;
   const onError = toastMutationError;
+  const fieldId = `approval-${stepId}`;
 
   return (
-    <AppCard className="w-full p-4">
-      <p className="text-base font-medium">{question}</p>
-      <Textarea
-        aria-label="Proposed reply"
-        className="mt-2"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-      />
-      {empty && (
-        <p role="alert" className="mt-2 text-base text-destructive">
-          The reply is empty
-        </p>
-      )}
-      <div className="mt-3 flex flex-col gap-2">
-        <AppButton
-          disabled={empty || busy}
-          onClick={() => approve.mutate({ action: 'approve' }, { onError })}
-        >
-          Looks good
-        </AppButton>
-        <AppButton
-          variant="outline"
-          disabled={empty || !changed || busy}
-          onClick={() => approve.mutate({ action: 'edit', text }, { onError })}
-        >
-          Use my changes
-        </AppButton>
-        <AppButton
-          variant="ghost"
-          disabled={busy}
-          onClick={() => approve.mutate({ action: 'skip' }, { onError })}
-        >
-          Skip
-        </AppButton>
+    <>
+      <h2 className="question">{question}</h2>
+      <div className="grid grid-cols-[minmax(0,1fr)_13rem] items-stretch gap-[18px]">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={fieldId} className="text-[0.765rem] text-muted-foreground">
+            {recipient ? `To ${recipient}. ` : ''}Change anything before it goes.
+          </label>
+          <Textarea
+            id={fieldId}
+            aria-label="Proposed reply"
+            rows={7}
+            className="min-h-40 flex-1 resize-none text-[0.882rem]"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          {empty && (
+            <p role="alert" className="text-[0.824rem] text-destructive">
+              The reply is empty
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col justify-end gap-2.5">
+          <AppButton
+            variant="brand"
+            size="lg"
+            disabled={empty || busy}
+            onClick={() =>
+              approve.mutate(
+                text === proposedText ? { action: 'approve' } : { action: 'edit', text },
+                { onError },
+              )
+            }
+          >
+            Looks good
+          </AppButton>
+          <AppButton
+            variant="outline"
+            size="lg"
+            disabled={busy}
+            onClick={() => approve.mutate({ action: 'skip' }, { onError })}
+          >
+            Skip
+          </AppButton>
+          <span className="text-[0.765rem] leading-[1.4] text-muted-foreground">
+            Nothing goes out until you say so.
+          </span>
+        </div>
       </div>
-    </AppCard>
+    </>
   );
 }

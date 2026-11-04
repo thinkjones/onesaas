@@ -1,28 +1,34 @@
 import type { StepInstance, StepKind, StepRunStatus } from '@dad/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { cn } from 'cn';
+import Check from 'lucide-react/icons/check';
+import Pause from 'lucide-react/icons/pause';
 import Pencil from 'lucide-react/icons/pencil';
 import Plus from 'lucide-react/icons/plus';
+import ShieldCheck from 'lucide-react/icons/shield-check';
 import Trash2 from 'lucide-react/icons/trash-2';
 import { motion } from 'motion/react';
-import type { ReactNode, SyntheticEvent } from 'react';
-import AppCard from '../design/AppCard.tsx';
+import { useLayoutEffect, useRef, type ReactNode, type SyntheticEvent } from 'react';
 import StatusBadge from '../design/StatusBadge.tsx';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
+import { NODE_WIDTH } from './layout.ts';
 import { stepVisuals } from './stepVisuals.ts';
 
 export interface StepNodeData extends Record<string, unknown> {
   step: StepInstance;
   kind: StepKind;
-  /** Present in runtime mode when this step has a run record. */
+  /** Reading-order number shown on the card. */
+  number?: number;
+  /** Present in Runs mode, when this step belongs to the run being shown. */
   status?: StepRunStatus;
-  /**
-   * One-line "what happened at that node" caption (Watch-it-Run only —
-   * design never passes it, so design boxes stay clean).
-   */
+  /** Runs mode: draws the run's card rather than the design card. */
+  runs?: boolean;
+  /** One plain sentence about what happened here (Runs only). */
   outcome?: string;
-  /** Approval / failure card slot (Task 6 via renderNodeExtra). */
+  /** Runs mode: the approval or failure body. The step grows in place to hold it. */
+  expanded?: ReactNode;
+  /** Problems and Try it verdicts under a design card. */
   extra?: ReactNode;
   /** A step that just finished building animates in bigger (0.9→1, 300ms). */
   fresh?: boolean;
@@ -31,10 +37,7 @@ export interface StepNodeData extends Record<string, unknown> {
    * button and alt-click stay off — the server scopes steps by workflow.
    */
   workflowId?: string;
-  /**
-   * Design-mode hover actions + node chat (Bug #4). Absent in runtime mode
-   * (and on ghosts, which use GhostNode): no toolbar, no chat.
-   */
+  /** Design-mode actions, chat and settings. Absent in Runs mode. */
   design?: {
     onAdd(): void;
     onSelect(): void;
@@ -43,32 +46,83 @@ export interface StepNodeData extends Record<string, unknown> {
     showDelete: boolean;
     /** Rendered node chat box, when open for this step. */
     nodeChat?: ReactNode;
+    /** Rendered settings popover, attached to this card when it's selected. */
+    settings?: ReactNode;
   };
 }
 
-// Handle chrome matches the card language: token-derived inline styles beat
-// the library stylesheet without inventing colours.
+// Connectors meet the flow column, even on a card wider than the column.
 const HANDLE_STYLE = {
-  backgroundColor: 'hsl(var(--card))',
-  borderColor: 'hsl(var(--border))',
+  left: NODE_WIDTH / 2,
+  width: 8,
+  height: 8,
+  backgroundColor: 'var(--bg-raised)',
+  borderColor: 'var(--border-strong)',
 };
+const QUIET_HANDLE = { ...HANDLE_STYLE, opacity: 0 };
+
+function StatusDot({ status }: { status: StepRunStatus }) {
+  return (
+    <span className="status-dot" data-status={status} aria-hidden>
+      {status === 'done' && <Check size={16} strokeWidth={3} />}
+      {status === 'waiting' && <Pause size={14} fill="currentColor" />}
+      {status === 'failed' && '!'}
+    </span>
+  );
+}
+
+// The floating bar's bottom edge and the board's margin.
+const POPOVER_TOP_LIMIT = 80;
+const POPOVER_BOTTOM_MARGIN = 14;
+const POPOVER_MIN_HEIGHT = 420;
 
 /**
- * One 280px workflow box: kind icon, title, plain-English summary, and the
- * runtime status badge when known. Enter and state changes animate
- * (opacity + scale 0.96→1, 250ms; a freshly built box scales 0.9→1 over
- * 300ms); WorkflowCanvas wraps the tree in MotionConfig
- * reducedMotion="user" for prefers-reduced-motion.
+ * Settings attached to the selected card. Near the bottom of the window it rides
+ * up so the form stays usable, but never under the bar.
  */
-export default function StepNode({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
-  const { step, kind, status, outcome, extra, fresh, workflowId, design } = data;
-  const { icon: Icon, tint } = stepVisuals[kind];
+function StepPopover({ cardY, children }: { cardY: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // Re-fits whenever the layout moves the card.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.top = '0px';
+    const { top } = el.getBoundingClientRect();
+    const room = window.innerHeight - top - POPOVER_BOTTOM_MARGIN;
+    const shift = Math.min(Math.max(POPOVER_MIN_HEIGHT - room, 0), Math.max(top - POPOVER_TOP_LIMIT, 0));
+    el.style.top = `${-shift}px`;
+    el.style.maxHeight = `${Math.max(room + shift, 0)}px`;
+  }, [cardY]);
+  return (
+    // A click inside the settings isn't a click on the step.
+    <div ref={ref} className="step-popover nodrag nopan nowheel" onClick={(e) => e.stopPropagation()}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One step on the board. Design shows its number, kind tile, title and
+ * description. Runs shows what happened: finished steps shrink to one line,
+ * steps not reached are outlines, and a waiting or failed step expands in
+ * place. Text wraps, never truncates: WorkflowCanvas measures each card and
+ * re-lays out the flow to make room.
+ */
+export default function StepNode({ id, data, selected, positionAbsoluteY }: NodeProps<Node<StepNodeData>>) {
+  const { step, kind, number, status, runs, outcome, expanded, extra, fresh, workflowId, design } = data;
+  const approval = step.type === 'approval.ask';
+  const { icon, tint } = stepVisuals[kind];
+  const Icon = approval ? ShieldCheck : icon;
   const explainTarget =
     workflowId === undefined ? null : { kind: 'step' as const, id: step.id, context: workflowId };
+  const explainData = explainTarget ? dataExplainValue(explainTarget, step.title) : undefined;
+  const label = number === undefined ? step.title : `${number} · ${step.title}`;
   const stop = (fn: () => void) => (e: SyntheticEvent) => {
     e.stopPropagation();
     fn();
   };
+  const runStatus: StepRunStatus = status ?? 'pending';
+  const handleStyle = runs ? QUIET_HANDLE : HANDLE_STYLE;
   return (
     <div className="group">
       {design && (
@@ -105,50 +159,80 @@ export default function StepNode({ id, data, selected }: NodeProps<Node<StepNode
           )}
         </div>
       )}
-      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <Handle type="target" position={Position.Top} style={handleStyle} />
       <motion.div
         key={status ?? 'none'}
-        initial={{ opacity: 0, scale: fresh === true ? 0.9 : 0.96 }}
+        initial={{ opacity: 0, scale: fresh === true ? 0.9 : 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: fresh === true ? 0.3 : 0.25, ease: 'easeInOut' }}
+        transition={{ duration: fresh === true ? 0.3 : 0.18, ease: 'easeInOut' }}
       >
-        <AppCard
-          data-step-id={id}
-          data-status={status}
-          data-explain={explainTarget ? dataExplainValue(explainTarget, step.title) : undefined}
-          className={cn('w-[280px] p-4', selected && 'ring-2 ring-ring')}
-        >
-          <div className="flex items-center gap-2.5">
-            <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full', tint)}>
-              <Icon className="size-5" aria-hidden />
+        {runs && expanded ? (
+          <div
+            data-step-id={id}
+            data-status={runStatus}
+            data-explain={explainData}
+            className="step-expanded nodrag nopan nowheel"
+            // The card holds real controls; none of them should open the inspector.
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="head">
+              <StatusDot status={runStatus} />
+              <span className="label">{label}</span>
+              <StatusBadge status={runStatus} />
+              {explainTarget && <Explain target={explainTarget} label={step.title} />}
+            </div>
+            {expanded}
+          </div>
+        ) : runs ? (
+          <div
+            data-step-id={id}
+            data-status={status}
+            data-run={runStatus}
+            data-explain={explainData}
+            className="step-card"
+          >
+            <StatusDot status={runStatus} />
+            <div className="main">
+              <span className="label">{label}</span>
+              <span data-outcome="true" className="outcome">
+                {outcome ?? (runStatus === 'skipped' ? 'Skipped.' : 'Not started.')}
+              </span>
+            </div>
+            {runStatus === 'skipped' && <StatusBadge status="skipped" />}
+          </div>
+        ) : (
+          <div
+            data-step-id={id}
+            data-status={status}
+            data-selected={selected ? 'true' : undefined}
+            data-explain={explainData}
+            className="step-card"
+          >
+            {number !== undefined && <span className="num">{number}</span>}
+            <span className={cn('kind-tile', tint)}>
+              <Icon size={19} aria-hidden />
             </span>
-            {/* AppCard ships no overflow protection: long titles truncate. */}
-            <p className="min-w-0 flex-1 truncate text-base font-semibold" title={step.title}>
-              {step.title}
-            </p>
+            <div className="main">
+              <span className="title">{step.title}</span>
+              <span className="desc">{step.summary}</span>
+              {step.type === 'trigger.email' && (
+                <span className="desc">Works while Gmail is open in Chrome.</span>
+              )}
+              {extra && <div className="mt-1">{extra}</div>}
+            </div>
+            {approval && <span className="you-decide">You decide</span>}
             {explainTarget && <Explain target={explainTarget} label={step.title} />}
           </div>
-          <p className="mt-2 text-base break-words text-muted-foreground">{step.summary}</p>
-          {step.type === 'trigger.email' && (
-            <p className="mt-1 text-sm break-words text-muted-foreground">
-              Works while Gmail is open in Chrome.
-            </p>
-          )}
-          {status && (
-            <div className="mt-3">
-              <StatusBadge status={status} />
-            </div>
-          )}
-          {outcome && (
-            <p data-outcome="true" className="mt-1 text-sm break-words text-muted-foreground">
-              {outcome}
-            </p>
-          )}
-        </AppCard>
-        {extra && <div className="mt-2 w-[280px]">{extra}</div>}
+        )}
       </motion.div>
-      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
-      {design?.nodeChat && <div className="mt-2 w-[280px]">{design.nodeChat}</div>}
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      {design?.nodeChat && <div className="mt-2 w-[470px]">{design.nodeChat}</div>}
+      {design?.settings && (
+        <>
+          <span className="step-popover-arrow" aria-hidden />
+          <StepPopover cardY={positionAbsoluteY}>{design.settings}</StepPopover>
+        </>
+      )}
     </div>
   );
 }

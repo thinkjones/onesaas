@@ -357,7 +357,7 @@ describe('DesignView problems and turn on', () => {
       ]),
     );
     expect(await screen.findByText('2 things to fix before publishing')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Published' })).toBeNull();
     // Each troubled box shows its problem in an amber badge.
     expect(screen.getByText("This step isn't set up yet: instructions is missing.")).toBeDefined();
     expect(screen.getByText('Nothing leads to this step yet.')).toBeDefined();
@@ -372,7 +372,7 @@ describe('DesignView problems and turn on', () => {
 
   test('"Publish" calls setStatus(on) and stays on the canvas', async () => {
     const { fetch } = renderDesign(detail());
-    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Published' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         '/api/workflows/flow-1/ops',
@@ -400,7 +400,7 @@ describe('DesignView problems and turn on', () => {
         throw new Error(`unexpected fetch: ${url}`);
       },
     });
-    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Published' }));
     expect(
       await screen.findByText('Cannot turn on yet: "Pick out the details": bad.'),
     ).toBeDefined();
@@ -491,7 +491,7 @@ describe('DesignView node chat', () => {
     });
     // The new step is selected: its settings open. The mini history and the
     // RHS log both record the add.
-    expect(await screen.findByRole('heading', { name: 'Settings for Extract details' })).toBeDefined();
+    expect(await screen.findByTestId('design-inspector')).toBeDefined();
     expect(await screen.findByText('Added "Extract details".')).toBeDefined();
     expect(logActivity).toHaveBeenCalledWith('Added "Extract details".');
   });
@@ -514,7 +514,7 @@ describe('DesignView node chat', () => {
     });
     const box = await openChat('Pick out the details');
     fireEvent.change(box, { target: { value: 'reply' } });
-    expect(await screen.findByText('In this reducer')).toBeDefined();
+    expect(await screen.findByText('In this automation')).toBeDefined();
     await clickOption('Write the reply');
     await waitFor(() => {
       expect(fetch.mock.calls.some((c) => String(c[0]).endsWith('/ops'))).toBe(true);
@@ -573,10 +573,10 @@ describe('DesignView start', () => {
   test('a step-free workflow opens on the Start chat box, not the canvas', async () => {
     renderDesign(detail([]));
     expect(
-      await screen.findByRole('heading', { name: 'What should this chore reducer do?' }),
+      await screen.findByRole('heading', { name: 'What should this automation do?' }),
     ).toBeDefined();
     expect(
-      screen.getByRole('textbox', { name: 'Describe the chore' }),
+      screen.getByRole('textbox', { name: 'Describe the automation' }),
     ).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Try it' })).toBeNull();
   });
@@ -586,7 +586,7 @@ describe('DesignView start', () => {
     renderDesign(detail([]), { agent });
     fireEvent.click(await screen.findByRole('button', { name: 'Keep track of bookings' }));
     expect(
-      (screen.getByRole('textbox', { name: 'Describe the chore' }) as HTMLTextAreaElement).value,
+      (screen.getByRole('textbox', { name: 'Describe the automation' }) as HTMLTextAreaElement).value,
     ).toBe('Keep track of bookings');
     expect(agent.send).not.toHaveBeenCalled();
   });
@@ -594,7 +594,7 @@ describe('DesignView start', () => {
   test('submitting the Start box sends the first turn and opens the workspace', async () => {
     const agent = makeAgent();
     renderDesign(detail([]), { agent });
-    fireEvent.change(await screen.findByRole('textbox', { name: 'Describe the chore' }), {
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Describe the automation' }), {
       target: { value: 'Sort my inbox' },
     });
     fireEvent.click(await screen.findByRole('button', { name: 'Build it' }));
@@ -603,7 +603,7 @@ describe('DesignView start', () => {
     });
     // The Start box is gone; the workspace top bar fades in.
     expect(await screen.findByRole('button', { name: 'Try it' })).toBeDefined();
-    expect(screen.queryByRole('textbox', { name: 'Describe the chore' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Describe the automation' })).toBeNull();
   });
 });
 
@@ -665,20 +665,32 @@ describe('DesignView canvas', () => {
   });
 });
 
+const openMore = (): void => {
+  fireEvent.click(screen.getByRole('button', { name: /^More/ }));
+};
+
 describe('DesignView title bar', () => {
-  test('Publish, Rename, Try it, Runs and Delete live in the title bar', async () => {
+  test('the bar holds the mode switch, Try it and Published; the rest is in the ⋯ menu', async () => {
     renderDesign(detail());
     await screen.findByText('Pick out the details');
     const bar = screen.getByTestId('design-titlebar');
-    for (const name of ['Publish', 'Rename', 'Try it', 'Delete']) {
-      expect(within(bar).getByRole('button', { name })).toBeDefined();
-    }
+    expect(within(bar).getByRole('button', { name: 'Design' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(bar).getByRole('button', { name: /^Runs/ })).toBeDefined();
+    expect(within(bar).getByRole('button', { name: 'Try it' })).toBeDefined();
+    expect(within(bar).getByRole('switch', { name: 'Published' })).toBeDefined();
+    // Delete is never out in the bar.
+    expect(within(bar).queryByRole('button', { name: 'Delete' })).toBeNull();
+    openMore();
+    for (const name of ['Rename', 'Copy name and id', 'Delete']) {
+      expect(within(bar).getByRole('menuitem', { name })).toBeDefined();
+    }
   });
 
   test('Rename sends the rename op', async () => {
     const { fetch } = renderDesign(detail());
-    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    await screen.findByText('Pick out the details');
+    openMore();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     const input = screen.getByRole('textbox', { name: 'Automation name' });
     fireEvent.change(input, { target: { value: 'New name' } });
     fireEvent.submit(input.closest('form')!);
@@ -701,7 +713,8 @@ describe('DesignView title bar', () => {
     try {
       renderDesign(detail());
       await screen.findByText('Pick out the details');
-      fireEvent.click(screen.getByRole('button', { name: 'Copy name and id' }));
+      openMore();
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Copy name and id' }));
       await waitFor(() => expect(writeText).toHaveBeenCalledWith('Test flow (flow-1)'));
       expect(await screen.findByText('Copied name and id.')).toBeDefined();
     } finally {
@@ -715,15 +728,13 @@ describe('DesignView inspector', () => {
   test('a selected node shows its settings in the overlay panel', async () => {
     renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
     const panel = await screen.findByTestId('design-inspector');
-    expect(
-      within(panel).getByRole('heading', { name: 'Settings for Pick out the details' }),
-    ).toBeDefined();
+    expect(within(panel).getByText('Pick out the details')).toBeDefined();
   });
 
   test('Close dismisses the inspector', async () => {
     renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
-    await screen.findByTestId('design-inspector');
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    const panel = await screen.findByTestId('design-inspector');
+    fireEvent.click(panel.querySelector('[aria-label="Close"]')!);
     await waitFor(() => expect(screen.queryByTestId('design-inspector')).toBeNull());
   });
 });
@@ -737,10 +748,14 @@ describe('DesignView delete', () => {
       },
     });
     await screen.findByText('Pick out the details');
-    fireEvent.click(
-      within(screen.getByTestId('design-titlebar')).getByRole('button', { name: 'Delete' }),
+    openMore();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    // The first press only arms it: nothing is deleted yet.
+    expect(fetch).not.toHaveBeenCalledWith(
+      '/api/workflows/flow-1',
+      expect.objectContaining({ method: 'DELETE' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Yes, delete' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Yes, delete' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
         '/api/workflows/flow-1',
@@ -754,11 +769,12 @@ describe('DesignView delete', () => {
 describe('DesignView start title bar', () => {
   test('start screen offers rename, copy, and delete but no Try it', async () => {
     renderDesign(detail([]));
-    await screen.findByRole('heading', { name: 'What should this chore reducer do?' });
+    await screen.findByRole('heading', { name: 'What should this automation do?' });
     const bar = screen.getByTestId('design-titlebar');
-    expect(within(bar).getByRole('button', { name: 'Rename' })).toBeDefined();
-    expect(within(bar).getByRole('button', { name: 'Copy name and id' })).toBeDefined();
-    expect(within(bar).getByRole('button', { name: 'Delete' })).toBeDefined();
     expect(within(bar).queryByRole('button', { name: 'Try it' })).toBeNull();
+    openMore();
+    expect(within(bar).getByRole('menuitem', { name: 'Rename' })).toBeDefined();
+    expect(within(bar).getByRole('menuitem', { name: 'Copy name and id' })).toBeDefined();
+    expect(within(bar).getByRole('menuitem', { name: 'Delete' })).toBeDefined();
   });
 });

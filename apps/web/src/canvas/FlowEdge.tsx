@@ -1,7 +1,8 @@
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getBezierPath,
+  getSmoothStepPath,
+  getStraightPath,
   type Edge,
   type EdgeProps,
 } from '@xyflow/react';
@@ -26,6 +27,10 @@ export interface EdgeCondition {
 export interface FlowEdgeData extends Record<string, unknown> {
   /** `when` condition text; shown as a small pill label when present. */
   when?: string;
+  /** Plain words on the line: "then", "if you say it looks good". */
+  label?: string;
+  /** Runs mode: the run has reached the far end of this wire. */
+  reached?: boolean;
   condition?: EdgeCondition;
 }
 
@@ -51,14 +56,19 @@ export default function FlowEdge({
   targetPosition,
   data,
 }: EdgeProps<Edge<FlowEdgeData>>) {
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  // Steps in one column get a plain line: a stepped path loops in a tight gap.
+  const [path, labelX, labelY] =
+    Math.abs(sourceX - targetX) < 1
+      ? getStraightPath({ sourceX, sourceY, targetX, targetY })
+      : getSmoothStepPath({
+          sourceX,
+          sourceY,
+          sourcePosition,
+          targetX,
+          targetY,
+          targetPosition,
+          borderRadius: 14,
+        });
   const [open, setOpen] = useState(false);
   const condition = data?.condition;
   const label = data?.when !== undefined ? conditionLabel(data.when) : undefined;
@@ -66,8 +76,23 @@ export default function FlowEdge({
   return (
     <>
       <g onClick={condition ? () => setOpen((v) => !v) : undefined}>
-        <BaseEdge id={id} path={path} interactionWidth={condition ? 20 : undefined} />
+        <BaseEdge
+          id={id}
+          path={path}
+          interactionWidth={condition ? 20 : undefined}
+          style={{ stroke: data?.reached ? 'var(--accent-2)' : 'var(--border-strong)', strokeWidth: 2 }}
+        />
       </g>
+      {label === undefined && data?.label !== undefined && (
+        <EdgeLabelRenderer>
+          <div
+            className="edge-label"
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+          >
+            {data.label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {(label !== undefined || (condition && open)) && (
         <EdgeLabelRenderer>
           <div

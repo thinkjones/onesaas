@@ -225,7 +225,7 @@ describe('HomePage', () => {
     await screen.findByRole('heading', { name: 'What do you want to achieve today?' });
         fireEvent.change(sentenceBox(), { target: { value: SENTENCE } });
     fireEvent.click(screen.getByRole('button', { name: 'Build it' }));
-    expect(await screen.findByText("Couldn't create a chore reducer. Try again.")).toBeDefined();
+    expect(await screen.findByText("Couldn't create an automation. Try again.")).toBeDefined();
     expect(location().pathname).toBe('/');
   });
 
@@ -267,7 +267,7 @@ describe('HomePage', () => {
       ],
     });
     const badge = await screen.findByRole('link', { name: '2 waiting for you' });
-    expect(badge.getAttribute('href')).toBe('/reducers/wf-1?mode=design&run=run-old');
+    expect(badge.getAttribute('href')).toBe('/reducers/wf-1?mode=runs&run=run-old');
   });
 
 });

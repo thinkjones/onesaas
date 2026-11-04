@@ -1,4 +1,5 @@
 import PanelRightClose from 'lucide-react/icons/panel-right-close';
+import Send from 'lucide-react/icons/send';
 import { useEffect, useRef, useState } from 'react';
 import { Textarea } from '../components/ui/textarea.tsx';
 import AppButton from '../design/AppButton.tsx';
@@ -113,10 +114,14 @@ export default function AgentPanel({
   return (
     <section
       aria-label="Chat"
-      className="flex h-full min-h-0 flex-col gap-3 rounded-[var(--radius)] border border-border bg-card p-4 shadow-sm"
+      className="flex h-full min-h-0 flex-col gap-2.5 rounded-[var(--radius)] border border-border bg-card p-[18px] shadow-md"
     >
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Chat</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="m-0 text-[1.059rem] font-bold">Chat</h2>
+        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[0.706rem] font-semibold text-accent-ink">
+          Designing
+        </span>
+        <span className="flex-1" />
         {onCollapse && (
           <AppButton variant="ghost" size="icon" onClick={onCollapse} aria-label="Hide chat">
             <PanelRightClose />
@@ -142,7 +147,7 @@ export default function AgentPanel({
         )}
         {transcript.length === 0 && !busy && !historyPending && !historyError && (
           <p className="text-base text-muted-foreground">
-            Tell me what you want this chore reducer to do.
+            Tell me what you want this automation to do.
           </p>
         )}
         {historyError && (
@@ -154,11 +159,13 @@ export default function AgentPanel({
           </p>
         )}
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <MicButton pill onSend={submitChip} />
         <Textarea
           aria-label="Chat message"
-          placeholder="Ask about this chore reducer…"
-          rows={3}
+          placeholder="or type a change…"
+          rows={1}
+          className="min-h-12 min-w-[7rem] flex-1 resize-none text-[0.824rem]"
           value={input}
           disabled={busy}
           onChange={(e) => setInput(e.target.value)}
@@ -169,12 +176,9 @@ export default function AgentPanel({
             }
           }}
         />
-        <div className="flex items-center justify-between gap-2">
-          <MicButton onSend={submitChip} />
-          <AppButton onClick={submitInput} disabled={busy || input.trim().length === 0}>
-            Send
-          </AppButton>
-        </div>
+        <AppButton size="icon" aria-label="Send" onClick={submitInput} disabled={busy || input.trim().length === 0}>
+          <Send aria-hidden />
+        </AppButton>
       </div>
     </section>
   );

@@ -24,3 +24,20 @@ export function resolveStepId(
   const ids = new Set([workflow.trigger.id, ...workflow.steps.map((s) => s.id)]);
   return ids.has(raw) ? raw : undefined;
 }
+
+/** Design and Runs share one screen: ?mode=runs, or any link to a specific run. */
+export function isRunsMode(params: URLSearchParams): boolean {
+  return params.get('mode') === 'runs' || params.get('run') !== null;
+}
+
+/** Opens an automation in Runs mode on one run. */
+export function runPath(workflowId: string, runId: string): string {
+  return `/reducers/${workflowId}?mode=runs&run=${runId}`;
+}
+
+/** What Runs mode shows first: the oldest thing waiting for you, else the newest run. */
+export function preferredRun(runs: Run[] | undefined): Run | undefined {
+  if (!runs || runs.length === 0) return undefined;
+  const waiting = runs.filter((r) => r.status === 'waiting');
+  return waiting[waiting.length - 1] ?? runs[0];
+}

@@ -6,6 +6,7 @@ import { ApiError, getRuns, useWorkflowOp, useWorkflows } from '../api.ts';
 import { Switch } from '../components/ui/switch.tsx';
 import Pill from '../design/Pill.tsx';
 import { formatDateTime, formatRunListTime } from '../runtime/format.ts';
+import { runPath } from '../runtime/params.ts';
 
 function oldestWaitingFirst(a: Run, b: Run): number {
   return a.startedAt < b.startedAt ? -1 : a.startedAt > b.startedAt ? 1 : 0;
@@ -32,7 +33,7 @@ function AutomationCard({ workflow, runs }: { workflow: Workflow; runs: Run[] })
     <div className="panel flex min-h-[8.5rem] flex-col gap-2">
       <Link
         to={`/reducers/${workflow.id}?mode=design`}
-        className="truncate text-base font-semibold text-primary underline-offset-4 hover:underline"
+        className="text-[0.941rem] font-bold break-words underline-offset-4 hover:underline"
       >
         {workflow.name}
       </Link>
@@ -45,7 +46,7 @@ function AutomationCard({ workflow, runs }: { workflow: Workflow; runs: Run[] })
         )}
       </p>
       {waiting.length > 0 && (
-        <Link to={`/reducers/${workflow.id}?mode=design&run=${waiting[0]!.id}`} className="w-fit">
+        <Link to={runPath(workflow.id, waiting[0]!.id)} className="w-fit">
           <Pill tone="waiting">{waiting.length} waiting for you</Pill>
         </Link>
       )}

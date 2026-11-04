@@ -11,6 +11,8 @@ export interface ConfigFormProps {
   step: StepInstance;
   workflow: Workflow;
   onSave(patch: ConfigSave): void;
+  /** Set when the form's submit button lives outside it (the settings popover). */
+  formId?: string;
   saving?: boolean;
   /**
    * Step definition to render. Defaults to catalog[step.type]; tests inject
@@ -219,7 +221,7 @@ const inputClass =
  * parent sends `updateStep`); unknown step types still save inputs as
  * free text so nothing Dad typed is ever stranded.
  */
-export default function ConfigForm({ step, workflow, onSave, saving, def }: ConfigFormProps) {
+export default function ConfigForm({ step, workflow, onSave, formId, saving, def }: ConfigFormProps) {
   const resolved = def ?? catalog[step.type];
   const shape = resolved ? objectShape(resolved.configSchema) : undefined;
   const descs: [string, FieldDesc][] = shape
@@ -330,6 +332,7 @@ export default function ConfigForm({ step, workflow, onSave, saving, def }: Conf
 
   return (
     <form
+      id={formId}
       aria-label={`Settings for ${step.title}`}
       className="flex flex-col gap-5"
       onSubmit={(e) => {
@@ -337,7 +340,7 @@ export default function ConfigForm({ step, workflow, onSave, saving, def }: Conf
         onSave({ config, inputs });
       }}
     >
-      <h2 className="text-xl font-semibold">Settings for {step.title}</h2>
+      <h2 className="m-0 pr-8 text-[0.882rem] font-bold">{step.title}</h2>
 
       {resolved === undefined && (
         <p className="text-base text-muted-foreground">
@@ -517,9 +520,11 @@ export default function ConfigForm({ step, workflow, onSave, saving, def }: Conf
         )}
       </div>
 
-      <AppButton type="submit" disabled={saving === true}>
-        {saving === true ? 'Saving…' : 'Save'}
-      </AppButton>
+      {formId === undefined && (
+        <AppButton type="submit" disabled={saving === true}>
+          {saving === true ? 'Saving…' : 'Save'}
+        </AppButton>
+      )}
     </form>
   );
 }

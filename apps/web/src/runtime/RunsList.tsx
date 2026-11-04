@@ -1,7 +1,5 @@
 import type { Run } from '@dad/shared';
-import { cn } from 'cn';
-import StatusBadge from '../design/StatusBadge.tsx';
-import Explain from '../explain/Explain.tsx';
+import { STATUS_LABEL } from '../design/statusLabels.ts';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { formatDateTime, formatRunListTime, runDisplayName } from './format.ts';
 
@@ -9,62 +7,32 @@ export interface RunsListProps {
   runs: Run[];
   selectedRunId: string | undefined;
   onSelect(runId: string): void;
-  /**
-   * Story last line per run id. NOTE: the story shows only the FIRST
-   * failed/waiting step, so on forked flows a row's last line under-reports
-   * failures elsewhere — accepted for M2 (server story rule, not list logic).
-   */
-  lastLineByRunId?: Record<string, string | undefined>;
 }
 
 /**
- * The left rail: one row per run — "Today 10:42 · Sarah Lee", a status badge,
- * and the run story's last line truncated. listbox/option roles so selection
- * is exposed via aria-selected.
+ * Runs mode's left list: the full name, then a coloured status with the time.
+ * listbox/option roles so selection is exposed via aria-selected.
  */
-export default function RunsList({
-  runs,
-  selectedRunId,
-  onSelect,
-  lastLineByRunId,
-}: RunsListProps) {
+export default function RunsList({ runs, selectedRunId, onSelect }: RunsListProps) {
   return (
-    <div role="listbox" aria-label="Runs" className="rows flex flex-col">
+    <div role="listbox" aria-label="Runs" className="flex flex-col gap-1">
       {runs.map((run) => {
-        const selected = run.id === selectedRunId;
-        const lastLine = lastLineByRunId?.[run.id];
-        const label = `the ${formatRunListTime(run.startedAt)} run`;
-        const target = { kind: 'run' as const, id: run.id };
+        const when = formatRunListTime(run.startedAt);
         return (
-          <div
+          <button
             key={run.id}
+            type="button"
             role="option"
-            aria-selected={selected}
-            tabIndex={0}
+            aria-selected={run.id === selectedRunId}
             onClick={() => onSelect(run.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect(run.id);
-              }
-            }}
-            data-explain={dataExplainValue(target, label)}
-            className={cn('row', selected && 'selected')}
+            data-explain={dataExplainValue({ kind: 'run', id: run.id }, `the ${when} run`)}
+            className="runs-list-row"
           >
-            <span className="when" title={formatDateTime(run.startedAt)}>
-              {formatRunListTime(run.startedAt)}
+            <span className="who">{runDisplayName(run.triggerPayload)}</span>
+            <span className="state" data-status={run.status} title={formatDateTime(run.startedAt)}>
+              {STATUS_LABEL[run.status]} · {when.replace(/^Today /, '')}
             </span>
-            <span className="body">
-              <span className="t block truncate">{runDisplayName(run.triggerPayload)}</span>
-              {lastLine !== undefined && lastLine !== '' && (
-                <span className="dim block truncate" title={lastLine}>
-                  {lastLine}
-                </span>
-              )}
-            </span>
-            <StatusBadge status={run.status} />
-            <Explain target={target} label={label} />
-          </div>
+          </button>
         );
       })}
     </div>

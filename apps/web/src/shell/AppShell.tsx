@@ -6,14 +6,14 @@ import FloatingBar from './FloatingBar.tsx';
 
 /**
  * One full-screen board with the floating bar over it, Miro style: no sidebar
- * and no fixed chrome. An automation's canvas fills the whole board; every
- * other screen scrolls beneath the bar.
+ * and no fixed chrome. An automation's canvas and the Data screen fill the
+ * whole board; every other screen scrolls beneath the bar.
  */
 export default function AppShell() {
   // Extension "open the app" button: no-op in browsers.
   useDesktopFocus();
   const location = useLocation();
-  const fullBleed = /^\/reducers\/[^/]+$/.test(location.pathname);
+  const fullBleed = /^\/(reducers\/[^/]+|lists)$/.test(location.pathname);
   return (
     <main className="board relative h-screen overflow-hidden">
       {/* Off-workflow "Tell me more" routing (renders nothing). */}

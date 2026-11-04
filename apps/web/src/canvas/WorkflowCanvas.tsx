@@ -15,12 +15,14 @@ import {
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeProps,
+  type ReactFlowInstance,
 } from '@xyflow/react';
 import { MotionConfig } from 'motion/react';
-import { useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import GhostNode, { GhostEdge, type GhostNodeData } from '../design/GhostNode.tsx';
 import FlowEdge, { type FlowEdgeData } from './FlowEdge.tsx';
-import { layoutWorkflow } from './layout.ts';
+import { layoutWorkflow, stepNumbers } from './layout.ts';
 import StepNode, { type StepNodeData } from './StepNode.tsx';
 
 export type CanvasMode = 'design' | 'runtime';
@@ -53,8 +55,10 @@ export interface WorkflowCanvasProps {
   onSelectStep(stepId: string): void;
   /** Design mode only (M3 consumes; no-op-safe). */
   onChange?(op: CanvasOp): void;
-  /** Approval / failure cards slot. */
+  /** Problems and Try it verdicts under a design card. */
   renderNodeExtra?(stepId: string): ReactNode;
+  /** Runs mode: the approval or failure body a step expands to hold. */
+  renderNodeExpanded?(stepId: string, number: number): ReactNode;
   /** Per-node outcome caption (Watch-it-Run; mirrors renderNodeExtra). */
   renderNodeOutcome?(stepId: string): string | undefined;
   /**
@@ -66,11 +70,30 @@ export interface WorkflowCanvasProps {
 
 type CanvasNode = Node<StepNodeData, 'step'>;
 type CanvasGhostNode = Node<GhostNodeData, 'ghost'>;
+type CanvasLineNode = Node<{ height: number }, 'line'>;
 type CanvasEdge = Edge<FlowEdgeData, 'flow'>;
 type CanvasGhostEdge = Edge<{ when?: string }, 'ghost'>;
+type CanvasAnyNode = CanvasNode | CanvasGhostNode | CanvasLineNode;
+type CanvasAnyEdge = CanvasEdge | CanvasGhostEdge;
 
-const nodeTypes = { step: StepNode, ghost: GhostNode };
+/** Runs mode: the coral line beside the flow, down to the current step. */
+function RunLineNode({ data }: NodeProps<CanvasLineNode>) {
+  return <div className="run-line" style={{ height: data.height }} />;
+}
+
+const nodeTypes = { step: StepNode, ghost: GhostNode, line: RunLineNode };
 const edgeTypes = { flow: FlowEdge, ghost: GhostEdge };
+
+// Where the flow column sits: clear of the rail or Runs list, and on narrower
+// windows clear of the chat too, leaving room for the settings popover.
+const WIDE_WINDOW = 1400;
+const flowLeft = (runs: boolean): number =>
+  runs || (typeof window !== 'undefined' && window.innerWidth >= WIDE_WINDOW) ? 250 : 90;
+const FLOW_TOP = 92;
+const FOCUS_MARGIN = 14;
+// The dagre margin the first card sits at.
+const leftEdgeOf = (steps: StepInstance[]): number => Math.min(...steps.map((s) => s.position.x));
+const topEdgeOf = (steps: StepInstance[]): number => Math.min(...steps.map((s) => s.position.y));
 
 function kindOf(type: string): StepKind {
   return catalog[type]?.kind ?? 'enrich';
@@ -92,10 +115,11 @@ function classifyOptions(config: Record<string, unknown>): string[] {
 }
 
 /**
- * The workflow canvas shared by design and runtime modes. Nodes flow
- * top-down (auto-laid-out, never draggable — Bug #4). Runtime nodes are
- * not connectable and elements are not selectable; clicks still report
- * through onSelectStep so Task 5 can open the inspector.
+ * The one canvas behind Design and Runs. Nodes flow top-down, auto-laid-out
+ * and never draggable. Cards are measured, and the layout re-runs with the real
+ * sizes, so wrapped text and expanded steps push the flow down rather than
+ * overlap. Runs nodes aren't connectable or selectable; clicks still report
+ * through onSelectStep so the inspector can open.
  *
  * Design mode additionally renders the agent's planned ghosts (dashed, inert,
  * laid out together with the real graph) and deletes selected boxes on
@@ -113,33 +137,46 @@ export default function WorkflowCanvas({
   onSelectStep,
   onChange,
   renderNodeExtra,
+  renderNodeExpanded,
   renderNodeOutcome,
   renderNodeDesign,
 }: WorkflowCanvasProps) {
+  const runs = mode === 'runtime';
+  const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({});
+  const [flow, setFlow] = useState<ReactFlowInstance<CanvasAnyNode, CanvasAnyEdge> | null>(null);
+  const layout = useMemo(() => ({ sizes, gap: runs ? 10 : 44 }), [sizes, runs]);
   // Ghosts join the layout as unpositioned steps, so dagre places them
   // relative to the real graph (which keeps its positions) instead of in a
   // disconnected pile. layoutWorkflow passes edges through untouched.
   const laid = useMemo(() => {
-    if (!ghosts || ghosts.length === 0) return layoutWorkflow(workflow);
+    if (!ghosts || ghosts.length === 0) return layoutWorkflow(workflow, layout);
     const ghostSteps: StepInstance[] = ghosts.map((g) => ({
       ...g,
       config: {},
       inputs: {},
       position: { x: 0, y: 0 },
     }));
-    return layoutWorkflow({
-      ...workflow,
-      steps: [...workflow.steps, ...ghostSteps],
-      edges: [...workflow.edges, ...(ghostEdges ?? [])],
-    });
-  }, [workflow, ghosts, ghostEdges]);
+    return layoutWorkflow(
+      {
+        ...workflow,
+        steps: [...workflow.steps, ...ghostSteps],
+        edges: [...workflow.edges, ...(ghostEdges ?? [])],
+      },
+      layout,
+    );
+  }, [workflow, ghosts, ghostEdges, layout]);
 
-  const initialNodes: (CanvasNode | CanvasGhostNode)[] = useMemo(() => {
+  const initialNodes: CanvasAnyNode[] = useMemo(() => {
     const placed = new Map(
       [laid.trigger, ...laid.steps].map((s) => [s.id, s] as const),
     );
     const designMode = mode === 'design';
-    const nodes: (CanvasNode | CanvasGhostNode)[] = [workflow.trigger, ...workflow.steps].map(
+    const numbers = stepNumbers({
+      ...workflow,
+      trigger: placed.get(workflow.trigger.id) ?? workflow.trigger,
+      steps: workflow.steps.map((s) => placed.get(s.id) ?? s),
+    });
+    const nodes: CanvasAnyNode[] = [workflow.trigger, ...workflow.steps].map(
       (s): CanvasNode => ({
         id: s.id,
         type: 'step',
@@ -148,7 +185,10 @@ export default function WorkflowCanvas({
           step: placed.get(s.id) ?? s,
           kind: kindOf(s.type),
           status: stepRuns?.[s.id]?.status,
+          number: numbers[s.id],
+          runs,
           extra: renderNodeExtra?.(s.id),
+          expanded: runs ? renderNodeExpanded?.(s.id, numbers[s.id] ?? 0) : undefined,
           outcome: renderNodeOutcome?.(s.id),
           fresh: builtIds?.includes(s.id) ?? false,
           workflowId: workflow.id,
@@ -168,10 +208,29 @@ export default function WorkflowCanvas({
         connectable: false,
       });
     }
+    // How far the run has got: the lowest step it has reached.
+    if (runs && stepRuns) {
+      const real = [workflow.trigger, ...workflow.steps].map((s) => placed.get(s.id) ?? s);
+      const reached = real
+        .filter((s) => (stepRuns[s.id]?.status ?? 'pending') !== 'pending')
+        .sort((a, b) => b.position.y - a.position.y)[0];
+      if (reached) {
+        const top = topEdgeOf(real);
+        nodes.push({
+          id: 'run-line',
+          type: 'line',
+          position: { x: leftEdgeOf(real) - 12, y: top + 20 },
+          data: { height: Math.max(reached.position.y - top, 0) + 13 },
+          selectable: false,
+          draggable: false,
+          connectable: false,
+        });
+      }
+    }
     return nodes;
-  }, [laid, workflow, mode, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeOutcome, renderNodeDesign]);
+  }, [laid, workflow, mode, runs, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeExpanded, renderNodeOutcome, renderNodeDesign]);
 
-  const initialEdges: (CanvasEdge | CanvasGhostEdge)[] = useMemo(() => {
+  const initialEdges: CanvasAnyEdge[] = useMemo(() => {
     const ghostIds = new Set((ghosts ?? []).map((g) => g.id));
     const byId = new Map([workflow.trigger, ...workflow.steps].map((s) => [s.id, s]));
     const editable = mode === 'design' && onChange !== undefined;
@@ -205,16 +264,26 @@ export default function WorkflowCanvas({
         target: e.to,
         type: 'flow',
         animated: stepRuns?.[e.to]?.status === 'running',
-        data: { when: e.when, ...(condition ? { condition } : {}) },
-        style: { stroke: 'hsl(var(--muted-foreground) / 0.5)', strokeWidth: 2 },
+        data: {
+          // Conditions are always written as words; Runs keeps the line quiet.
+          ...(runs
+            ? {}
+            : { when: e.when, label: source?.type === 'approval.ask' ? 'if you say it looks good' : 'then' }),
+          reached: runs && (stepRuns?.[e.to]?.status ?? 'pending') !== 'pending',
+          ...(condition ? { condition } : {}),
+        },
       };
     });
-  }, [laid, stepRuns, ghosts, workflow, mode, onChange]);
+  }, [laid, runs, stepRuns, ghosts, workflow, mode, onChange]);
 
   const [nodes, setNodes, onNodesChangeInner] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChangeInner] = useEdgesState(initialEdges);
   useEffect(() => {
-    setNodes(initialNodes);
+    // Keep each card's measurement: without it React Flow hides and re-measures.
+    setNodes((current) => {
+      const measured = new Map(current.map((n) => [n.id, n.measured]));
+      return initialNodes.map((n) => ({ ...n, measured: measured.get(n.id) }));
+    });
   }, [initialNodes, setNodes]);
   useEffect(() => {
     setEdges(initialEdges);
@@ -222,9 +291,65 @@ export default function WorkflowCanvas({
 
   const design = mode === 'design';
 
+  // Line the flow up with its column. Only on open and on switching mode, so
+  // a later re-layout never undoes the owner's panning.
+  const realSteps = useMemo(() => {
+    const real = new Set([workflow.trigger.id, ...workflow.steps.map((s) => s.id)]);
+    return [laid.trigger, ...laid.steps].filter((s) => real.has(s.id));
+  }, [laid, workflow]);
+  const viewportFor = useCallback(
+    (steps: StepInstance[]) => ({
+      x: flowLeft(runs) - leftEdgeOf(steps),
+      y: FLOW_TOP - topEdgeOf(steps),
+      zoom: 1,
+    }),
+    [runs],
+  );
+  const [initialViewport] = useState(() => viewportFor(realSteps));
+  const stepsRef = useRef(realSteps);
+  useEffect(() => {
+    stepsRef.current = realSteps;
+  }, [realSteps]);
+  useEffect(() => {
+    void flow?.setViewport(viewportFor(stepsRef.current));
+  }, [flow, viewportFor, workflow.id]);
+
+  // What needs the owner must be on screen: a waiting or failed step, or the
+  // step whose settings are open. Moves only as far as it takes, and only when
+  // that step or its place changes, so it never fights the owner's panning.
+  const focusStep = runs
+    ? realSteps.find((s) => ['waiting', 'failed'].includes(stepRuns?.[s.id]?.status ?? ''))
+    : realSteps.find((s) => s.id === selectedStepId);
+  const focusId = focusStep?.id;
+  const focusY = focusStep?.position.y;
+  const focusHeight = focusId === undefined ? undefined : sizes[focusId]?.height;
+  useEffect(() => {
+    if (!flow || focusY === undefined) return;
+    const view = flow.getViewport();
+    const top = focusY * view.zoom + view.y;
+    const bottom = top + (focusHeight ?? 84) * view.zoom;
+    const overBottom = bottom - (window.innerHeight - FOCUS_MARGIN);
+    const shift = top < FLOW_TOP ? FLOW_TOP - top : overBottom > 0 ? -Math.min(overBottom, top - FLOW_TOP) : 0;
+    if (shift !== 0) void flow.setViewport({ ...view, y: view.y + shift });
+  }, [flow, focusId, focusY, focusHeight]);
+
   const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasNode | CanvasGhostNode>[]) => {
+    (changes: NodeChange<CanvasAnyNode>[]) => {
       onNodesChangeInner(changes);
+      const measured = changes.flatMap((c) =>
+        c.type === 'dimensions' && c.dimensions && c.id !== 'run-line' ? [{ id: c.id, ...c.dimensions }] : [],
+      );
+      if (measured.length > 0) {
+        setSizes((prev) => {
+          const changed = measured.filter(
+            (m) => prev[m.id]?.width !== m.width || prev[m.id]?.height !== m.height,
+          );
+          if (changed.length === 0) return prev;
+          const next = { ...prev };
+          for (const m of changed) next[m.id] = { width: m.width, height: m.height };
+          return next;
+        });
+      }
       if (!design || !onChange) return;
       for (const c of changes) {
         // @xyflow/react emits a `position` change per drag frame with
@@ -242,7 +367,7 @@ export default function WorkflowCanvas({
   );
 
   const handleEdgesChange = useCallback(
-    (changes: EdgeChange<CanvasEdge | CanvasGhostEdge>[]) => {
+    (changes: EdgeChange<CanvasAnyEdge>[]) => {
       onEdgesChangeInner(changes);
       if (!design || !onChange) return;
       for (const c of changes) {
@@ -267,8 +392,9 @@ export default function WorkflowCanvas({
             onChange({ op: 'connect', from: conn.source, to: conn.target });
           }
         }}
+        onInit={setFlow}
         onNodeClick={(_, node) => {
-          if (node.type !== 'ghost') onSelectStep(node.id);
+          if (node.type === 'step') onSelectStep(node.id);
         }}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
@@ -276,10 +402,12 @@ export default function WorkflowCanvas({
         nodesConnectable={design}
         elementsSelectable={design}
         deleteKeyCode={design ? 'Backspace' : null}
-        fitView
-        // Fit the whole flow so a run's progress reads at a glance, clear of
-        // the floating bar; small flows stay at full size.
-        fitViewOptions={{ minZoom: 0.6, maxZoom: 1, padding: { top: '96px', bottom: '24px', x: '24px' } }}
+        defaultViewport={initialViewport}
+        minZoom={0.5}
+        maxZoom={1.25}
+        // Cards stay full size and readable; a long flow scrolls.
+        panOnScroll
+        zoomOnScroll={false}
       />
     </MotionConfig>
   );

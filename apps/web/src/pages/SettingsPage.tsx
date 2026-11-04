@@ -222,7 +222,7 @@ function SoundSection({
 }
 
 const ROLE_LABELS: Record<ModelStatus['role'], string> = {
-  builder: 'Building chore reducers',
+  builder: 'Building automations',
   planner: 'Big plans',
   triage: 'Inbox sorting',
   vision: 'Reading web pages',
@@ -404,7 +404,7 @@ function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
       <div className="mt-2 space-y-5">
         <div className="space-y-2">
           <p className="text-sm">
-            Reset data erases all chores, lists, files and settings, and starts over from the
+            Reset data erases all automations, tables, files and settings, and starts over from the
             welcome screens.
           </p>
           <ArmableButton
@@ -418,7 +418,7 @@ function ResetSection({ update }: { update: (patch: SettingsPatch) => void }) {
         </div>
         <div className="space-y-2">
           <p className="text-sm">
-            Reset onboarding goes through the welcome screens again. Your chores and data stay put.
+            Reset onboarding goes through the welcome screens again. Your automations and data stay put.
           </p>
           <ArmableButton
             label="Reset onboarding"

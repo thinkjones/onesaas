@@ -35,6 +35,16 @@ afterEach(() => {
 });
 
 describe('FailureCard', () => {
+  test('a raw machine error is never the headline', () => {
+    renderCard('[ { "code": "invalid_type", "path": [ "threadId" ] } ]');
+    expect(screen.getByRole('alert').textContent).toBe("Something in this step didn't look right to me.");
+  });
+
+  test('a missing tab becomes a step you can follow', () => {
+    renderCard('I need Google Calendar open in Chrome to do this.');
+    expect(screen.getByText('Open Google Calendar in a Chrome tab.')).toBeDefined();
+  });
+
   test('shows the error and retries on "Try again"', async () => {
     // Params mirror fetch's (url, init) so mock.calls keeps both.
     const fetch = vi.fn(async (_url: string, _init?: { body?: unknown }) => ({
@@ -46,7 +56,7 @@ describe('FailureCard', () => {
     vi.stubGlobal('fetch', fetch);
     renderCard();
     expect(screen.getByText('I need Gmail open in Chrome to do this.')).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again from here' }));
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledTimes(1);
     });
@@ -59,9 +69,9 @@ describe('FailureCard', () => {
       vi.fn(async () => new Promise(() => {})),
     );
     renderCard();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again from here' }));
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Try again' }).hasAttribute('disabled')).toBe(
+      expect(screen.getByRole('button', { name: 'Try again from here' }).hasAttribute('disabled')).toBe(
         true,
       );
     });
@@ -81,7 +91,7 @@ describe('FailureCard', () => {
       })),
     );
     renderCard();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again from here' }));
     expect(await screen.findByText('This step was already resolved elsewhere.')).toBeDefined();
   });
 
@@ -95,7 +105,6 @@ describe('FailureCard', () => {
     renderCard();
     const fix = screen.getByRole('button', { name: 'Fix this step' });
     expect(fix.hasAttribute('disabled')).toBe(true);
-    expect(fix.getAttribute('title')).toBe('Coming soon');
   });
 
   test('"Fix this step" is enabled with its wiring and fires the handoff', () => {

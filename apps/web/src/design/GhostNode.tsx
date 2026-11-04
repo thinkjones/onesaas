@@ -31,19 +31,19 @@ export default function GhostNode({ data }: NodeProps<Node<GhostNodeData>>) {
   const { icon: Icon, tint } = stepVisuals[kind];
   return (
     <>
-      <Handle type="target" position={Position.Left} />
-      <AppCard data-ghost="true" className="w-[280px] border-dashed p-4 opacity-50">
+      <Handle type="target" position={Position.Top} />
+      <AppCard data-ghost="true" className="w-[470px] border-dashed p-4 opacity-50">
         <div className="flex items-center gap-2.5">
-          <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-full', tint)}>
+          <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-s)]', tint)}>
             <Icon className="size-5" aria-hidden />
           </span>
-          <p className="min-w-0 flex-1 truncate text-base font-semibold" title={title}>
+          <p className="min-w-0 flex-1 text-base font-semibold break-words">
             {title}
           </p>
         </div>
         <p className="mt-2 text-base break-words text-muted-foreground">{summary}</p>
       </AppCard>
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Bottom} />
     </>
   );
 }

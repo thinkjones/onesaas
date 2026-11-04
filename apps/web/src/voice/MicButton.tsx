@@ -12,6 +12,8 @@ export interface MicButtonProps {
   useVoiceFn?: () => UseVoiceResult;
   /** Button diameter in px; the agent panel default is 64, home uses 72. */
   sizePx?: number;
+  /** The compact "Hold to talk" pill, for sitting beside a text box. */
+  pill?: boolean;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface MicButtonProps {
  * pulsing ring and the live partial transcript. A non-empty final goes to
  * `onSend`; an empty one shows a hint instead.
  */
-export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx }: MicButtonProps) {
+export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx, pill = false }: MicButtonProps) {
   const voice = useVoiceFn();
   const [hint, setHint] = useState<string | null>(null);
 
@@ -89,7 +91,7 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx }: Mic
   };
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className={pill ? 'relative flex-none' : 'flex flex-col items-center gap-1'}>
       <button
         type="button"
         aria-label="Hold to talk"
@@ -99,7 +101,11 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx }: Mic
         onPointerLeave={handlePointerCancel}
         onClick={handleClick}
         style={sizePx === undefined ? undefined : { width: sizePx, height: sizePx }}
-        className="relative flex h-16 w-16 items-center justify-center rounded-full border border-border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
+        className={
+          pill
+            ? 'relative flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-full border-0 bg-primary px-4 text-[0.824rem] font-semibold text-primary-foreground shadow-none hover:brightness-110'
+            : 'relative flex h-16 w-16 items-center justify-center rounded-full border-0 bg-primary text-primary-foreground shadow-sm transition-all hover:brightness-110'
+        }
       >
         {listening && (
           <span
@@ -107,28 +113,32 @@ export default function MicButton({ onSend, useVoiceFn = useVoice, sizePx }: Mic
             className="absolute inset-0 rounded-full bg-primary/30 motion-safe:animate-ping"
           />
         )}
-        <Mic aria-hidden className="relative h-7 w-7" />
+        <Mic aria-hidden className={pill ? 'relative h-[18px] w-[18px]' : 'relative h-7 w-7'} />
+        {pill && <span className="relative">Hold to talk</span>}
       </button>
-      <span className="text-sm text-muted-foreground">Hold to talk</span>
-      {listening && voice.partial.length > 0 && (
-        <p aria-live="polite" className="max-w-56 text-center text-sm text-muted-foreground italic">
-          {voice.partial}
-        </p>
-      )}
-      {thinking && (
-        <p
-          aria-live="polite"
-          className="text-center text-sm text-muted-foreground motion-safe:animate-pulse"
-        >
-          Thinking… tap to cancel
-        </p>
-      )}
-      {hint && <p className="text-center text-sm text-muted-foreground">{hint}</p>}
-      {voice.error && (
-        <p role="alert" className="text-center text-sm text-destructive">
-          {voice.error}
-        </p>
-      )}
+      {!pill && <span className="text-sm text-muted-foreground">Hold to talk</span>}
+      {/* Beside a text box there's no room below, so what the mic says floats above it. */}
+      <div className={pill ? 'absolute bottom-full left-0 mb-2 w-64 rounded-[var(--radius-s)] bg-card empty:hidden' : 'contents'}>
+        {listening && voice.partial.length > 0 && (
+          <p aria-live="polite" className="max-w-56 text-center text-sm text-muted-foreground italic">
+            {voice.partial}
+          </p>
+        )}
+        {thinking && (
+          <p
+            aria-live="polite"
+            className="text-center text-sm text-muted-foreground motion-safe:animate-pulse"
+          >
+            Thinking… tap to cancel
+          </p>
+        )}
+        {hint && <p className="text-center text-sm text-muted-foreground">{hint}</p>}
+        {voice.error && (
+          <p role="alert" className="text-center text-sm text-destructive">
+            {voice.error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

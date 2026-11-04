@@ -2,11 +2,10 @@ import ActivityIcon from 'lucide-react/icons/activity';
 import SettingsIcon from 'lucide-react/icons/settings';
 import SparklesIcon from 'lucide-react/icons/sparkles';
 import TableIcon from 'lucide-react/icons/table';
-import TriangleAlertIcon from 'lucide-react/icons/triangle-alert';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { Link, NavLink, useLocation, useMatch, useNavigate } from 'react-router';
-import { getRuns, isTauri, useLists, useModelStatus, useSettings, useWorkflows } from '../api.ts';
+import { getRuns, isTauri, useModelStatus, useSettings, useWorkflows } from '../api.ts';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { BAR_SLOT_ID } from './barSlot.ts';
 import './FloatingBar.css';
@@ -29,18 +28,17 @@ function isEditable(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
-/** Jump between what's in the current mode: every automation, or every table. */
-function ContextPicker() {
+/** Jump between automations. Tables have their own list on the Data screen. */
+function AutomationPicker() {
   const navigate = useNavigate();
   const location = useLocation();
   const reducer = useMatch('/reducers/:workflowId');
-  const onAutomate = location.pathname === '/automate' || reducer !== null;
-  const onData = location.pathname === '/lists';
   const workflows = useWorkflows();
-  const lists = useLists();
-
-  if (onAutomate && (workflows.data?.length ?? 0) > 0) {
-    return (
+  if (location.pathname !== '/automate' && reducer === null) return null;
+  if ((workflows.data?.length ?? 0) === 0) return null;
+  return (
+    <>
+      <span className="sep" />
       <select
         className="picker"
         aria-label="Choose an automation"
@@ -56,34 +54,16 @@ function ContextPicker() {
           </option>
         ))}
       </select>
-    );
-  }
-  if (onData && (lists.data?.length ?? 0) > 0) {
-    return (
-      <select
-        className="picker"
-        aria-label="Choose a table"
-        value={new URLSearchParams(location.search).get('table') ?? ''}
-        onChange={(e) =>
-          navigate(e.target.value === '' ? '/lists' : `/lists?table=${encodeURIComponent(e.target.value)}`)
-        }
-      >
-        <option value="">All tables</option>
-        {lists.data!.map((t) => (
-          <option key={t.name} value={t.name}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  return null;
+    </>
+  );
 }
 
 /**
  * The one way around the app, floating top left over a full-screen canvas:
- * Activity, Automate or Data (also Alt+1, 2, 3), then a picker for what's in
- * that mode, then whatever the current screen adds through BarActions.
+ * Activity, Automate or Data (also Alt+1, 2, 3; only the active one shows its
+ * label), then the automation picker and whatever the current screen adds
+ * through BarActions. With an automation open the bar holds only that
+ * automation's controls, so the "needs you" badge and settings step aside.
  */
 export default function FloatingBar() {
   const navigate = useNavigate();
@@ -92,7 +72,8 @@ export default function FloatingBar() {
   const { settings } = useSettings();
   const models = useModelStatus();
   const runs = useQuery({ queryKey: ['runs'], queryFn: () => getRuns() });
-  const failedCount = (runs.data ?? []).filter((r) => r.status === 'failed').length;
+  const needsYou = (runs.data ?? []).filter((r) => r.status === 'failed' || r.status === 'waiting').length;
+  const onCanvas = useMatch('/reducers/:workflowId') !== null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -137,38 +118,43 @@ export default function FloatingBar() {
               key={mode.to}
               to={mode.to}
               end={mode.end}
+              aria-label={mode.label}
               title={`${mode.label} (Alt+${i + 1})`}
               data-explain={dataExplainValue({ kind: 'ui', id: mode.explainId }, mode.label)}
               className={`mode${active ? ' active' : ''}`}
             >
-              <mode.Icon size={15} strokeWidth={2} aria-hidden />
-              {mode.label}
+              <mode.Icon size={16} strokeWidth={2} aria-hidden />
+              {active && mode.label}
             </NavLink>
           );
         })}
       </nav>
-      <ContextPicker />
+      <AutomationPicker />
       <div id={BAR_SLOT_ID} className="slot" />
       {models.isError && (
         <span className="err" title="The app couldn't reach the models.">
           Models unavailable
         </span>
       )}
-      {failedCount > 0 && (
-        <Link to="/" className="warn" title="Failed runs are listed in Activity.">
-          <TriangleAlertIcon size={13} strokeWidth={2} aria-hidden />
-          {failedCount === 1 ? '1 needs a look' : `${failedCount} need a look`}
-        </Link>
+      {!onCanvas && (
+        <>
+          <span className="sep" />
+          {needsYou > 0 && (
+            <Link to="/" className="warn" title="Runs that need you are at the top of Activity.">
+              {needsYou === 1 ? '1 needs you' : `${needsYou} need you`}
+            </Link>
+          )}
+          <NavLink
+            to="/settings"
+            aria-label="Settings"
+            title={settings?.businessName ? `Settings · ${settings.businessName}` : 'Settings'}
+            data-explain={dataExplainValue({ kind: 'ui', id: 'nav-settings' }, 'Settings')}
+            className={({ isActive }) => `ic${isActive ? ' active' : ''}`}
+          >
+            <SettingsIcon size={17} strokeWidth={1.75} aria-hidden />
+          </NavLink>
+        </>
       )}
-      <NavLink
-        to="/settings"
-        aria-label="Settings"
-        title={settings?.businessName ? `Settings · ${settings.businessName}` : 'Settings'}
-        data-explain={dataExplainValue({ kind: 'ui', id: 'nav-settings' }, 'Settings')}
-        className={({ isActive }) => `ic${isActive ? ' active' : ''}`}
-      >
-        <SettingsIcon size={17} strokeWidth={1.75} aria-hidden />
-      </NavLink>
     </div>
   );
 }

@@ -61,7 +61,7 @@ export default function HomePage() {
       { name: workflowNameFromSentence(text), description: text },
       {
         onSuccess: (wf) => navigate(`/reducers/${wf.id}?mode=design`, { state: { agentPrompt: text } }),
-        onError: () => setError("Couldn't create a chore reducer. Try again."),
+        onError: () => setError("Couldn't create an automation. Try again."),
       },
     );
   };
@@ -99,7 +99,7 @@ export default function HomePage() {
           {error}
         </p>
       )}
-      <AppButton onClick={() => handleStart(sentence)} disabled={create.isPending}>
+      <AppButton variant="brand" onClick={() => handleStart(sentence)} disabled={create.isPending}>
         {create.isPending ? 'Starting…' : 'Build it'}
       </AppButton>
     </div>

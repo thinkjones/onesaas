@@ -197,7 +197,7 @@ export default function Pairing({ onStatus }: { onStatus?: (status: PairingStatu
           {status.connected ? (
             <p>
               Open a Gmail thread and click &apos;Save as lead &amp; reply&apos; to start a run.
-              New runs appear under Chore reducers.
+              New runs appear in Activity.
             </p>
           ) : (
             <p>
