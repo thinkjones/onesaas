@@ -1,3 +1,4 @@
+import ArrowLeft from 'lucide-react/icons/arrow-left';
 import { useEffect, useRef, useState } from 'react';
 import { formatPingAge } from '@dad/shared';
 import type { BgDebugEvent } from '../../lib/background.js';
@@ -298,7 +299,8 @@ function App() {
     fontFamily: 'var(--font-ui)',
     fontSize: 14,
     color: 'var(--text)',
-    background: 'var(--bg-sidebar)',
+    background: 'var(--bg)',
+    minHeight: '100vh',
   };
 
   const buttonStyle: React.CSSProperties = {
@@ -310,7 +312,8 @@ function App() {
     background: 'var(--bg-raised)',
     color: 'var(--text)',
     border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-s)',
+    borderRadius: 999,
+    fontWeight: 600,
   };
 
   // Primary actions (Pair, Create) carry the app accent fill.
@@ -366,7 +369,7 @@ function App() {
           fontSize: 14,
         }}
       >
-        Open the app to manage →
+        Open the app to manage
       </button>
     </p>
   );
@@ -396,7 +399,7 @@ function App() {
       <button onClick={() => void openApp('/automate')} style={primaryButtonStyle}>
         Create an automation for this page
       </button>
-      <button onClick={() => void openApp('/reducers')} style={buttonStyle}>
+      <button onClick={() => void openApp('/automate')} style={buttonStyle}>
         Change an existing automation
       </button>
     </>
@@ -456,7 +459,7 @@ function App() {
     const valid = /^\d{6}$/.test(code);
     return (
       <div style={box}>
-        <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>OneSaaS</h1>
+        <h1 className="wordmark" style={{ marginBottom: 8 }}>OneSaaS</h1>
         {info}
         {manageLink}
         {onThisPage}
@@ -513,9 +516,10 @@ function App() {
         onClick={() => setShowPanel(false)}
         style={{ ...buttonStyle, marginTop: 0, marginBottom: 12, width: 'auto', padding: '4px 10px' }}
       >
-        ← Back
+        <ArrowLeft size={14} aria-hidden="true" style={{ verticalAlign: '-2px', marginRight: 4 }} />
+        Back
       </button>
-      <h1 style={{ fontSize: 16, margin: '0 0 8px' }}>OneSaaS</h1>
+      <h1 className="wordmark" style={{ marginBottom: 8 }}>OneSaaS</h1>
       <p style={{ margin: '0 0 4px' }}>Paired ✓</p>
       <p style={{ margin: '0 0 4px' }}>
         {status.connected && live !== false ? 'Connected ✓' : 'Not connected — is the app running?'}

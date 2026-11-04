@@ -16,7 +16,7 @@ const controlSource = readFileSync(join(here, '../entrypoints/sidepanel/ControlP
 // Every token App.tsx may reference — each must exist in panel.css.
 const TOKENS = [
   '--font-ui',
-  '--bg-sidebar',
+  '--bg',
   '--bg-raised',
   '--bg-input',
   '--border',

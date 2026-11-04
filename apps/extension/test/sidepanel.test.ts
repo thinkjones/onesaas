@@ -651,7 +651,7 @@ describe('sidepanel automation buttons', () => {
     expect(opened).toEqual(['http://localhost:5173/automate']);
   });
 
-  test('change opens the desktop app at the reducer list', async () => {
+  test('change opens the desktop app at the automations list', async () => {
     focusResult = { focused: true };
     await renderPanel();
     await act(async () => {
@@ -661,7 +661,7 @@ describe('sidepanel automation buttons', () => {
     const focusCall = fetchMock.mock.calls.find(
       ([u]) => u === 'http://127.0.0.1:8787/api/app/focus',
     )!;
-    expect(JSON.parse(focusCall[1]!.body as string)).toEqual({ path: '/reducers' });
+    expect(JSON.parse(focusCall[1]!.body as string)).toEqual({ path: '/automate' });
     expect(opened).toHaveLength(0);
   });
 });

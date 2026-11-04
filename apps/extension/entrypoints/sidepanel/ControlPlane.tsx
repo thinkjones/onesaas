@@ -1,6 +1,18 @@
+import ArrowUpRight from 'lucide-react/icons/arrow-up-right';
+import Check from 'lucide-react/icons/check';
+import ChevronDown from 'lucide-react/icons/chevron-down';
+import ChevronUp from 'lucide-react/icons/chevron-up';
+import History from 'lucide-react/icons/history';
+import Mail from 'lucide-react/icons/mail';
+import Pause from 'lucide-react/icons/pause';
+import Pencil from 'lucide-react/icons/pencil';
+import Play from 'lucide-react/icons/play';
+import Plus from 'lucide-react/icons/plus';
+import Send from 'lucide-react/icons/send';
+import Settings from 'lucide-react/icons/settings';
 import { useEffect, useRef, useState } from 'react';
 import { groupAutomations, type Automation, type AutomationStep } from '../../lib/automations.js';
-import type { PanelSite } from '../../lib/sites.js';
+import { SITE_CAPABILITIES, type PanelSite } from '../../lib/sites.js';
 
 // Same origin the background socket uses; covered by host_permissions.
 const API = 'http://127.0.0.1:8787';
@@ -55,14 +67,15 @@ const RUN_DETAIL: Record<RunState, string> = {
   refused: 'Nothing happened.',
 };
 
-const STEP_ICON: Record<string, string> = {
-  pending: '○',
-  running: '◐',
-  waiting: '⏸',
-  done: '✓',
-  skipped: '–',
-  failed: '✕',
-};
+function StepDot({ status }: { status: string }) {
+  return (
+    <span className="run-step-icon" aria-hidden="true">
+      {status === 'done' && <Check size={12} strokeWidth={3.5} />}
+      {status === 'waiting' && <Pause size={11} fill="currentColor" />}
+      {status === 'failed' && '!'}
+    </span>
+  );
+}
 
 /** Names a new automation from the first sentence; the agent renames it later. */
 function nameFromSentence(sentence: string): string {
@@ -99,10 +112,11 @@ export interface ControlPlaneProps {
 }
 
 /**
- * The side panel's main view: automations to run above, a chat to design them
- * below. Exactly one mode shows at a time, in a banner: a click on an automation
- * RUNS it for real, and anything sent from the chat DESIGNS (changes the selected
- * automation, or creates a new one when none is selected).
+ * The side panel's main view. A switch at the top says which mode you're in: a
+ * click on an automation RUNS it for real, and anything sent from the chat
+ * DESIGNS (changes the selected automation, or creates a new one when none is
+ * selected). The automations fold away into one row at the bottom while there's
+ * a run or a conversation to look at.
  */
 export default function ControlPlane({ site, connected, openApp, onOpenSettings }: ControlPlaneProps) {
   const [automations, setAutomations] = useState<Automation[] | null>(null);
@@ -114,6 +128,10 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   const [agentBusy, setAgentBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [approvalText, setApprovalText] = useState<string | null>(null);
+  // Looking at the chat while a run carries on. The run isn't touched.
+  const [viewingDesign, setViewingDesign] = useState(false);
+  // null: open until there's something else to look at.
+  const [listOpen, setListOpen] = useState<boolean | null>(null);
 
   // The one event stream outlives renders, so it reads the current run and
   // chat target through refs.
@@ -228,6 +246,8 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   }
 
   const startDesigning = (id: string | null) => {
+    setViewingDesign(false);
+    setListOpen(false);
     updateRun(null);
     void selectTarget(id);
     chatInput.current?.focus?.();
@@ -238,6 +258,8 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
     if (message === '' || agentBusy) return;
     // Leaving the run view: from here on the chat is what's happening.
     updateRun(null);
+    setViewingDesign(false);
+    setListOpen(false);
     setSendError(null);
     setAgentBusy(true);
     setInput('');
@@ -283,6 +305,8 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   /** Runs `start`, whose response carries the run; the stream fills in progress. */
   async function trackRun(a: Automation, start: () => Promise<Response>) {
     updateRun({ automation: a, id: null, state: 'starting', steps: {}, error: null });
+    setViewingDesign(false);
+    setListOpen(false);
     setApprovalText(null);
     void selectTarget(a.id);
     const refuse = (error: string) =>
@@ -368,7 +392,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
         title={live ? `Run ${a.name} now` : `${a.name} isn't on yet. Open it in the chat.`}
       >
         <span className="cta-icon" aria-hidden="true">
-          {live ? '▶' : '✎'}
+          {live ? <Play size={13} fill="currentColor" /> : <Pencil size={14} />}
         </span>
         <span className="cta-name">{a.name}</span>
         <span className="cta-tag">{live ? 'Run' : 'Draft'}</span>
@@ -376,90 +400,107 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
     );
   };
 
+  // What's on screen: a real run, or the design chat.
+  const shownRun = viewingDesign ? null : run;
+
   const banner =
-    run !== null ? (
-      <div className="mode-banner mode-run" data-testid="mode-banner" data-mode="run" role="status">
-        <span className="mode-icon" aria-hidden="true">
-          ▶
-        </span>
-        <div className="mode-text">
+    shownRun !== null ? (
+      <div className="mode-banner" data-testid="mode-banner" data-mode="run" role="status">
+        <div className="mode-title">
           <strong>
-            {RUN_LABEL[run.state]}: {run.automation.name}
+            {RUN_LABEL[shownRun.state]}: {shownRun.automation.name}
           </strong>
-          <span>{RUN_DETAIL[run.state]}</span>
+          {!running && shownRun.state !== 'waiting' && (
+            <button type="button" className="mode-close" onClick={() => startDesigning(shownRun.automation.id)}>
+              Close
+            </button>
+          )}
         </div>
-        {!running && run.state !== 'waiting' && (
-          <button type="button" className="mode-close" onClick={() => startDesigning(run.automation.id)}>
-            Close
-          </button>
+        <span className="dim">{RUN_DETAIL[shownRun.state]}</span>
+        {shownRun.state !== 'refused' && (
+          <div
+            className="run-strip"
+            role="img"
+            aria-label={`${Object.values(shownRun.steps).filter((st) => st.status === 'done').length} of ${shownRun.automation.steps.length + 1} steps done`}
+          >
+            {[shownRun.automation.trigger, ...shownRun.automation.steps].map((step) => (
+              <span key={step.id} data-status={shownRun.steps[step.id]?.status ?? 'pending'} />
+            ))}
+          </div>
         )}
       </div>
     ) : (
-      <div className="mode-banner mode-design" data-testid="mode-banner" data-mode="design" role="status">
-        <span className="mode-icon" aria-hidden="true">
-          ✎
-        </span>
-        <div className="mode-text">
+      <div className="mode-banner" data-testid="mode-banner" data-mode="design" role="status">
+        <div className="mode-title">
           <strong>Designing: {targetAutomation?.name ?? 'New automation'}</strong>
-          <span>
-            {targetAutomation === null
-              ? "Say what you want done. I'll build it, and nothing runs for real."
-              : targetAutomation.status === 'on'
-                ? "This one is on, so changes apply to its next run. Chatting doesn't run it."
-                : "Tell me what to change. Chatting doesn't run it."}
-          </span>
         </div>
+        <span className="dim">
+          {targetAutomation === null
+            ? "Say what you want done. I'll build it, and nothing runs for real."
+            : targetAutomation.status === 'on'
+              ? "This one is on, so changes apply to its next run. Chatting doesn't run it."
+              : "Tell me what to change. Chatting doesn't run it."}
+        </span>
       </div>
     );
 
-  const runView = run !== null && (
+  const runView = shownRun !== null && (
     <div className="run-view" data-testid="run-view">
-      {run.error !== null && <p className="error">{run.error}</p>}
-      {run.state !== 'refused' && (
+      {shownRun.error !== null && <p className="error">{shownRun.error}</p>}
+      {shownRun.state !== 'refused' && (
         <ol className="run-steps">
-          {[run.automation.trigger, ...run.automation.steps].map((step) => {
-            const state = run.steps[step.id];
+          {[shownRun.automation.trigger, ...shownRun.automation.steps].map((step) => {
+            const state = shownRun.steps[step.id];
             const status = state?.status ?? 'pending';
             const proposed = (state?.output as { proposed?: { text?: unknown } } | undefined)?.proposed?.text;
-            const waiting = status === 'waiting' && run.state === 'waiting';
+            const waiting = status === 'waiting' && shownRun.state === 'waiting';
             return (
               <li key={step.id} data-step={step.id} data-status={status} className="run-step">
-                <span className="run-step-icon" aria-hidden="true">
-                  {STEP_ICON[status] ?? '○'}
-                </span>
-                <div className="run-step-body">
-                  <span className="run-step-title">{step.title}</span>
-                  {state?.error !== undefined && <span className="error">{state.error}</span>}
-                  {state?.error === undefined && state?.why !== undefined && !waiting && (
-                    <span className="dim">{state.why}</span>
-                  )}
-                  {waiting && (
-                    <div className="approval">
-                      <p>{typeof step.config['question'] === 'string' ? step.config['question'] : 'Is this OK to use?'}</p>
-                      <textarea
-                        aria-label="Proposed text"
-                        rows={4}
-                        value={approvalText ?? (typeof proposed === 'string' ? proposed : '')}
-                        onChange={(e) => setApprovalText(e.target.value)}
-                      />
-                      <div className="approval-actions">
-                        <button
-                          type="button"
-                          className="primary"
-                          onClick={() => void decide(step, typeof proposed === 'string' ? proposed : '', false)}
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void decide(step, typeof proposed === 'string' ? proposed : '', true)}
-                        >
-                          Skip
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                <div className="run-step-line">
+                  <StepDot status={status} />
+                  <div className="run-step-body">
+                    <span className="run-step-title">
+                      {status === 'pending' ? 'Then: ' : ''}
+                      {step.title}
+                    </span>
+                    {state?.error !== undefined && <span className="error">{state.error}</span>}
+                    {state?.error === undefined && state?.why !== undefined && !waiting && (
+                      <span className="run-step-why">{state.why}</span>
+                    )}
+                  </div>
                 </div>
+                {waiting && (
+                  <section aria-label="Approval" className="approval">
+                    <span className="approval-pill">Waiting for you</span>
+                    <h2>{typeof step.config['question'] === 'string' ? step.config['question'] : 'Is this OK to use?'}</h2>
+                    <label htmlFor={`approval-${step.id}`} className="dim">
+                      Change anything before it goes.
+                    </label>
+                    <textarea
+                      id={`approval-${step.id}`}
+                      aria-label="Proposed text"
+                      rows={8}
+                      value={approvalText ?? (typeof proposed === 'string' ? proposed : '')}
+                      onChange={(e) => setApprovalText(e.target.value)}
+                    />
+                    <div className="approval-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => void decide(step, typeof proposed === 'string' ? proposed : '', false)}
+                      >
+                        Looks good
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void decide(step, typeof proposed === 'string' ? proposed : '', true)}
+                      >
+                        Skip
+                      </button>
+                    </div>
+                    <span className="dim">Nothing goes out until you say so.</span>
+                  </section>
+                )}
               </li>
             );
           })}
@@ -469,7 +510,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   );
 
   const lastAsk = transcript.map((t) => t.kind).lastIndexOf('ask');
-  const chatView = run === null && (
+  const chatView = shownRun === null && (
     <div className="transcript" data-testid="transcript">
       {transcript.length === 0 && (
         <p className="dim empty">
@@ -502,49 +543,50 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
   );
 
   const designLabel = 'What the chat changes';
+  const siteLabel = site === null ? null : SITE_CAPABILITIES[site].label;
+  const rowCount = siteLabel === null ? (automations ?? []).length : groups.onThisPage.length;
+  const showList = listOpen ?? (run === null && transcript.length === 0);
 
   return (
-    <div className="control">
+    <div className="control" data-mode={shownRun !== null ? 'run' : 'design'}>
       <header className="brand-bar">
-        <div>
-          <h1>OneSaaS</h1>
-          <p>One SaaS to rule them all</p>
-        </div>
-        <div className="brand-actions">
-          <span
-            className={`dot ${connected ? 'dot-on' : 'dot-off'}`}
-            role="img"
-            aria-label={connected ? 'Connected' : 'Not connected'}
-            title={connected ? 'Connected' : 'Not connected. Is the app running?'}
-          />
-          <button type="button" className="icon-button" onClick={() => void openApp('/automate')} title="Open the app">
-            ↗<span className="sr-only">Open the app</span>
-          </button>
-          <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
-            ⚙
-          </button>
-        </div>
+        <h1>OneSaaS</h1>
+        <span
+          className={`dot ${connected ? 'dot-on' : 'dot-off'}`}
+          role="img"
+          aria-label={connected ? 'Connected' : 'Not connected'}
+          title={connected ? 'Connected' : 'Not connected. Is the app running?'}
+        />
+        <button type="button" className="icon-button" onClick={() => void openApp('/automate')} title="Open the app" aria-label="Open the app">
+          <ArrowUpRight size={16} aria-hidden="true" />
+        </button>
+        <button type="button" className="icon-button" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
+          <Settings size={16} aria-hidden="true" />
+        </button>
       </header>
 
-      <div className="cta-groups">
-        {loadError && <p className="error">Can't reach the app. Is it running?</p>}
-        <section aria-label="Automations for this page">
-          <h2>On this page</h2>
-          {groups.onThisPage.length > 0 ? (
-            groups.onThisPage.map(row)
-          ) : (
-            <p className="dim">Nothing for this page yet.</p>
-          )}
-        </section>
-        <section aria-label="Your other automations">
-          <h2>Your other automations</h2>
-          {groups.others.length > 0 ? groups.others.map(row) : <p className="dim">None yet.</p>}
-        </section>
-        <button type="button" className="cta cta-new" onClick={() => startDesigning(null)}>
-          <span className="cta-icon" aria-hidden="true">
-            +
-          </span>
-          <span className="cta-name">Set up a new automation</span>
+      <div role="group" aria-label="Design or run" className="mode-switch" data-mode={shownRun !== null ? 'run' : 'design'}>
+        <button
+          type="button"
+          data-segment="design"
+          aria-pressed={shownRun === null}
+          onClick={() => setViewingDesign(true)}
+        >
+          <Pencil size={14} aria-hidden="true" />
+          Design
+        </button>
+        <button
+          type="button"
+          data-segment="run"
+          aria-pressed={shownRun !== null}
+          title={run === null ? 'Click an automation below to run it for real.' : undefined}
+          onClick={() => {
+            if (run !== null) setViewingDesign(false);
+            else setListOpen(true);
+          }}
+        >
+          <History size={14} aria-hidden="true" />
+          Running for real
         </button>
       </div>
 
@@ -557,47 +599,91 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
         <div ref={chatEnd} />
       </main>
 
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send(input);
-        }}
-      >
-        <label className="composer-target">
-          <span>{designLabel}</span>
-          <select
-            aria-label={designLabel}
-            value={target ?? ''}
-            disabled={agentBusy}
-            onChange={(e) => startDesigning(e.target.value === '' ? null : e.target.value)}
-          >
-            <option value="">A new automation</option>
-            {(automations ?? []).map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <textarea
-          ref={chatInput}
-          rows={2}
-          placeholder={target === null ? 'Describe a new automation…' : `Change ${targetAutomation?.name ?? 'this automation'}…`}
-          aria-label="Chat message"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send(input);
-            }
-          }}
-        />
-        <button type="submit" className="primary" disabled={agentBusy || input.trim() === ''}>
-          Send
+      <div className="dock">
+        {showList && (
+          <div className="cta-groups">
+            {loadError && <p className="error">Can't reach the app. Is it running?</p>}
+            <section aria-label="Automations for this page">
+              <h2>On this page</h2>
+              {groups.onThisPage.length > 0 ? (
+                groups.onThisPage.map(row)
+              ) : (
+                <p className="dim">Nothing for this page yet.</p>
+              )}
+            </section>
+            <section aria-label="Your other automations">
+              <h2>Your other automations</h2>
+              {groups.others.length > 0 ? groups.others.map(row) : <p className="dim">None yet.</p>}
+            </section>
+            <button type="button" className="cta cta-new" onClick={() => startDesigning(null)}>
+              <span className="cta-icon" aria-hidden="true">
+                <Plus size={15} />
+              </span>
+              <span className="cta-name">Set up a new automation</span>
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          className="list-toggle"
+          aria-expanded={showList}
+          onClick={() => setListOpen(!showList)}
+        >
+          <Mail size={16} aria-hidden="true" />
+          <span className="list-toggle-text">
+            <b>
+              {rowCount} automation{rowCount === 1 ? '' : 's'}
+            </b>
+            {siteLabel === null ? '' : ` for ${siteLabel}`}
+          </span>
+          {showList ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
         </button>
-      </form>
+
+        <form
+          className="composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send(input);
+          }}
+        >
+          <label className="composer-target">
+            <span>{designLabel}</span>
+            <select
+              aria-label={designLabel}
+              value={target ?? ''}
+              disabled={agentBusy}
+              onChange={(e) => startDesigning(e.target.value === '' ? null : e.target.value)}
+            >
+              <option value="">A new automation</option>
+              {(automations ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="composer-row">
+            <textarea
+              ref={chatInput}
+              rows={1}
+              placeholder={target === null ? 'Describe a new automation…' : `Change ${targetAutomation?.name ?? 'this automation'}…`}
+              aria-label="Chat message"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
+            />
+            <button type="submit" className="send" aria-label="Send" disabled={agentBusy || input.trim() === ''}>
+              <Send size={17} aria-hidden="true" />
+            </button>
+          </div>
+          <span className="composer-note">Chat changes the design. It never runs anything.</span>
+        </form>
+      </div>
 
       <input
         ref={photoInput}

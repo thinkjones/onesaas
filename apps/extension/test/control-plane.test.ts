@@ -105,7 +105,9 @@ const q = <T extends Element>(sel: string) => {
 };
 const group = (label: string) => q(`[aria-label="${label}"]`);
 const button = (text: string, within: Element = container) => {
-  const el = [...within.querySelectorAll('button')].find((b) => b.textContent?.includes(text));
+  const el = [...within.querySelectorAll('button')].find(
+    (b) => b.textContent?.includes(text) || b.getAttribute('aria-label') === text,
+  );
   if (!el) throw new Error(`button "${text}" missing: ${container.innerHTML}`);
   return el;
 };
@@ -210,6 +212,9 @@ describe('mode is always clear', () => {
       button('Save as lead').click();
     });
     await flush();
+    await act(async () => {
+      q<HTMLButtonElement>('.list-toggle').click();
+    });
     await act(async () => {
       button('Set up a new automation').click();
     });
@@ -319,7 +324,7 @@ describe('running', () => {
     expect(container.textContent).toContain('Send this?');
     expect(q<HTMLTextAreaElement>('[aria-label="Proposed text"]').value).toBe('Hi Priya');
     await act(async () => {
-      button('Approve').click();
+      button('Looks good').click();
     });
     await flush();
     const call = posts('/api/runs/r1/steps/approve/approval')[0]!;
@@ -351,7 +356,7 @@ describe('running', () => {
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await act(async () => {
-      button('Approve').click();
+      button('Looks good').click();
     });
     await flush();
     const call = posts('/api/runs/r1/steps/approve/approval')[0]!;
