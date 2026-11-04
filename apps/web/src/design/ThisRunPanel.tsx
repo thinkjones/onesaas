@@ -1,4 +1,4 @@
-import type { StepRunStatus } from '@dad/shared';
+import type { StepRunStatus } from '@onesaas/shared';
 import type { ReactNode } from 'react';
 import AppButton from './AppButton.tsx';
 import { plainLine } from '../runtime/format.ts';

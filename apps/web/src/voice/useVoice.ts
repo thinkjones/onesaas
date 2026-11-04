@@ -36,7 +36,7 @@ function voiceWsUrl(): string {
  *
  * `listening` captures audio; `thinking` awaits the final transcript after a
  * stop (button release, second click, or the model's own `speechEnd`);
- * `error` carries a Dad-readable message in `error`.
+ * `error` carries a owner-readable message in `error`.
  */
 export function useVoice(): UseVoiceResult {
   const [state, setState] = useState<VoiceState>('idle');
@@ -119,7 +119,7 @@ export function useVoice(): UseVoiceResult {
   const stop = useCallback((): void => {
     // A stop while thinking is the user's cancel: kill the run so late
     // frames can't land, release everything, and return to idle with no
-    // error — Dad can press again to retry.
+    // error — the owner can press again to retry.
     if (stateRef.current === 'thinking') {
       runRef.current += 1;
       clearThinkingTimer();
@@ -166,7 +166,7 @@ export function useVoice(): UseVoiceResult {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
     } catch {
       if (run !== runRef.current) return;
-      // Denied, missing, or busy mic: one Dad-readable message either way.
+      // Denied, missing, or busy mic: one owner-readable message either way.
       fail(MICROPHONE_ERROR_MESSAGE);
       return;
     }
@@ -203,7 +203,7 @@ export function useVoice(): UseVoiceResult {
       } else if (frame.type === 'final') {
         emitFinal(frame.text ?? '');
       } else if (frame.type === 'speechEnd') {
-        // The model heard Dad stop: end capture and wait for the final.
+        // The model heard the owner stop: end capture and wait for the final.
         stop();
       } else if (frame.type === 'error') {
         fail(VOICE_SERVICE_ERROR);
@@ -254,7 +254,7 @@ export function useVoice(): UseVoiceResult {
         if (ws.readyState !== WebSocket.OPEN) return;
         const source = ctx.createMediaStreamSource(stream);
         const node = new AudioWorkletNode(ctx, 'pcm-capture');
-        // Never connect to the destination: Dad must not hear himself back.
+        // Never connect to the destination: the owner must not hear themselves back.
         source.connect(node);
         node.port.onmessage = (event: MessageEvent): void => {
           if (run !== runRef.current) return;

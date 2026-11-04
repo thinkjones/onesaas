@@ -1,4 +1,4 @@
-import { ServerToExtension } from '@dad/shared';
+import { ServerToExtension } from '@onesaas/shared';
 import { gmailThreadUrl } from './gmail/read.js';
 import {
   SITE_START_URL,
@@ -80,7 +80,8 @@ const globalTimers: Timers = {
 };
 
 export const WS_URL = 'ws://127.0.0.1:8787/ext';
-export const TOKEN_KEY = 'dadExtToken';
+export const TOKEN_KEY = 'onesaasExtToken';
+const EARLIER_TOKEN_KEY = 'dadExtToken';
 export const GMAIL_TAB_QUERY = 'https://mail.google.com/*';
 
 /** SAME string as the server's gmail site message — consistent UX either side. */
@@ -205,7 +206,7 @@ export function createBackground(deps: {
       debugLog.splice(0, debugLog.length - MAX_DEBUG_EVENTS);
     }
     try {
-      console.log(`[dad-ext] ${msg}`);
+      console.log(`[onesaas-ext] ${msg}`);
     } catch {
       // Console unavailable (some test shells): the ring still records.
     }
@@ -740,8 +741,15 @@ export function createBackground(deps: {
 
   return {
     async boot(): Promise<void> {
-      const stored = await browser.storage.local.get(TOKEN_KEY);
-      const found = stored[TOKEN_KEY];
+      let found = (await browser.storage.local.get(TOKEN_KEY))[TOKEN_KEY];
+      if (found === undefined) {
+        // A pairing saved under the product's earlier name carries over.
+        found = (await browser.storage.local.get(EARLIER_TOKEN_KEY))[EARLIER_TOKEN_KEY];
+        if (typeof found === 'string') {
+          await browser.storage.local.set({ [TOKEN_KEY]: found });
+          await browser.storage.local.remove(EARLIER_TOKEN_KEY);
+        }
+      }
       token = typeof found === 'string' ? found : null;
       try {
         const info = await browser.identity?.getProfileUserInfo?.();

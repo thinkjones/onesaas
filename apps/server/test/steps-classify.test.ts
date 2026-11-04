@@ -1,4 +1,4 @@
-import { evalCondition } from '@dad/shared';
+import { evalCondition } from '@onesaas/shared';
 import { expect, vi } from 'vitest';
 import { openDb } from '../src/db/connection.js';
 import { createGateway, type Gateway } from '../src/models/gateway.js';

@@ -1,4 +1,4 @@
-import type { Run, Workflow } from '@dad/shared';
+import type { Run, Workflow } from '@onesaas/shared';
 
 /**
  * ?run= validation. A valid id (present in the workflow's runs) wins,
@@ -32,7 +32,7 @@ export function isRunsMode(params: URLSearchParams): boolean {
 
 /** Opens an automation in Runs mode on one run. */
 export function runPath(workflowId: string, runId: string): string {
-  return `/reducers/${workflowId}?mode=runs&run=${runId}`;
+  return `/automations/${workflowId}?mode=runs&run=${runId}`;
 }
 
 /** What Runs mode shows first: the oldest thing waiting for you, else the newest run. */

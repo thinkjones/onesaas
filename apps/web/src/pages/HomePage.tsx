@@ -29,7 +29,7 @@ export default function HomePage() {
   // (not an auto-send). Applied via the previous-render pattern: a same-path
   // re-navigation re-renders without remounting, and the prefill must land
   // then too. It only lands on a CHANGED value into an untouched box, so it
-  // never clobbers Dad's typing.
+  // never clobbers the owner's typing.
   const [sentence, setSentence] = useState('');
   const [appliedPrefill, setAppliedPrefill] = useState<string | undefined>(undefined);
   const locationState = location.state as { homePrefill?: unknown } | null;
@@ -70,7 +70,7 @@ export default function HomePage() {
     create.mutate(
       { name: workflowNameFromSentence(text), description: text },
       {
-        onSuccess: (wf) => navigate(`/reducers/${wf.id}?mode=design`, { state: { agentPrompt: text } }),
+        onSuccess: (wf) => navigate(`/automations/${wf.id}?mode=design`, { state: { agentPrompt: text } }),
         onError: () => setError("Couldn't create an automation. Try again."),
       },
     );

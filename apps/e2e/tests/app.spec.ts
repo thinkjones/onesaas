@@ -26,8 +26,8 @@ test('settings issues a 6-digit pairing code', async ({ page }) => {
   await expect(page.getByText(/^\d{6}$/)).toBeVisible();
 });
 
-test('reducers list shows the seeded flow-1 workflow', async ({ page }) => {
-  await page.goto('/reducers');
-  await expect(page.getByRole('heading', { name: 'Chore reducers' })).toBeVisible();
+test('automations list shows the seeded flow-1 workflow', async ({ page }) => {
+  await page.goto('/automations');
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
   await expect(page.getByText('Save as lead & reply')).toBeVisible();
 });

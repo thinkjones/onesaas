@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { Workflow, catalog } from '@dad/shared';
+import { Workflow, catalog } from '@onesaas/shared';
 import { openDb } from '../src/db/connection.js';
 import { createRepo } from '../src/db/repo.js';
 import { buildRunStory } from '../src/engine/story.js';

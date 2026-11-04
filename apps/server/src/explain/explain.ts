@@ -113,7 +113,7 @@ export function createExplainer(deps: ExplainerDeps): {
     if (!node) throw new ExplainError(`Unknown step: ${stepId}`, 404);
     // The most recent live run's record for this step (listRuns is newest
     // first); a step that never ran explains from its settings alone. The
-    // scan is bounded (Dad-scale: past 100 runs the step explains from
+    // scan is bounded (owner-scale: past 100 runs the step explains from
     // settings alone) and the winning run id joins the cache key, so a new
     // run with a fresh why invalidates.
     let lastWhy: string | undefined;

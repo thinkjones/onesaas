@@ -1,4 +1,4 @@
-import { Workflow, catalog, type Workflow as WorkflowType } from '@dad/shared';
+import { Workflow, catalog, type Workflow as WorkflowType } from '@onesaas/shared';
 import { expect, test } from 'vitest';
 import { openDb } from '../src/db/connection.js';
 import flow1Seed from '../src/seed/flow1.json' with { type: 'json' };

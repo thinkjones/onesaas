@@ -35,7 +35,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 /** Runs now live over the automation's own canvas. */
 function RunsRedirect() {
   const { workflowId = '' } = useParams();
-  return <Navigate to={`/reducers/${workflowId}?mode=runs`} replace />;
+  return <Navigate to={`/automations/${workflowId}?mode=runs`} replace />;
 }
 
 export default function AppRoutes() {
@@ -51,9 +51,9 @@ export default function AppRoutes() {
       >
         <Route index element={<ActivityPage />} />
         <Route path="automate" element={<HomePage />} />
-        <Route path="reducers" element={<Navigate to="/automate" replace />} />
-        <Route path="reducers/:workflowId" element={<WorkflowPage />} />
-        <Route path="reducers/:workflowId/runs" element={<RunsRedirect />} />
+        <Route path="automations" element={<Navigate to="/automate" replace />} />
+        <Route path="automations/:workflowId" element={<WorkflowPage />} />
+        <Route path="automations/:workflowId/runs" element={<RunsRedirect />} />
         <Route path="lists" element={<ListsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="design" element={<DesignPreviewPage />} />

@@ -1,4 +1,4 @@
-import { Workflow } from '@dad/shared';
+import { Workflow } from '@onesaas/shared';
 import type { Repo } from '../db/repo.js';
 import flow1 from './flow1.json' with { type: 'json' };
 

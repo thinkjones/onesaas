@@ -248,8 +248,8 @@ describe('/api/voice proxy', () => {
 
     fake
       .socket()
-      .send(JSON.stringify({ type: 'transcript', transcript: 'hello dad', final: true }));
-    expect(await nextJson(browser)).toEqual({ type: 'final', text: 'hello dad' });
+      .send(JSON.stringify({ type: 'transcript', transcript: 'hello owner', final: true }));
+    expect(await nextJson(browser)).toEqual({ type: 'final', text: 'hello owner' });
   });
 
   test('maps partials, speechEnd, speechComplete, and errors', async () => {

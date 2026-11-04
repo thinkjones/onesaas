@@ -1,4 +1,4 @@
-import type { Run, StepInstance, StepRun, Workflow } from '@dad/shared';
+import type { Run, StepInstance, StepRun, Workflow } from '@onesaas/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -116,9 +116,9 @@ function renderPage(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const entry =
     opts?.search === undefined && opts?.agentPrompt === undefined
-      ? '/reducers/flow-1'
+      ? '/automations/flow-1'
       : {
-          pathname: '/reducers/flow-1',
+          pathname: '/automations/flow-1',
           search: opts?.search ?? '',
           state: opts?.agentPrompt === undefined ? undefined : { agentPrompt: opts.agentPrompt },
         };
@@ -128,7 +128,7 @@ function renderPage(
         <MemoryRouter initialEntries={[entry]}>
           <LocationProbe onSearch={onSearch} onState={opts?.onState} />
           <Routes>
-            <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={onAgentPrefill} />} />
+            <Route path="/automations/:workflowId" element={<WorkflowPage onAgentPrefill={onAgentPrefill} />} />
           </Routes>
         </MemoryRouter>
       </TooltipProvider>
@@ -263,10 +263,10 @@ describe('WorkflowPage photo drop zone', () => {
     render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
-          <MemoryRouter initialEntries={[`/reducers/flow-upload${opts?.search ?? ''}`]}>
+          <MemoryRouter initialEntries={[`/automations/flow-upload${opts?.search ?? ''}`]}>
             <LocationProbe onSearch={(s) => { search = s; }} />
             <Routes>
-              <Route path="/reducers/:workflowId" element={<WorkflowPage onAgentPrefill={() => {}} />} />
+              <Route path="/automations/:workflowId" element={<WorkflowPage onAgentPrefill={() => {}} />} />
             </Routes>
           </MemoryRouter>
         </TooltipProvider>
@@ -440,10 +440,10 @@ describe('WorkflowPage agent switch seam', () => {
     for (const inst of FakeEventSource.instances) inst.onmessage?.({ data });
   }
 
-  test('a switched event navigates to the new reducer in design mode', async () => {
+  test('a switched event navigates to the new automation in design mode', async () => {
     FakeEventSource.instances = [];
     vi.stubGlobal('EventSource', FakeEventSource);
-    // The server only lists the new reducer AFTER the switch: resolving the
+    // The server only lists the new automation AFTER the switch: resolving the
     // new page proves the handler invalidated the workflows list first.
     let listed: Workflow[] = [workflow()];
     vi.stubGlobal(
@@ -468,23 +468,23 @@ describe('WorkflowPage agent switch seam', () => {
     render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
-          <MemoryRouter initialEntries={['/reducers/flow-1']}>
+          <MemoryRouter initialEntries={['/automations/flow-1']}>
             <PathProbe onPath={(p) => { path = p; }} />
             <Routes>
-              <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+              <Route path="/automations/:workflowId" element={<WorkflowPage />} />
             </Routes>
           </MemoryRouter>
         </TooltipProvider>
       </QueryClientProvider>,
     );
     await screen.findByRole('button', { name: 'Try it' });
-    expect(path.startsWith('/reducers/flow-1')).toBe(true);
+    expect(path.startsWith('/automations/flow-1')).toBe(true);
 
     listed = [workflow(), photoWorkflow()];
     await act(async () => {
       emitAgentEvent('flow-1', { type: 'switched', workflowId: 'wf-photo' });
     });
-    await waitFor(() => expect(path).toBe('/reducers/wf-photo?mode=design'));
+    await waitFor(() => expect(path).toBe('/automations/wf-photo?mode=design'));
   });
 });
 

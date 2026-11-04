@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
-import type { Run } from '@dad/shared';
+import type { Run } from '@onesaas/shared';
 import Pause from 'lucide-react/icons/pause';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';

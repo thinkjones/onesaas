@@ -1,4 +1,4 @@
-import { emailSchema, type Workflow } from '@dad/shared';
+import { emailSchema, type Workflow } from '@onesaas/shared';
 
 /** Same deadline a "Try it" run gives Gmail to answer. */
 const READ_EMAIL_TIMEOUT_MS = 5000;
@@ -8,7 +8,7 @@ export interface ManualRunBridge {
   call(site: 'gmail', action: string, input: unknown, timeoutMs?: number): Promise<unknown>;
 }
 
-/** Why a run can't start; the message is shown to Dad as is. */
+/** Why a run can't start; the message is shown to the owner as is. */
 export class ManualRunRefused extends Error {
   constructor(
     message: string,
@@ -34,10 +34,10 @@ async function readOpenEmail(bridge: ManualRunBridge) {
 }
 
 /**
- * The real trigger payload for a run Dad starts from the side panel. Unlike
+ * The real trigger payload for a run the owner starts from the side panel. Unlike
  * "Try it" there is never a sample fallback: a real run on made-up data could
  * save or draft things from an email that doesn't exist. `page` is the tab the
- * panel read when Dad clicked; a manual trigger runs without it if it couldn't.
+ * panel read when the owner clicked; a manual trigger runs without it if it couldn't.
  */
 export async function manualRunPayload(
   wf: Workflow,

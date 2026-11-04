@@ -1,4 +1,4 @@
-import type { Workflow } from '@dad/shared';
+import type { Workflow } from '@onesaas/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -40,8 +40,8 @@ function mkWorkflow(overrides?: Partial<Workflow>): Workflow {
 }
 
 // Newest first, like GET /api/workflows (repo.listWorkflows).
-const NEWEST = mkWorkflow({ id: 'wf-2', name: 'Newest reducer' });
-const OLDER = mkWorkflow({ id: 'wf-1', name: 'Older reducer' });
+const NEWEST = mkWorkflow({ id: 'wf-2', name: 'Newest automation' });
+const OLDER = mkWorkflow({ id: 'wf-1', name: 'Older automation' });
 
 function LocationProbe({
   onLocation,
@@ -122,7 +122,7 @@ function renderShell(
               path="/settings"
               element={<Explain target={{ kind: 'ui', id: 'nav-settings' }} label="Settings" />}
             />
-            <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+            <Route path="/automations/:workflowId" element={<WorkflowPage />} />
             {/* Automate carries a Sidebar-style Explain (AppShell-level in production). */}
             <Route
               path="/automate"
@@ -158,15 +158,15 @@ afterEach(() => {
 });
 
 describe('TellMeMoreFallback', () => {
-  test('off-workflow "Tell me more" opens the most-recent reducer and sends the message', async () => {
+  test('off-workflow "Tell me more" opens the most-recent automation and sends the message', async () => {
     const { agentPosts, location } = renderShell('/lists', [NEWEST, OLDER]);
     // A Lists column-header Explain, clicked for real: ? opens the popover…
     fireEvent.click(screen.getByRole('button', { name: 'Explain Email' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
-    // …"Tell me more" routes to the newest reducer's design page…
+    // …"Tell me more" routes to the newest automation's design page…
     fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
     await waitFor(() => {
-      expect(location().pathname).toBe('/reducers/wf-2');
+      expect(location().pathname).toBe('/automations/wf-2');
     });
     expect(location().search).toBe('?mode=design');
     // …and the real panel sends through the opening-send path (the consumed
@@ -179,7 +179,7 @@ describe('TellMeMoreFallback', () => {
     });
   });
 
-  test('with no reducers yet, "Tell me more" lands Automate with the message in the box', async () => {
+  test('with no automations yet, "Tell me more" lands Automate with the message in the box', async () => {
     const { location } = renderShell('/settings', []);
     fireEvent.click(screen.getByRole('button', { name: 'Explain Settings' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
@@ -194,7 +194,7 @@ describe('TellMeMoreFallback', () => {
     expect(box.value).toBe('Tell me more about Settings');
   });
 
-  test('already on Automate with no reducers, "Tell me more" still fills the box (no remount)', async () => {
+  test('already on Automate with no automations, "Tell me more" still fills the box (no remount)', async () => {
     renderShell('/automate', []);
     fireEvent.click(screen.getByRole('button', { name: 'Explain Automate' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
@@ -207,27 +207,27 @@ describe('TellMeMoreFallback', () => {
       expect(box.value).toBe('Tell me more about Automate');
     });
     // …and typing afterwards is never clobbered by a re-applied prefill.
-    fireEvent.change(box, { target: { value: 'Dad typing' } });
-    expect(box.value).toBe('Dad typing');
+    fireEvent.change(box, { target: { value: 'The owner typing' } });
+    expect(box.value).toBe('The owner typing');
   });
 
-  test('on a bad reducer id, "Tell me more" routes to the most-recent reducer instead of dying', async () => {
-    const { agentPosts, location } = renderShell('/reducers/badId', [OLDER]);
+  test('on a bad automation id, "Tell me more" routes to the most-recent automation instead of dying', async () => {
+    const { agentPosts, location } = renderShell('/automations/badId', [OLDER]);
     // The page settled on not-found (its listener leaves the event alone)…
     expect(await screen.findByText('Automation not found')).toBeDefined();
     window.dispatchEvent(
-      new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
+      new CustomEvent('onesaas:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
     );
     // …so the fallback routes to the live panel and the message sends.
     await waitFor(() => {
-      expect(location().pathname).toBe('/reducers/wf-1');
+      expect(location().pathname).toBe('/automations/wf-1');
     });
     expect(location().search).toBe('?mode=design');
     await screen.findByText('Tell me more about Turn on');
     expect(agentPosts).toEqual([{ text: 'Tell me more about Turn on' }]);
   });
 
-  test('when the reducers list fails to load, "Tell me more" lands Automate with the message in the box', async () => {
+  test('when the automations list fails to load, "Tell me more" lands Automate with the message in the box', async () => {
     const { location } = renderShell('/lists', [], { failWorkflows: true });
     fireEvent.click(screen.getByRole('button', { name: 'Explain Email' }));
     expect(await screen.findByText(EXPLAIN_TEXT)).toBeDefined();
@@ -243,18 +243,18 @@ describe('TellMeMoreFallback', () => {
   });
 
   test('on a workflow page the fallback stays out of the way (no navigation, one direct send)', async () => {
-    const { agentPosts, location } = renderShell('/reducers/wf-1?mode=design', [OLDER]);
+    const { agentPosts, location } = renderShell('/automations/wf-1?mode=design', [OLDER]);
     // The page's own panel is up…
     expect(
       await screen.findByRole('textbox', { name: 'Chat message' }),
     ).toBeDefined();
     // …and a tell-me-more from the page sends directly without navigating.
     window.dispatchEvent(
-      new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Write reply' } }),
+      new CustomEvent('onesaas:tell-me-more', { detail: { message: 'Tell me more about Write reply' } }),
     );
     await screen.findByText('Tell me more about Write reply');
     expect(agentPosts).toEqual([{ text: 'Tell me more about Write reply' }]);
-    expect(location().pathname).toBe('/reducers/wf-1');
+    expect(location().pathname).toBe('/automations/wf-1');
   });
 
   test('tell-me-more while a bad id is still pending sends exactly once (no double-send)', async () => {
@@ -292,11 +292,11 @@ describe('TellMeMoreFallback', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    let pathname = '/reducers/badId';
+    let pathname = '/automations/badId';
     render(
       <QueryClientProvider client={client}>
         <TooltipProvider>
-          <MemoryRouter initialEntries={['/reducers/badId']}>
+          <MemoryRouter initialEntries={['/automations/badId']}>
             <TellMeMoreFallback />
             <LocationProbe
               onLocation={(p) => {
@@ -304,7 +304,7 @@ describe('TellMeMoreFallback', () => {
               }}
             />
             <Routes>
-              <Route path="/reducers/:workflowId" element={<WorkflowPage />} />
+              <Route path="/automations/:workflowId" element={<WorkflowPage />} />
             </Routes>
           </MemoryRouter>
         </TooltipProvider>
@@ -313,7 +313,7 @@ describe('TellMeMoreFallback', () => {
     // Pending: the page shows loading and claims the event (pending counts)…
     expect(await screen.findByText('Loading automation…')).toBeDefined();
     window.dispatchEvent(
-      new CustomEvent('dad:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
+      new CustomEvent('onesaas:tell-me-more', { detail: { message: 'Tell me more about Turn on' } }),
     );
     // …then the list resolves without the bad id, so the fallback routes to
     // the live panel with the message as the opening prompt. The stale
@@ -323,7 +323,7 @@ describe('TellMeMoreFallback', () => {
       await workflowsGate;
     });
     await waitFor(() => {
-      expect(pathname).toBe('/reducers/wf-1');
+      expect(pathname).toBe('/automations/wf-1');
     });
     // Wait for the first send through the real panel, then let any duplicate
     // POST land and assert exactly one total.

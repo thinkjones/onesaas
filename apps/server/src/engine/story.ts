@@ -1,4 +1,4 @@
-import { topoOrder, type StepRun, type Workflow } from '@dad/shared';
+import { topoOrder, type StepRun, type Workflow } from '@onesaas/shared';
 
 // A plain-English summary of a run for the runtime screen header: the done
 // steps' whys in topological order (triggers skipped), chunked into lines of
@@ -45,8 +45,8 @@ export function buildRunStory(wf: Workflow, steps: StepRun[], opts?: { usedSampl
     const title = titleById.get(waitingId) ?? waitingId;
     lines.push(`Waiting for you to check "${title}".`);
   }
-  // A test run that fell back to the sample email says so first, so Dad
-  // knows the run previewed against example data rather than his open email.
+  // A test run that fell back to the sample email says so first, so the owner
+  // knows the run previewed against example data rather than their open email.
   if (opts?.usedSample === true) lines.unshift(TEST_SAMPLE_PREFIX);
   return lines;
 }

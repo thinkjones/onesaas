@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Workflow } from '@dad/shared';
+import type { Workflow } from '@onesaas/shared';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openDb, type Database } from '../src/db/connection.js';
@@ -43,7 +43,7 @@ describe('file store', () => {
   beforeEach(() => {
     db = openDb(':memory:');
     createRepo(db);
-    dir = mkdtempSync(join(tmpdir(), 'dad-files-'));
+    dir = mkdtempSync(join(tmpdir(), 'onesaas-files-'));
     files = createFileStore({ db, dir });
   });
 
@@ -176,8 +176,8 @@ describe('file routes', () => {
   let server: ReturnType<typeof createServer>;
 
   beforeEach(() => {
-    dbFile = join(mkdtempSync(join(tmpdir(), 'dad-dbfiles-')), 'app.db');
-    filesDir = mkdtempSync(join(tmpdir(), 'dad-route-files-'));
+    dbFile = join(mkdtempSync(join(tmpdir(), 'onesaas-dbfiles-')), 'app.db');
+    filesDir = mkdtempSync(join(tmpdir(), 'onesaas-route-files-'));
     server = createServer({ dbFile, filesDir });
   });
 

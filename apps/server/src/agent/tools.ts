@@ -1,4 +1,4 @@
-import { catalog, type Edge } from '@dad/shared';
+import { catalog, type Edge } from '@onesaas/shared';
 import { z } from 'zod';
 import type { Repo } from '../db/repo.js';
 import type { createEngine } from '../engine/engine.js';
@@ -12,7 +12,7 @@ import { checkWorkflow } from '../workflows/validate.js';
 
 export type Engine = ReturnType<typeof createEngine>;
 
-/** Events the builder agent emits for Dad's screen (consumed by Task 6). */
+/** Events the builder agent emits for the owner's screen (consumed by Task 6). */
 export type AgentEvent =
   | { type: 'say'; text: string }
   | { type: 'ask'; question: string; options: string[] }
@@ -101,7 +101,7 @@ const planSchema = z.object({
 });
 
 const PLANNER_SYSTEM = [
-  'You plan a chore reducer: a short chain of steps that turns a small-business chore into something automatic.',
+  'You plan an automation: a short chain of steps that turns a small-business chore into something automatic.',
   'Refine the proposed plan into at most 6 steps. Every step type must come from the catalog.',
   'Every edge endpoint must be a step key from your refined steps.',
   'Set "when" to null unless the edge truly needs a condition; otherwise put the plain condition there.',
@@ -180,11 +180,11 @@ function emitPlan(
   });
 }
 
-const PLAN_RESULT = 'Plan shown to Dad; wait for his reply.';
+const PLAN_RESULT = 'Plan shown to the owner; wait for their reply.';
 
 /**
  * The plan in words with answers to tap. The turn ends here, so without this
- * nothing tells Dad it's his move, and the saved transcript keeps the plan
+ * nothing tells the owner it's their move, and the saved transcript keeps the plan
  * across a reload (ghost boxes live only in the page's memory).
  */
 function emitPlanQuestion(ctx: ToolContext, steps: ProposedStep[]): void {
@@ -199,7 +199,7 @@ function emitPlanQuestion(ctx: ToolContext, steps: ProposedStep[]): void {
 const askUser: ToolImpl = {
   name: 'ask_user',
   description:
-    'Ask Dad a question with 2 to 4 clickable answers. Use it when you cannot proceed without him. Ends your turn: his reply arrives as the next user message.',
+    'Ask the owner a question with 2 to 4 clickable answers. Use it when you cannot proceed without them. Ends your turn: their reply arrives as the next user message.',
   parameters: {
     type: 'object',
     properties: {
@@ -209,7 +209,7 @@ const askUser: ToolImpl = {
         items: { type: 'string' },
         minItems: 2,
         maxItems: 4,
-        description: '2 to 4 short answers Dad can tap.',
+        description: '2 to 4 short answers the owner can tap.',
       },
     },
     required: ['question', 'options'],
@@ -231,7 +231,7 @@ const askUser: ToolImpl = {
     }
     ctx.emit({ type: 'ask', question, options: options as string[] });
     return {
-      result: "Question asked; wait for Dad's reply.",
+      result: "Question asked; wait for the owner's reply.",
       endTurn: true,
       activity: 'Asked you a question.',
     };
@@ -241,7 +241,7 @@ const askUser: ToolImpl = {
 const proposePlan: ToolImpl = {
   name: 'propose_plan',
   description:
-    'Show Dad a plan: ghost steps and how they connect, before building anything. Ends your turn: his reply arrives as the next user message.',
+    'Show the owner a plan: ghost steps and how they connect, before building anything. Ends your turn: their reply arrives as the next user message.',
   parameters: {
     type: 'object',
     properties: {
@@ -382,7 +382,7 @@ const createTable: ToolImpl = {
 
 const setTrigger: ToolImpl = {
   name: 'set_trigger',
-  description: 'Set what starts the chore reducer (the trigger step).',
+  description: 'Set what starts the automation (the trigger step).',
   parameters: {
     type: 'object',
     properties: {
@@ -413,7 +413,7 @@ const setTrigger: ToolImpl = {
 const addStep: ToolImpl = {
   name: 'add_step',
   description:
-    'Add a step to the chore reducer. Bindings look like {{stepId.field}} and may only read steps before this one (pass "after" with an earlier step id so the step connects and can read it).',
+    'Add a step to the automation. Bindings look like {{stepId.field}} and may only read steps before this one (pass "after" with an earlier step id so the step connects and can read it).',
   parameters: {
     type: 'object',
     properties: {
@@ -529,7 +529,7 @@ const connect: ToolImpl = {
 const createWorkflow: ToolImpl = {
   name: 'create_workflow',
   description:
-    'Start a second chore reducer and keep building there. Use it when one sentence asks for two different jobs: finish the first reducer, then call this and build the second. Later calls in this turn target the new reducer.',
+    'Start a second automation and keep building there. Use it when one sentence asks for two different jobs: finish the first automation, then call this and build the second. Later calls in this turn target the new automation.',
   parameters: {
     type: 'object',
     properties: {
@@ -543,14 +543,14 @@ const createWorkflow: ToolImpl = {
     const name = args?.name as unknown;
     const description = args?.description as unknown;
     if (typeof name !== 'string' || name.trim() === '') {
-      return problem('Give the new chore reducer a name.');
+      return problem('Give the new automation a name.');
     }
     if (typeof description !== 'string' || description.trim() === '') {
-      return problem('Give the new chore reducer a description.');
+      return problem('Give the new automation a description.');
     }
     const wf = ctx.ops.create({ name, description });
     // Switch the conversation's target: everything after this call in the
-    // turn (including the loop's prompt rebuild) builds the new reducer.
+    // turn (including the loop's prompt rebuild) builds the new automation.
     ctx.workflowId = wf.id;
     ctx.emit({ type: 'switched', workflowId: wf.id });
     return {
@@ -562,7 +562,7 @@ const createWorkflow: ToolImpl = {
 
 const renameWorkflow: ToolImpl = {
   name: 'rename_workflow',
-  description: 'Rename the chore reducer (and optionally change its description).',
+  description: 'Rename the automation (and optionally change its description).',
   parameters: {
     type: 'object',
     properties: {
@@ -589,7 +589,7 @@ const renameWorkflow: ToolImpl = {
 const testRunTool: ToolImpl = {
   name: 'test_run',
   description:
-    'Try the chore reducer with a sample: a preview only, outside-world actions do not really happen. Returns one line per step.',
+    'Try the automation with a sample: a preview only, outside-world actions do not really happen. Returns one line per step.',
   parameters: { type: 'object', properties: {} },
   run: async (_args: any, ctx: ToolContext) => {
     const { run, steps } = await ctx.testRun(ctx.workflowId);
@@ -614,14 +614,14 @@ const testRunTool: ToolImpl = {
 
 const activate: ToolImpl = {
   name: 'activate',
-  description: 'Turn the chore reducer on so it runs on its own. Refuses while problems remain.',
+  description: 'Turn the automation on so it runs on its own. Refuses while problems remain.',
   parameters: { type: 'object', properties: {} },
   run: async (_args: any, ctx: ToolContext) => {
     const res = ctx.ops.setStatus(ctx.workflowId, 'on', { by: 'agent' });
     if (!res.ok) return problem(res.error);
     ctx.emit({ type: 'done' });
     return {
-      result: `Your chore reducer "${res.workflow.name}" is now on.`,
+      result: `Your automation "${res.workflow.name}" is now on.`,
       activity: res.note,
     };
   },
@@ -630,7 +630,7 @@ const activate: ToolImpl = {
 const explain: ToolImpl = {
   name: 'explain',
   description:
-    'Look up a step, run, list or workflow so you can explain it to Dad in plain words. Read-only. Dad never sees the details, only a "looked it up" note — it cannot narrate progress. While building, prefer the Links line and the lists section above: they already show step ids and columns.',
+    'Look up a step, run, list or workflow so you can explain it to the owner in plain words. Read-only. The owner never sees the details, only a "looked it up" note — it cannot narrate progress. While building, prefer the Links line and the lists section above: they already show step ids and columns.',
 
   parameters: {
     type: 'object',
@@ -648,7 +648,7 @@ const explain: ToolImpl = {
       return problem('Say what to explain: step, run, table or workflow.');
     }
     if (typeof id !== 'string' || id === '') return problem('Say which one to explain.');
-    const lookedUp = `Looked up ${about === 'step' ? 'a step' : about === 'run' ? 'a run' : about === 'table' ? 'a list' : 'the chore reducer'} to explain it.`;
+    const lookedUp = `Looked up ${about === 'step' ? 'a step' : about === 'run' ? 'a run' : about === 'table' ? 'a list' : 'the automation'} to explain it.`;
     if (about === 'step') {
       const wf = ctx.repo.getWorkflow(ctx.workflowId);
       if (!wf) return problem(`Unknown workflow: ${ctx.workflowId}`);
@@ -691,7 +691,7 @@ function fmtCell(value: unknown): string {
 
 const queryTable: ToolImpl = {
   name: 'query_table',
-  description: 'Read rows from one of Dad\'s lists, optionally filtered. Read-only.',
+  description: 'Read rows from one of the owner\'s lists, optionally filtered. Read-only.',
   parameters: {
     type: 'object',
     properties: {
@@ -789,7 +789,7 @@ const queryRuns: ToolImpl = {
 const pinView: ToolImpl = {
   name: 'pin_view',
   description:
-    'Pin a number from one of Dad\'s lists to his home screen: a count of rows, or the sum of a number column, optionally only rows from the last N days. Use it when Dad asks to pin, watch or keep track of a number.',
+    'Pin a number from one of the owner\'s lists to their home screen: a count of rows, or the sum of a number column, optionally only rows from the last N days. Use it when the owner asks to pin, watch or keep track of a number.',
   parameters: {
     type: 'object',
     properties: {
@@ -821,7 +821,7 @@ const pinView: ToolImpl = {
   },
   run: async (args: any, ctx: ToolContext) => {
     // The home screen renders pinned numbers (stat) only: a grid/cards pin
-    // would confirm success yet show Dad nothing, so reject it with a steer.
+    // would confirm success yet show the owner nothing, so reject it with a steer.
     if (args?.kind !== 'stat') {
       return problem(
         `pin_view can only pin numbers (kind "stat", e.g. a count or a sum); "${String(args?.kind)}" views are not shown on the home screen.`,

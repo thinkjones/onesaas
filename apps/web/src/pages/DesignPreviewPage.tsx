@@ -1,4 +1,4 @@
-import type { StepRunStatus } from '@dad/shared';
+import type { StepRunStatus } from '@onesaas/shared';
 import Inbox from 'lucide-react/icons/inbox';
 import ListChecks from 'lucide-react/icons/list-checks';
 import { useState } from 'react';

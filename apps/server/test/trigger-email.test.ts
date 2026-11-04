@@ -1,4 +1,4 @@
-import type { Run, TriggerMsg, Workflow } from '@dad/shared';
+import type { Run, TriggerMsg, Workflow } from '@onesaas/shared';
 import { beforeEach, expect, vi } from 'vitest';
 import type { Database } from '../src/db/connection.js';
 import { openDb } from '../src/db/connection.js';

@@ -1,4 +1,4 @@
-import type { StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@onesaas/shared';
 import dagre from 'dagre';
 
 /** A step card's width in the flow column. */

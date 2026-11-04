@@ -1,5 +1,5 @@
 {
-  "name": "@dad/web",
+  "name": "@onesaas/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@dad/shared": "workspace:*",
+    "@onesaas/shared": "workspace:*",
     "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-table": "^8.21.3",
     "@tauri-apps/api": "^2",

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import type { Workflow } from '@dad/shared';
+import type { Workflow } from '@onesaas/shared';
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { getWorkflows } from '../api.ts';
@@ -10,18 +10,18 @@ import { TELL_ME_MORE_EVENT } from './useAltClickExplain.ts';
  * more" must open the agent panel with "Tell me more about <label>" sent, on
  * EVERY page — but only WorkflowPage has a helper panel. This null-rendering
  * listener (mounted once in AppShell, inside the router) routes the event to
- * one: the most-recent reducer's design page, with the message as
+ * one: the most-recent automation's design page, with the message as
  * `agentPrompt` — the proven HomePage → WorkflowPage opening-send path, so
  * the panel opens and the message sends.
  *
- * - On a workflow page for a KNOWN reducer id it stays out of the way:
+ * - On a workflow page for a KNOWN automation id it stays out of the way:
  *   WorkflowPage's own listener uncollapses the panel and sends directly.
- *   A bad id (`/reducers/nope`, settled without data) is NOT deferred to:
+ *   A bad id (`/automations/nope`, settled without data) is NOT deferred to:
  *   WorkflowPage leaves the event alone there, so the fallback routes it to
  *   a live panel instead of a dead click.
- * - With no reducers yet there is no panel to send to, so it routes
+ * - With no automations yet there is no panel to send to, so it routes
  *   Automate with the message prefilled in the box (`homePrefill` state)
- *   instead of silently creating a reducer Dad never asked for. Never a
+ *   instead of silently creating an automation the owner never asked for. Never a
  *   dead click: even a failed workflows fetch lands Automate with the
  *   prefill.
  */
@@ -50,15 +50,15 @@ export default function TellMeMoreFallback() {
         }
         // A workflow page for a known id sends directly (WorkflowPage claims
         // the event); anything else — off-workflow pages, a bad id, an
-        // unknowable id after a failed fetch — routes below. Bare `/reducers`
+        // unknowable id after a failed fetch — routes below. Bare `/automations`
         // and a trailing slash match no workflow route, so those act too.
-        const pageId = /^\/reducers\/([^/]+)/.exec(pathname)?.[1];
+        const pageId = /^\/automations\/([^/]+)/.exec(pathname)?.[1];
         if (pageId !== undefined && wfs?.some((w) => w.id === pageId)) return;
         // GET /api/workflows lists newest first (repo.listWorkflows), so the
-        // head is the most-recent reducer.
+        // head is the most-recent automation.
         const target = wfs?.[0];
         if (target) {
-          navigate(`/reducers/${target.id}?mode=design`, { state: { agentPrompt: text } });
+          navigate(`/automations/${target.id}?mode=design`, { state: { agentPrompt: text } });
         } else {
           navigate('/automate', { state: { homePrefill: text } });
         }

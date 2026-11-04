@@ -53,7 +53,7 @@ describe('injectButtons', () => {
       [{ workflowId: 'wf_lead', label: '✨ Save as lead & reply' }],
       () => {},
     );
-    const buttons = document.querySelectorAll('div.dad-gmail-buttons button');
+    const buttons = document.querySelectorAll('div.onesaas-gmail-buttons button');
     expect(buttons).toHaveLength(1);
     expect(buttons[0]!.textContent).toBe('✨ Save as lead & reply');
   });
@@ -63,13 +63,13 @@ describe('injectButtons', () => {
     const items = [{ workflowId: 'wf_lead', label: '✨ Save as lead & reply' }];
     injectButtons(document, items, onClick);
     injectButtons(document, items, onClick);
-    expect(document.querySelectorAll('div.dad-gmail-buttons button')).toHaveLength(1);
+    expect(document.querySelectorAll('div.onesaas-gmail-buttons button')).toHaveLength(1);
   });
 
   it('routes clicks to onClick with the workflow id', () => {
     const onClick = vi.fn();
     injectButtons(document, [{ workflowId: 'wf_lead', label: '✨ Save as lead & reply' }], onClick);
-    (document.querySelector('div.dad-gmail-buttons button') as HTMLButtonElement).click();
+    (document.querySelector('div.onesaas-gmail-buttons button') as HTMLButtonElement).click();
     expect(onClick).toHaveBeenCalledWith('wf_lead');
   });
 
@@ -78,7 +78,7 @@ describe('injectButtons', () => {
     expect(() =>
       injectButtons(document, [{ workflowId: 'w', label: 'x' }], () => {}),
     ).not.toThrow();
-    expect(document.querySelector('div.dad-gmail-buttons')).toBeNull();
+    expect(document.querySelector('div.onesaas-gmail-buttons')).toBeNull();
   });
 });
 
@@ -96,7 +96,7 @@ describe('setButtonStatus', () => {
     setButtonStatus(document, 'wf_lead', status);
     const button = document.querySelector('button[data-workflow-id="wf_lead"]')!;
     expect(button.getAttribute('data-status')).toBe(status);
-    expect(button.querySelector('.dad-status-pill')!.textContent).toBe(pill);
+    expect(button.querySelector('.onesaas-status-pill')!.textContent).toBe(pill);
   });
 
   it('no-ops for an unknown workflow id', () => {
@@ -105,17 +105,17 @@ describe('setButtonStatus', () => {
 
   it('waiting with a run id renders a pill link to the runtime view', () => {
     setButtonStatus(document, 'wf_lead', 'waiting', 'run-1');
-    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .dad-status-pill')!;
+    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .onesaas-status-pill')!;
     expect(pill.textContent).toBe('Waiting for you');
     expect(pill.tagName).toBe('A');
     expect(pill.getAttribute('href')).toBe(
-      'http://localhost:5173/reducers/wf_lead?mode=runtime&run=run-1',
+      'http://localhost:5173/automations/wf_lead?mode=runtime&run=run-1',
     );
   });
 
   it('without a run id the pill is plain text, not a link', () => {
     setButtonStatus(document, 'wf_lead', 'waiting');
-    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .dad-status-pill')!;
+    const pill = document.querySelector('button[data-workflow-id="wf_lead"] .onesaas-status-pill')!;
     expect(pill.tagName).toBe('SPAN');
     expect(pill.getAttribute('href')).toBeNull();
   });
@@ -124,7 +124,7 @@ describe('setButtonStatus', () => {
     const onClick = vi.fn();
     injectButtons(document, [{ workflowId: 'wf_lead', label: '✨ Save as lead & reply' }], onClick);
     setButtonStatus(document, 'wf_lead', 'waiting', 'run-1');
-    (document.querySelector('.dad-status-pill') as HTMLElement).click();
+    (document.querySelector('.onesaas-status-pill') as HTMLElement).click();
     expect(onClick).not.toHaveBeenCalled();
   });
 });

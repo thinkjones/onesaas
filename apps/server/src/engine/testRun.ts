@@ -1,4 +1,4 @@
-import { catalog, emailSchema, type Run, type StepRun } from '@dad/shared';
+import { catalog, emailSchema, type Run, type StepRun } from '@onesaas/shared';
 import type { Repo } from '../db/repo.js';
 import type { Executor, StepContext } from '../steps/registry.js';
 import { createEngine } from './engine.js';

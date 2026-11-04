@@ -1,4 +1,4 @@
-import type { FileRef } from '@dad/shared';
+import type { FileRef } from '@onesaas/shared';
 import sharp from 'sharp';
 import type { FileStore } from '../files/store.js';
 import type { ImageModels } from '../models/image.js';

@@ -7,7 +7,7 @@ import {
   type Run as RunType,
   type StepRun as StepRunType,
   type Workflow as WorkflowType,
-} from '@dad/shared';
+} from '@onesaas/shared';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { nanoid } from 'nanoid';
@@ -187,7 +187,7 @@ export function createRepo(db: Database): Repo {
   }
 
   return {
-    // A blank chore reducer: status 'draft', a manual trigger, no steps.
+    // A blank automation: status 'draft', a manual trigger, no steps.
     // Trigger title/summary come from the catalog so the defaults stay in
     // one place. The id is regenerated on the (essentially impossible)
     // collision rather than version-bumping somebody else's workflow.

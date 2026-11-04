@@ -246,9 +246,9 @@ describe('useVoice', () => {
     expect(result.current.state).toBe('thinking');
 
     act(() => {
-      ws.receive(JSON.stringify({ type: 'final', text: 'hello dad' }));
+      ws.receive(JSON.stringify({ type: 'final', text: 'hello owner' }));
     });
-    expect(finals).toEqual(['hello dad']);
+    expect(finals).toEqual(['hello owner']);
     expect(result.current.state).toBe('idle');
 
     // The disarmed timer must not fail the next turn out from under it.

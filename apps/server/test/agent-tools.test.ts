@@ -1,4 +1,4 @@
-import { Workflow, catalog } from '@dad/shared';
+import { Workflow, catalog } from '@onesaas/shared';
 import { vi } from 'vitest';
 import { flow1Example, flow2Example } from '../src/agent/examples.js';
 import { TANGLED_MESSAGE, buildSystemPrompt } from '../src/agent/prompt.js';
@@ -164,7 +164,7 @@ test('propose_plan with 7 steps calls the planner role once and emits the refine
   const call = chatJson.mock.calls[0]![0] as Record<string, unknown>;
   expect(call['role']).toBe('planner');
   expect(call['schemaName']).toBe('plan');
-  expect(out).toEqual({ result: 'Plan shown to Dad; wait for his reply.', endTurn: true });
+  expect(out).toEqual({ result: 'Plan shown to the owner; wait for their reply.', endTurn: true });
   const plans = events.filter((e) => e.type === 'plan');
   expect(plans).toHaveLength(1);
   const plan = plans[0]! as Extract<AgentEvent, { type: 'plan' }>;
@@ -180,7 +180,7 @@ test('propose_plan with 4 steps and no conditions skips the planner', async () =
     ctx,
   );
   expect(chatJson).not.toHaveBeenCalled();
-  expect(out).toEqual({ result: 'Plan shown to Dad; wait for his reply.', endTurn: true });
+  expect(out).toEqual({ result: 'Plan shown to the owner; wait for their reply.', endTurn: true });
   const plans = events.filter((e) => e.type === 'plan');
   expect(plans).toHaveLength(1);
   const plan = plans[0]! as Extract<AgentEvent, { type: 'plan' }>;
@@ -467,7 +467,7 @@ test('query_table with an operator-shaped where value returns a Problem', async 
   expect(out.result.startsWith('Problem: Invalid where value for column email')).toBe(true);
 });
 
-test('pin_view saves a pinned stat view and confirms in Dad words', async () => {
+test('pin_view saves a pinned stat view and confirms in the owner words', async () => {
   const { ctx } = setup();
   const out = await tool('pin_view').run(
     {

@@ -1,4 +1,4 @@
-import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@dad/shared';
+import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@onesaas/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import Play from 'lucide-react/icons/play';
 import TriangleAlert from 'lucide-react/icons/triangle-alert';
@@ -559,7 +559,7 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
       if (!def) return undefined;
       if (def.kind === 'trigger') {
         // There is only ever one start box: a "When" pick swaps it, then its
-        // settings open so Dad can set it up (empty config flags a problem).
+        // settings open so the owner can set it up (empty config flags a problem).
         const res = await send({ op: 'setTrigger', args: [{ type: spec.type, config: {} }] });
         if (res?.ok) setSelectedStep(wf.trigger.id);
         return res?.ok ? def.title : undefined;
@@ -594,7 +594,7 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
       const anchor =
         wf.trigger.id === anchorId ? wf.trigger : wf.steps.find((s) => s.id === anchorId);
       if (!anchor) return;
-      appendChat(anchorId, { from: 'dad', text });
+      appendChat(anchorId, { from: 'owner', text });
       if (!pick) {
         // Free text goes to the workflow conversation with node context; the
         // outcome lands on the canvas and in the RHS chat via the existing

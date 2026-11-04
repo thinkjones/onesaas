@@ -5,7 +5,7 @@ import { DEFAULT_MOOD_IMAGES, MOOD_CROSSFADE_MS } from './mood.ts';
 /**
  * M5 Task 4: the calm design-mode backdrop. An absolutely positioned layer
  * that sits behind the canvas (the parent provides the positioning context),
- * showing Dad's generated set when there is one, else the bundled defaults.
+ * showing the owner's generated set when there is one, else the bundled defaults.
  * Global Constraints: opacity 0.16 (Evening 0.10), a 60 s slow drift, a
  * crossfade every 45 s, static under prefers-reduced-motion. Toggling
  * `visible` fades over 600 ms. DesignView passes visible, RuntimeView false.

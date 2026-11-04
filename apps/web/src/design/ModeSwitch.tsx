@@ -1,4 +1,4 @@
-import type { Run } from '@dad/shared';
+import type { Run } from '@onesaas/shared';
 import History from 'lucide-react/icons/history';
 import Pencil from 'lucide-react/icons/pencil';
 

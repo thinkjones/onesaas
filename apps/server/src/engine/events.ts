@@ -1,4 +1,4 @@
-import type { Run, StepRun } from '@dad/shared';
+import type { Run, StepRun } from '@onesaas/shared';
 
 export type EngineEvent =
   | { type: 'run'; run: Run }

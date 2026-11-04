@@ -19,7 +19,7 @@ const MODES = [
     end: false,
     explainId: 'nav-automate',
     Icon: SparklesIcon,
-    match: ['/automate', '/reducers'],
+    match: ['/automate', '/automations'],
   },
   { to: '/lists', label: 'Data', end: false, explainId: 'nav-data', Icon: TableIcon, match: ['/lists'] },
 ];
@@ -33,9 +33,9 @@ function isEditable(target: EventTarget | null): boolean {
 function AutomationPicker() {
   const navigate = useNavigate();
   const location = useLocation();
-  const reducer = useMatch('/reducers/:workflowId');
+  const automation = useMatch('/automations/:workflowId');
   const workflows = useWorkflows();
-  if (location.pathname !== '/automate' && reducer === null) return null;
+  if (location.pathname !== '/automate' && automation === null) return null;
   if ((workflows.data?.length ?? 0) === 0) return null;
   return (
     <>
@@ -43,9 +43,9 @@ function AutomationPicker() {
       <select
         className="picker"
         aria-label="Choose an automation"
-        value={reducer?.params.workflowId ?? ''}
+        value={automation?.params.workflowId ?? ''}
         onChange={(e) =>
-          navigate(e.target.value === '' ? '/automate' : `/reducers/${e.target.value}?mode=design`)
+          navigate(e.target.value === '' ? '/automate' : `/automations/${e.target.value}?mode=design`)
         }
       >
         <option value="">All automations</option>
@@ -76,7 +76,7 @@ export default function FloatingBar() {
   const allRuns = runs.data ?? [];
   // Per automation, so it agrees with the cards on the Automate page.
   const needsYou = countNeedingYou([...new Set(allRuns.map((r) => r.workflowId))], allRuns);
-  const onCanvas = useMatch('/reducers/:workflowId') !== null;
+  const onCanvas = useMatch('/automations/:workflowId') !== null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

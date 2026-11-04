@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { catalog } from '@dad/shared';
+import { catalog } from '@onesaas/shared';
 import OpenAI from 'openai';
 import { resetDataToFreshInstall, seedFlow1, seedFreshInstall } from './dataReset.js';
 import { createConversationStore } from './agent/conversations.js';
@@ -153,7 +153,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
   registerGmailButtonTrigger({ bridge, engine, repo });
   registerEmailTrigger({ bridge, engine, repo, gateway, db });
 
-  // ONE ops for the canvas routes and the builder agent. Dad's edits notify
+  // ONE ops for the canvas routes and the builder agent. The owner's edits notify
   // the agent's conversation; the agent's own ops must NOT self-notify.
   const conversations = createConversationStore(db);
   const agentEvents = new EventEmitter();
@@ -164,7 +164,7 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
     tables,
     catalog,
     onChange: (wf, note, by) => {
-      if (by === 'dad') agent.noteManualChange(wf.id, note);
+      if (by === 'owner') agent.noteManualChange(wf.id, note);
     },
   });
   const { testRun } = createTestRunner({ repo, executors, ctx: stepCtx });

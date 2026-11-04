@@ -1,4 +1,4 @@
-import type { Run } from '@dad/shared';
+import type { Run } from '@onesaas/shared';
 import { STATUS_LABEL } from '../design/statusLabels.ts';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { formatDateTime, formatRunListTime, runDisplayName } from './format.ts';

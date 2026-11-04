@@ -6,7 +6,7 @@ import {
   type StepKind,
   type StepRun,
   type Workflow,
-} from '@dad/shared';
+} from '@onesaas/shared';
 import {
   ReactFlow,
   useEdgesState,

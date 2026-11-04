@@ -13,7 +13,7 @@ import StepWelcome from './StepWelcome.tsx';
 
 /**
  * M5 Task 5: the four-screen onboarding at /welcome. Screens 2–4 sit over the
- * mood backdrop (Dad's generated set once the `mood` event lands, else the
+ * mood backdrop (the owner's generated set once the `mood` event lands, else the
  * bundled defaults); the welcome screen has its own full-bleed image.
  */
 export default function Onboarding({ useVoiceFn }: { useVoiceFn?: () => UseVoiceResult }) {

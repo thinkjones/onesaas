@@ -1,6 +1,6 @@
 /**
  * Worker tabs + screenshots. Reads run in one pinned, inactive tab per site
- * so background work never moves Dad's view; screenshots briefly activate
+ * so background work never moves the owner's view; screenshots briefly activate
  * that tab (captureVisibleTab needs a visible tab) and always restore the
  * previously-active tab afterwards, including on failure.
  *
@@ -121,7 +121,7 @@ export function createTabManager(o: {
   }
 
   async function resolveWorkerTab(site: WorkerSite): Promise<number> {
-    // Re-query the cached id: Dad may have closed the tab since it was cached.
+    // Re-query the cached id: the owner may have closed the tab since it was cached.
     const cached = cache.get(site);
     if (cached !== undefined) {
       try {
@@ -247,8 +247,8 @@ export function createTabManager(o: {
       await waitForComplete(tabId);
     }
     // captureVisibleTab needs a VISIBLE tab: briefly activate the worker tab,
-    // then restore whatever Dad was looking at — on every path, hence the
-    // try/finally (restore failures are swallowed: Dad's tab may have closed).
+    // then restore whatever the owner was looking at — on every path, hence the
+    // try/finally (restore failures are swallowed: the owner's tab may have closed).
     let previous: number | undefined;
     try {
       const active = await tabs.query(activeQuery);
@@ -259,7 +259,7 @@ export function createTabManager(o: {
     }
     try {
       await tabs.update(tabId, { active: true });
-      // Dad may have switched tabs in the activate→capture window: re-check
+      // The owner may have switched tabs in the activate→capture window: re-check
       // the active tab in the target window and fail instead of capturing a
       // stranger tab as success.
       let stillActive: TabLike[];
@@ -281,7 +281,7 @@ export function createTabManager(o: {
         try {
           await tabs.update(previous, { active: true });
         } catch {
-          // Dad closed the tab mid-capture; nothing to restore.
+          // The owner closed the tab mid-capture; nothing to restore.
         }
       }
     }

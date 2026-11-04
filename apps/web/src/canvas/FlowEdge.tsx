@@ -20,7 +20,7 @@ export interface EdgeCondition {
   stepId: string;
   /** The sort step's options. */
   options: string[];
-  /** Called with the new `when` when Dad picks an option. */
+  /** Called with the new `when` when the owner picks an option. */
   onConnect(when: string): void;
 }
 

@@ -4,7 +4,7 @@ import type { ImageModels } from '../models/image.js';
 import type { SettingsStore } from '../settings/store.js';
 
 // M5 Task 4: calm watercolor mood backgrounds drawn with Muse Image. One set
-// is 4 scenes of Dad's business; the bundled defaults use
+// is 4 scenes of the owner's business; the bundled defaults use
 // DEFAULT_MOOD_BUSINESS_WHAT. Generation runs in the background (POST
 // /api/mood/generate) and onboarding keeps the bundled images until a set
 // lands — a failed generate degrades to the successes, never an error page.

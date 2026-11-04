@@ -59,13 +59,13 @@ function fillComposer(box: HTMLElement, doc: Document, text: string): void {
 
 function showPasteHint(doc: Document): void {
   // Idempotent: a second prepare replaces the hint, never stacks another.
-  doc.querySelector('[data-dad-meta-hint]')?.remove();
+  doc.querySelector('[data-onesaas-meta-hint]')?.remove();
   const hint = doc.createElement('div');
-  hint.setAttribute('data-dad-meta-hint', '');
+  hint.setAttribute('data-onesaas-meta-hint', '');
   hint.setAttribute('role', 'status');
   hint.textContent = PASTE_HINT;
   // Adjacent to (never covering) the media area, with pointer events off so
-  // Dad's click lands on the attachment control itself.
+  // The owner's click lands on the attachment control itself.
   hint.style.position = 'fixed';
   hint.style.zIndex = '2147483647';
   hint.style.pointerEvents = 'none';
@@ -90,9 +90,9 @@ function showPasteHint(doc: Document): void {
 /**
  * Fill the Business Suite composer with `text`, copy the photo to the
  * clipboard under its own mime type (the host page has no
- * automation-safe upload), and point a hint at the media area telling Dad
+ * automation-safe upload), and point a hint at the media area telling the owner
  * to paste and press Publish.
- * Reliability-ladder position: selectors, then hand off to Dad (no Send,
+ * Reliability-ladder position: selectors, then hand off to the owner (no Send,
  * Publish or Post click — the global M4 constraint).
  */
 export async function prepareDraftPost(

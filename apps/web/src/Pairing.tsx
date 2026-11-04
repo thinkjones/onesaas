@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatPingAge } from '@dad/shared';
+import { formatPingAge } from '@onesaas/shared';
 import {
   getPairingStatus,
   pingPairing,

@@ -1,4 +1,4 @@
-import type { StepRunStatus } from '@dad/shared';
+import type { StepRunStatus } from '@onesaas/shared';
 
 /** One segment per step, coloured by status. */
 export default function RunStrip({ statuses }: { statuses: StepRunStatus[] }) {

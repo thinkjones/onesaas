@@ -38,7 +38,7 @@ export const uploadExecutor: Executor = async (_config, input, _ctx) => {
 
 export const readExecutor: Executor = async (_config, input, ctx) => {
   // Worker tab: the extension navigates its pinned background Gmail tab to
-  // this thread and reads it there, so Dad's view never moves.
+  // this thread and reads it there, so the owner's view never moves.
   const out = (await ctx.bridge.call(
     'gmail',
     'readOpenEmail',

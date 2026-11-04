@@ -1,4 +1,4 @@
-import type { StepRun } from '@dad/shared';
+import type { StepRun } from '@onesaas/shared';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import Inspector from './Inspector.tsx';

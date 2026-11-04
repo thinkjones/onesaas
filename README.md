@@ -2,7 +2,7 @@
 
 The tool that builds small-business apps.
 
-My dad runs his small business out of Gmail and memory, and every evening the same chores eat him: answer customers, track bookings, turn phone photos into posts. This app doesn't do one of those chores — it's the tool that *builds* chore reducers. He says what he wants to achieve, out loud, and watches the workflow get built in front of him: ghost plan, boxes snapping in with a chime, a test run on a real email, then Turn on. Every step says why in plain English, nothing ever sends itself, and the whole thing runs on his own computer.
+My dad runs his small business out of Gmail and memory, and every evening the same chores eat him: answer customers, track bookings, turn phone photos into posts. This app doesn't do one of those chores — it's the tool that *builds* automations. He says what he wants to achieve, out loud, and watches the workflow get built in front of him: ghost plan, boxes snapping in with a chime, a test run on a real email, then Turn on. Every step says why in plain English, nothing ever sends itself, and the whole thing runs on his own computer.
 
 [Demo video — link to be added before submission]
 
@@ -49,7 +49,7 @@ pnpm dev
 
 ### Loading the extension unpacked
 
-1. Build it: `pnpm --filter @dad/extension build` (outputs to `apps/extension/.output/chrome-mv3`).
+1. Build it: `pnpm --filter @onesaas/extension build` (outputs to `apps/extension/.output/chrome-mv3`).
 2. Open `chrome://extensions` and enable Developer mode.
 3. Click Load unpacked and select `apps/extension/.output/chrome-mv3`.
 4. Open Gmail, then pair from the app's Chrome settings card (or onboarding step 4).
@@ -70,7 +70,7 @@ With LM Studio running Glimmer locally, routine inbox filtering stays on the mac
 - The server binds to localhost only; the extension only connects to localhost and must present a pairing token.
 - Model calls send only the fields each step needs.
 - Glimmer triage keeps routine inbox filtering on the machine.
-- Nothing sends or posts automatically — Gmail replies and Meta posts are always drafts (plus an approval step) that Dad sends himself.
+- Nothing sends or posts automatically — Gmail replies and Meta posts are always drafts (plus an approval step) that you send yourself.
 
 ## Licence and assets
 

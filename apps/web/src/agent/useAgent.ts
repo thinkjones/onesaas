@@ -20,7 +20,7 @@ export const AGENT_SETTLING_MS = 1500;
 
 /** One visible transcript row: persisted rows plus live session events. */
 export type AgentTranscriptItem =
-  | { kind: 'dad'; text: string; at: number }
+  | { kind: 'owner'; text: string; at: number }
   | { kind: 'agent'; text: string; at: number }
   | { kind: 'ask'; question: string; options: string[]; at: number }
   | { kind: 'activity'; text: string; at: number };
@@ -40,10 +40,10 @@ export interface UseAgentResult {
 }
 
 /**
- * Name a new reducer from Dad's first sentence: the FIRST 6 WORDS (split on
+ * Name a new automation from the owner's first sentence: the FIRST 6 WORDS (split on
  * whitespace runs; fewer than 6 keeps the whole sentence). Empty input names
  * nothing — callers prompt inline instead of POSTing an empty name. The agent
- * gives the reducer its proper name later via `rename_workflow`.
+ * gives the automation its proper name later via `rename_workflow`.
  */
 export function workflowNameFromSentence(sentence: string): string {
   const trimmed = sentence.trim();
@@ -56,9 +56,9 @@ export function workflowNameFromSentence(sentence: string): string {
  *
  * Composition (deliberately no refetch-on-done): the persisted transcript is
  * fetched on EVERY mount — before any live turn, so it cannot overlap what
- * SSE replays — and live `say`/`ask`/`activity` events append after it. Dad's
+ * SSE replays — and live `say`/`ask`/`activity` events append after it. The owner's
  * sends append optimistically (the server only persists at turn end and emits
- * no event for Dad's own message). Refetching after `done` would duplicate
+ * no event for the owner's own message). Refetching after `done` would duplicate
  * every live row against its freshly-persisted twin, so the hook never does;
  * refetching on mount is safe because `live` starts empty on every mount (a
  * collapse/reopen mid-turn loses its optimistic rows — the accepted,
@@ -88,8 +88,8 @@ export function useAgent(workflowId: string): UseAgentResult {
   const persisted = useMemo<AgentTranscriptItem[]>(
     () =>
       (persistedQuery.data ?? []).map((e) =>
-        e.role === 'dad'
-          ? { kind: 'dad', text: e.text, at: e.at }
+        e.role === 'owner'
+          ? { kind: 'owner', text: e.text, at: e.at }
           : e.ask
             ? { kind: 'ask', question: e.ask.question, options: e.ask.options, at: e.at }
             : { kind: 'agent', text: e.text, at: e.at },
@@ -143,7 +143,7 @@ export function useAgent(workflowId: string): UseAgentResult {
       clearSettling();
       setSendError(null);
       setBusy(true);
-      const entry: AgentTranscriptItem = { kind: 'dad', text: trimmed, at: Date.now() };
+      const entry: AgentTranscriptItem = { kind: 'owner', text: trimmed, at: Date.now() };
       setLive((prev) => [...prev, entry]);
       try {
         await sendAgentMessage(workflowId, trimmed);

@@ -1,4 +1,4 @@
-import type { Edge, Run, StepInstance, StepRun, Workflow } from '@dad/shared';
+import type { Edge, Run, StepInstance, StepRun, Workflow } from '@onesaas/shared';
 import { createApp } from '../src/app.js';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';

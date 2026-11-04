@@ -32,9 +32,9 @@ test('hello carries optional client identity (old hellos still parse)', () => {
     ExtensionToServer.parse({
       type: 'hello',
       token: 't',
-      client: { profileEmail: 'dad@example.com' },
+      client: { profileEmail: 'owner@example.com' },
     }),
-  ).toEqual({ type: 'hello', token: 't', client: { profileEmail: 'dad@example.com' } });
+  ).toEqual({ type: 'hello', token: 't', client: { profileEmail: 'owner@example.com' } });
 });
 
 test('server ping carries an id; the pong reply echoes it', () => {

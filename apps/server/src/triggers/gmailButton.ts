@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'node:events';
-import type { Run, ServerToExtension, TriggerMsg } from '@dad/shared';
+import type { Run, ServerToExtension, TriggerMsg } from '@onesaas/shared';
 import type { Repo } from '../db/repo.js';
 import type { EngineEvent } from '../engine/events.js';
 

@@ -1,4 +1,4 @@
-import type { StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@onesaas/shared';
 import { describe, expect, test } from 'vitest';
 import { layoutWorkflow } from './layout.ts';
 

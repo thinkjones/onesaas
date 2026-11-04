@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { catalog } from '@dad/shared';
+import { catalog } from '@onesaas/shared';
 import { vi } from 'vitest';
 import { createConversationStore } from '../src/agent/conversations.js';
 import { AgentBusyError, createBuilderAgent } from '../src/agent/loop.js';
@@ -81,7 +81,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
   agentEvents.on('event', (e) => seen.push(e));
   const { gateway, calls } = scriptedGateway(script);
   const testRun = vi.fn();
-  // Same wiring as main.ts: Dad's ops notify the agent, the agent's own ops
+  // Same wiring as main.ts: the owner's ops notify the agent, the agent's own ops
   // must not self-notify.
   let agent!: ReturnType<typeof createBuilderAgent>;
   const ops = createWorkflowOps({
@@ -89,7 +89,7 @@ function setup(script: ScriptStep[] = [{ text: 'ok' }]) {
     tables,
     catalog,
     onChange: (wf, note, by) => {
-      if (by === 'dad') agent.noteManualChange(wf.id, note);
+      if (by === 'owner') agent.noteManualChange(wf.id, note);
     },
   });
   agent = createBuilderAgent({
@@ -186,7 +186,7 @@ test('a propose_plan turn ends with a plan event and done', async () => {
   const conv = conversations.load(wf.id)!;
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
   expect(conv.transcript).toEqual([
-    { role: 'dad', text: 'When a customer emails me, help me reply.', at: expect.any(Number) },
+    { role: 'owner', text: 'When a customer emails me, help me reply.', at: expect.any(Number) },
     {
       role: 'agent',
       text: "Here's my plan:\n1. Read it\nShall I build it?",
@@ -197,6 +197,24 @@ test('a propose_plan turn ends with a plan event and done', async () => {
       at: expect.any(Number),
     },
   ]);
+});
+
+test('chats saved under the earlier name load with the new role', () => {
+  const db = openDb(':memory:');
+  createConversationStore(db);
+  db.prepare(
+    `INSERT INTO conversations (workflow_id, messages, transcript, updated_at) VALUES ('wf', ?, ?, 'now')`,
+  ).run(
+    JSON.stringify([{ role: 'system', content: 'Dad changed the canvas: x' }]),
+    JSON.stringify([
+      { role: 'dad', text: 'Dad here, hello', at: 1 },
+      { role: 'agent', text: "All set, Dad! Dad's list is ready.", at: 2 },
+    ]),
+  );
+  const conv = createConversationStore(db).load('wf')!;
+  expect(conv.transcript[0]).toMatchObject({ role: 'owner', text: 'Dad here, hello' });
+  expect(conv.transcript[1]!.text).toBe('All set! your list is ready.');
+  expect(conv.messages[0]).toMatchObject({ content: 'The owner changed the canvas: x' });
 });
 
 test('next turn builds four steps, connects and says one line', async () => {
@@ -236,7 +254,7 @@ test('next turn builds four steps, connects and says one line', async () => {
   // Turn 2's first model call saw turn 1's persisted history.
   const turn2First = calls[1]!.messages;
   expect(turn2First.filter((m) => m.role === 'user')).toHaveLength(2);
-  expect(agent.getTranscript(wf.id).map((e) => e.role)).toEqual(['dad', 'agent', 'dad', 'agent']);
+  expect(agent.getTranscript(wf.id).map((e) => e.role)).toEqual(['owner', 'agent', 'owner', 'agent']);
 });
 
 test('an unknown tool becomes a Problem result and the loop continues', async () => {
@@ -301,7 +319,7 @@ test('noteManualChange inserts a system message seen by the next chatTools call'
   // Persisted immediately: a fresh store on the same db sees it.
   const reopened = createConversationStore(db);
   expect(reopened.load(wf.id)!.messages).toEqual([
-    { role: 'system', content: 'Dad changed the canvas: Moved "Write reply".' },
+    { role: 'system', content: 'The owner changed the canvas: Moved "Write reply".' },
   ]);
   expect(conversations.load(wf.id)!.transcript).toEqual([]);
   await agent.send(wf.id, 'hi');
@@ -309,7 +327,7 @@ test('noteManualChange inserts a system message seen by the next chatTools call'
   expect(systems).toHaveLength(2);
   expect(systems[1]).toEqual({
     role: 'system',
-    content: 'Dad changed the canvas: Moved "Write reply".',
+    content: 'The owner changed the canvas: Moved "Write reply".',
   });
 });
 
@@ -364,7 +382,7 @@ test('a mid-turn noteManualChange lands in the live conversation and the next mo
   // The turn is genuinely in flight: busy, with the second model call awaiting the gate.
   expect(agent.isBusy(s.wf.id)).toBe(true);
   agent.noteManualChange(s.wf.id, 'Moved "Write reply" mid-turn.');
-  const note = 'Dad changed the canvas: Moved "Write reply" mid-turn.';
+  const note = 'The owner changed the canvas: Moved "Write reply" mid-turn.';
   // The second call's snapshot was taken before the note, so it must NOT see it...
   expect(
     s.calls[1]!.messages.some((m) => (m as { content?: unknown }).content === note),
@@ -565,20 +583,20 @@ test('GET returns the visible transcript with ask options across turns', async (
   const res = await t.app.request(`/api/workflows/${t.wf.id}/agent`);
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual([
-    { role: 'dad', text: 'save them', at: expect.any(Number) },
+    { role: 'owner', text: 'save them', at: expect.any(Number) },
     {
       role: 'agent',
       text: 'Which list?',
       ask: { question: 'Which list?', options: ['Customers', 'Orders'] },
       at: expect.any(Number),
     },
-    { role: 'dad', text: 'Customers', at: expect.any(Number) },
+    { role: 'owner', text: 'Customers', at: expect.any(Number) },
     { role: 'agent', text: 'Saved!', at: expect.any(Number) },
   ]);
 });
 
 test('GET /api/events also carries agent events', async () => {
-  const t = setupApp([{ text: 'hello dad' }]);
+  const t = setupApp([{ text: 'hello owner' }]);
   const res = await t.app.request('/api/events');
   expect(res.status).toBe(200);
   const reader = res.body!.getReader();
@@ -590,21 +608,21 @@ test('GET /api/events also carries agent events', async () => {
     const text = new TextDecoder().decode(value);
     expect(text).toContain('"type":"agent"');
     expect(text).toContain(t.wf.id);
-    expect(text).toContain('hello dad');
+    expect(text).toContain('hello owner');
   } finally {
     await reader.cancel();
   }
 }, 5000);
 
-test("ops onChange reaches the conversation only for Dad's edits", async () => {
+test("ops onChange reaches the conversation only for the owner's edits", async () => {
   const { ops, conversations } = createServer({ dbFile: ':memory:' });
   const wf = ops.create({ name: 'W', description: 'D' });
   expect(conversations.load(wf.id)).toBeUndefined();
-  ops.move(wf.id, 'trigger', { x: 5, y: 5 }, { by: 'dad' });
-  const afterDad = conversations.load(wf.id)!;
-  expect(afterDad.messages).toHaveLength(1);
-  expect(afterDad.messages[0]).toMatchObject({ role: 'system' });
-  expect((afterDad.messages[0] as { content: string }).content.startsWith('Dad changed the canvas:')).toBe(
+  ops.move(wf.id, 'trigger', { x: 5, y: 5 }, { by: 'owner' });
+  const afterOwnerEdit = conversations.load(wf.id)!;
+  expect(afterOwnerEdit.messages).toHaveLength(1);
+  expect(afterOwnerEdit.messages[0]).toMatchObject({ role: 'system' });
+  expect((afterOwnerEdit.messages[0] as { content: string }).content.startsWith('The owner changed the canvas:')).toBe(
     true,
   );
   // The agent's own ops (explicit and default) must not self-notify.
@@ -613,7 +631,7 @@ test("ops onChange reaches the conversation only for Dad's edits", async () => {
   expect(conversations.load(wf.id)!.messages).toHaveLength(1);
 });
 
-test("a gateway failure on the first call still persists Dad's message and ends the turn", async () => {
+test("a gateway failure on the first call still persists the owner's message and ends the turn", async () => {
   const s = setup([]);
   const boom: Gateway = {
     chatJson: s.gateway.chatJson,
@@ -638,15 +656,15 @@ test("a gateway failure on the first call still persists Dad's message and ends 
   expect(agent.isBusy(s.wf.id)).toBe(false);
   // A terminal event is still emitted: done closes the turn.
   expect(s.seen[s.seen.length - 1]!.event).toEqual({ type: 'done' });
-  // Dad sees a failure line, not silence.
+  // The owner sees a failure line, not silence.
   const says = s.seen.filter((e) => e.event.type === 'say');
   expect(says).toHaveLength(1);
   expect((says[0]!.event as { text: string }).text).toContain('Something went wrong');
-  // Dad's message survived: a reopened store sees it.
+  // The owner's message survived: a reopened store sees it.
   const reopened = createConversationStore(s.db);
   const conv = reopened.load(s.wf.id)!;
   expect(conv.messages).toEqual([{ role: 'user', content: 'hello?' }]);
-  expect(conv.transcript.map((t) => t.role)).toEqual(['dad', 'agent']);
+  expect(conv.transcript.map((t) => t.role)).toEqual(['owner', 'agent']);
 });
 
 test('a mid-turn gateway failure persists the partial turn and ends it', async () => {
@@ -686,10 +704,10 @@ test('a mid-turn gateway failure persists the partial turn and ends it', async (
   const reopened = createConversationStore(s.db);
   const conv = reopened.load(s.wf.id)!;
   expect(conv.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
-  expect(conv.transcript[0]).toMatchObject({ role: 'dad', text: 'build it' });
+  expect(conv.transcript[0]).toMatchObject({ role: 'owner', text: 'build it' });
 });
 
-test('after create_workflow the prompt rebuilds from the new reducer', async () => {
+test('after create_workflow the prompt rebuilds from the new automation', async () => {
   const { agent, calls, seen, wf } = setup([
     {
       calls: [
@@ -703,14 +721,14 @@ test('after create_workflow the prompt rebuilds from the new reducer', async () 
   ]);
   await agent.send(wf.id, 'build both');
   expect(calls).toHaveLength(2);
-  // The second model call sees the NEW reducer (the switched target), not
+  // The second model call sees the NEW automation (the switched target), not
   // the send target.
   const system = calls[1]!.messages.find((m) => m.role === 'system') as unknown as {
     content: string;
   };
   expect(system.content).toContain('Name: Photo posts');
   // The switched event keeps the ORIGINAL envelope (the open page), while
-  // naming the new reducer inside.
+  // naming the new automation inside.
   const switched = seen.filter((s) => s.event.type === 'switched');
   expect(switched).toHaveLength(1);
   expect(switched[0]!.workflowId).toBe(wf.id);
@@ -720,7 +738,7 @@ test('after create_workflow the prompt rebuilds from the new reducer', async () 
   expect(seen[seen.length - 1]!.event).toEqual({ type: 'done' });
 });
 
-test('after create_workflow the new reducer is busy-guarded until the turn ends', async () => {
+test('after create_workflow the new automation is busy-guarded until the turn ends', async () => {
   const s = setup([]);
   const resolvers: ((v: ChatToolsResult) => void)[] = [];
   const switchResult = {
@@ -763,8 +781,8 @@ test('after create_workflow the new reducer is busy-guarded until the turn ends'
     visionJson: s.gateway.visionJson,
     chatTools: (o: ChatToolsOptions) => {
       s.calls.push(o);
-      // First model call switches reducers; the second waits at the gate so
-      // the turn is still in flight while Dad's page shows the new reducer.
+      // First model call switches automations; the second waits at the gate so
+      // the turn is still in flight while the owner's page shows the new automation.
       if (s.calls.length === 1) return Promise.resolve(switchResult);
       return new Promise<ChatToolsResult>((resolve) => resolvers.push(resolve));
     },
@@ -790,7 +808,7 @@ test('after create_workflow the new reducer is busy-guarded until the turn ends'
   expect(switched).toHaveLength(1);
   const newId = (switched[0]!.event as { type: string; workflowId: string }).workflowId;
   expect(newId).not.toBe(s.wf.id);
-  // Dad was auto-navigated to the new reducer mid-turn: a send there must
+  // The owner was auto-navigated to the new automation mid-turn: a send there must
   // wait for this turn instead of interleaving a second one.
   expect(agent.isBusy(s.wf.id)).toBe(true);
   expect(agent.isBusy(newId)).toBe(true);

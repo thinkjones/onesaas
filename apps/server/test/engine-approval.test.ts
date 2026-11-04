@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { vi } from 'vitest';
-import type { Edge, StepInstance, StepRun, Workflow } from '@dad/shared';
+import type { Edge, StepInstance, StepRun, Workflow } from '@onesaas/shared';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';
 import { createEngine } from '../src/engine/engine.js';

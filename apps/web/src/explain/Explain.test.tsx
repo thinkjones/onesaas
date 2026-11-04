@@ -104,7 +104,7 @@ describe('Explain', () => {
     const onEvent = (e: Event): void => {
       seen.push((e as CustomEvent).detail);
     };
-    window.addEventListener('dad:tell-me-more', onEvent);
+    window.addEventListener('onesaas:tell-me-more', onEvent);
     try {
       render(<Explain target={{ kind: 'ui', id: 'turn-on' }} label="Turn on" />);
       fireEvent.click(screen.getByRole('button', { name: 'Explain Turn on' }));
@@ -112,7 +112,7 @@ describe('Explain', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Tell me more' }));
       expect(seen).toEqual([{ message: 'Tell me more about Turn on' }]);
     } finally {
-      window.removeEventListener('dad:tell-me-more', onEvent);
+      window.removeEventListener('onesaas:tell-me-more', onEvent);
     }
   });
 

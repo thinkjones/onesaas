@@ -2,10 +2,10 @@
 // apps/server/src/seed/flow1.json exactly (same step types, titles, configs
 // and bindings), so the agent learns the real shapes. Flow 2 is the M4
 // booking flow; its step ids below are shortened — the prompt tells the
-// builder to read the real ids off the Links line. Flow 4 builds TWO reducers
+// builder to read the real ids off the Links line. Flow 4 builds TWO automations
 // in one turn (email branch, then create_workflow, then the photo branch),
-// with no test_run/activate: the turn is for building both, and Dad turns
-// both on himself.
+// with no test_run/activate: the turn is for building both, and the owner turns
+// both on themselves.
 
 export const flow1ExampleUser =
   'When I click the button in Gmail, save the sender as a customer and draft a warm reply.';
@@ -18,7 +18,7 @@ export const flow1ExampleUser =
 export const flow1Example = `Example: "${flow1ExampleUser}"
 
 The builder thinks: a Gmail button starts it, then read the details, save them
-to the Customers list, write a warm reply, check it with Dad, and draft it.
+to the Customers list, write a warm reply, check it with the owner, and draft it.
 
 Tool calls:
 
@@ -55,7 +55,7 @@ export const flow2Example = `Example: "${flow2ExampleUser}"
 
 The builder thinks: a new email starts it on its own, then read the whole
 email, check it is a booking ask, pull out the details, check the calendar,
-save the booking, add the event, write a confirmation, check it with Dad,
+save the booking, add the event, write a confirmation, check it with the owner,
 and draft it.
 
 New-email triggers carry no body, so the first step reads the full email.
@@ -89,7 +89,7 @@ Tool calls:
 
 11. add_step {"type": "gmail.draftReply", "title": "Draft reply", "summary": "Draft the confirmation in Gmail.", "config": {}, "inputs": {"body": "{{approve.text}}", "threadId": "{{trigger.email.threadId}}"}, "after": "<the approve step's id>"}
 
-12. test_run {} — read the one-line-per-step preview. Reads need Dad's computer: when Gmail or Calendar is not open the read previews fail ("I need Gmail open in Chrome to do this") and the rest show skipped. That failure is environmental, not shape — keep the steps. The Problems line is the shape oracle: fix anything it names.
+12. test_run {} — read the one-line-per-step preview. Reads need the owner's computer: when Gmail or Calendar is not open the read previews fail ("I need Gmail open in Chrome to do this") and the rest show skipped. That failure is environmental, not shape — keep the steps. The Problems line is the shape oracle: fix anything it names.
 
 13. activate {} — the automation is on.`;
 
@@ -97,14 +97,14 @@ export const flow4ExampleUser =
   'When a new customer emails, do what you did before, and also let me drop in a product photo to turn into a post for Facebook and Instagram.';
 
 /**
- * Flow 4 as a worked example: TWO reducers built in sequence in one turn.
+ * Flow 4 as a worked example: TWO automations built in sequence in one turn.
  * The email branch is the flow 1 button flow plus a new-customer check (look
  * the sender up in Customers, sort new-or-known, flag new ones); then
- * create_workflow starts the photo reducer (drop a photo → cutout →
+ * create_workflow starts the photo automation (drop a photo → cutout →
  * generated post image → caption → log it → approve → prepare the post in
  * Business Suite). Step ids are shortened like flow 2's. No test_run, no
- * activate: a test or activation would target only the second reducer, and
- * the turn is for building both — Dad turns both on himself.
+ * activate: a test or activation would target only the second automation, and
+ * the turn is for building both — the owner turns both on themselves.
  *
  * LIMITATION (email branch, steps 3–4): `where` must be a record, so
  * bindings can't express {email: X} — the lookup filters on the WHOLE
@@ -133,7 +133,7 @@ Ids below are shortened; use the real ids from the Links line.
 Build straight through without explain calls — the lists section already
 shows every column, and both automations must fit in this one turn. Every step
 below is required: do not stop after the email branch, and do not skip the
-Posts log (it is how Dad finds the post later). Finish the whole email
+Posts log (it is how the owner finds the post later). Finish the whole email
 branch (steps 1–9, through the draft and the conditional edge) before
 create_workflow — there is no way back to the email automation afterwards.
 
@@ -147,7 +147,7 @@ Tool calls (email branch):
 
 4. add_step {"type": "ai.classify", "title": "Check if new", "summary": "Check whether this sender is a new customer.", "config": {"question": "Is this person new? The sender is known when their email matches the known customer email, regardless of the matching-customers count — only a blank known customer email means new.", "options": ["yes", "no"]}, "inputs": {"text": "From {{extract.name}} <{{extract.email}}> about {{extract.need}}. Matching customers: {{lookup.count}}. Known customer email: {{lookup.rows[0].email}}."}, "after": "<the lookup step's id>"}
 
-5. add_step {"type": "notify", "title": "Flag new customer", "summary": "Tell Dad when a new customer emails.", "config": {}, "inputs": {"text": "New customer: {{extract.name}}"}, "after": "<the sort step's id>"} — then connect {"from": "<the sort step's id>", "to": "<the flag step's id>", "when": "<the sort step's id>.choice == 'yes'"} to make that wire conditional.
+5. add_step {"type": "notify", "title": "Flag new customer", "summary": "Tell the owner when a new customer emails.", "config": {}, "inputs": {"text": "New customer: {{extract.name}}"}, "after": "<the sort step's id>"} — then connect {"from": "<the sort step's id>", "to": "<the flag step's id>", "when": "<the sort step's id>.choice == 'yes'"} to make that wire conditional.
 
 6. add_step {"type": "table.upsert", "title": "Save to Customers", "summary": "Save the customer to the Customers list.", "config": {"table": "customers", "keyField": "email"}, "inputs": {"row": "{{extract}}"}, "after": "<the lookup step's id>"} — chained AFTER the lookup, never beside it: the lookup must read the list before this save writes, or a new customer would match their own just-saved row and the flag would never fire.
 
@@ -159,7 +159,7 @@ Tool calls (email branch):
 
 Tool calls (photo branch — a separate automation):
 
-10. create_workflow {"name": "Product photo posts", "description": "Turns a dropped-in product photo into a Facebook and Instagram post."} — only after steps 1–9 are all built; there is no way back. Now building the photo reducer; set its trigger next.
+10. create_workflow {"name": "Product photo posts", "description": "Turns a dropped-in product photo into a Facebook and Instagram post."} — only after steps 1–9 are all built; there is no way back. Now building the photo automation; set its trigger next.
 
 11. set_trigger {"type": "trigger.upload", "config": {"prompt": "Drop a product photo here"}, "title": "Photo upload", "summary": "Runs when you drop a photo."}
 
@@ -177,4 +177,4 @@ Tool calls (photo branch — a separate automation):
 
 18. add_step {"type": "meta.draftPost", "title": "Prepare Facebook post", "summary": "Open the post in Meta Business Suite.", "config": {}, "inputs": {"text": "{{approve.text}}", "image": "{{art.file}}"}, "after": "<the approve step's id>"}
 
-Finally, say both automations are built and Dad can turn them on. No test_run, no activate: each would target only the photo reducer, and the turn is for building both in sequence.`;
+Finally, say both automations are built and the owner can turn them on. No test_run, no activate: each would target only the photo automation, and the turn is for building both in sequence.`;

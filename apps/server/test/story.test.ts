@@ -1,4 +1,4 @@
-import type { StepInstance, StepRun, StepRunStatus, Workflow } from '@dad/shared';
+import type { StepInstance, StepRun, StepRunStatus, Workflow } from '@onesaas/shared';
 import { buildRunStory } from '../src/engine/story.js';
 
 function mkStep(id: string, title: string): StepInstance {

@@ -56,14 +56,14 @@ seeds it into the file store on boot).
 
 | File | Source | Licence | Author |
 | ---- | ------ | ------- | ------ |
-| `apps/server/assets/sample-mug.jpg` (flat illustration of a rust-coloured "DAD'S" mug) | Illustration made for the project during the hackathon | Original work | Project author |
+| `apps/server/assets/sample-mug.jpg` (flat illustration of a rust-coloured mug with a blank label) | Illustration made for the project during the hackathon | Original work | Project author |
 
 ## Script and test fixtures
 
 | File | Source | Licence | Author |
 | ---- | ------ | ------- | ------ |
 | `scripts/fixtures/mug.jpg` (SAM smoke-test photo) | Photo taken by the project author during the hackathon | Original work | Project author |
-| `scripts/fixtures/hello.wav` ("hello dad", 24 kHz mono) | Synthesised with macOS `say` during the hackathon (`say -o … "hello dad"`, converted with ffmpeg) | Original work | Project author |
+| `scripts/fixtures/hello.wav` ("hello there", 24 kHz mono) | Synthesised with macOS `say` during the hackathon (`say -o … "hello there"`, converted with ffmpeg) | Original work | Project author |
 | `apps/server/test/fixtures/photo.heic` (3 KB) | Minimal synthetic HEIC file crafted for the upload-rejection test during the hackathon | Original work | Project author |
 
 ## Extension icons and web chrome

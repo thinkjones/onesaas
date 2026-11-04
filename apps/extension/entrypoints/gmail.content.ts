@@ -1,4 +1,4 @@
-import type { RunStatus } from '@dad/shared';
+import type { RunStatus } from '@onesaas/shared';
 import { SELECTORS } from '../lib/gmail/selectors.js';
 import { watchInbox } from '../lib/gmail/inboxWatcher.js';
 import { readOpenEmail, readThreadId } from '../lib/gmail/read.js';

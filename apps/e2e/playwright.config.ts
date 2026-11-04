@@ -15,9 +15,9 @@ export default defineConfig({
   use: {
     baseURL: WEB_BASE,
     // Desktop-sized: at 1280px the canvas column is so narrow that step nodes
-    // render underneath the right-side panels (unclickable). Dad is desktop.
+    // render underneath the right-side panels (unclickable). The owner is desktop.
     viewport: { width: 1600, height: 900 },
-    // Video is OFF by default. Record with: pnpm --filter @dad/e2e test:video
+    // Video is OFF by default. Record with: pnpm --filter @onesaas/e2e test:video
     // (sets E2E_VIDEO=1). Files land under test-results/.
     video: process.env['E2E_VIDEO'] === '1' ? 'on' : 'off',
     screenshot: 'only-on-failure',
@@ -25,7 +25,7 @@ export default defineConfig({
   globalSetup: './global-setup.ts',
   webServer: [
     {
-      command: 'pnpm --filter @dad/server exec tsx src/index.ts',
+      command: 'pnpm --filter @onesaas/server exec tsx src/index.ts',
       cwd: REPO_ROOT,
       // SEED_FLOW1=1 opts into the flow-1 fixture specs share; customer
       // boots (flag absent) always start with a blank workflow store.
@@ -36,7 +36,7 @@ export default defineConfig({
     },
     {
       // --host pins IPv4: bare `localhost` may bind IPv6-only, unreachable via 127.0.0.1.
-      command: `pnpm --filter @dad/web exec vite --port ${WEB_PORT} --strictPort --host 127.0.0.1`,
+      command: `pnpm --filter @onesaas/web exec vite --port ${WEB_PORT} --strictPort --host 127.0.0.1`,
       cwd: REPO_ROOT,
       env: { E2E_API_URL: API_BASE },
       url: `${WEB_BASE}/`,

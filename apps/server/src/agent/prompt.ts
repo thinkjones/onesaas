@@ -1,4 +1,4 @@
-import { catalog, type Workflow } from '@dad/shared';
+import { catalog, type Workflow } from '@onesaas/shared';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { TableDef } from '../tables/store.js';
 import type { checkWorkflow, WorkflowProblem } from '../workflows/validate.js';
@@ -17,9 +17,9 @@ export const TANGLED_MESSAGE =
 
 /**
  * Maximum tool calls per request (enforced by the Task 5 loop). 30, not 20:
- * the flow 4 two-reducer build (M4 Task 7) needs 19 calls minimum with zero
+ * the flow 4 two-automation build (M4 Task 7) needs 19 calls minimum with zero
  * headroom for a lookup or a fix at 20 — the eval proved 20 unbuildable
- * twice (a skipped step, then a capped turn). Single reducers still finish
+ * twice (a skipped step, then a capped turn). Single automations still finish
  * far below this.
  */
 export const TOOL_CALL_CAP = 30;
@@ -71,8 +71,8 @@ function workflowSection(workflow: Workflow, problems: WorkflowProblem[]): strin
 }
 
 function tablesSection(tables: TableDef[]): string {
-  if (tables.length === 0) return '# Dad\u2019s lists\nNone yet — create one with create_table when a step needs to save something.';
-  const lines = ['# Dad\u2019s lists'];
+  if (tables.length === 0) return '# The owner\u2019s lists\nNone yet — create one with create_table when a step needs to save something.';
+  const lines = ['# The owner\u2019s lists'];
   for (const t of tables) {
     lines.push(
       `"${t.label}" (${t.name}): ${t.columns.map((c) => `${c.label} (${c.type})`).join(', ')}.`,
@@ -91,14 +91,15 @@ export function buildSystemPrompt(o: {
     VOICE,
     [
       '# Rules',
-      '- Talk to Dad in plain English. Never mention JSON, ids or step types to him.',
+      '- The person you are talking to is the owner. Always call them "you": never "the owner", and never by any other name unless they tell you their name.',
+      '- Talk to the owner in plain English. Never mention JSON, ids or step types to them.',
       '- Anything that sends or puts words in front of someone must stay a draft and pass through an approval step (approval.ask) first — never send for real on your own.',
-      '- When you need Dad, ask one question per ask_user call, with 2 to 4 short clickable answers. You may ask follow-up questions across turns, but ask at most 3 questions per request.',
+      '- When you need the owner, ask one question per ask_user call, with 2 to 4 short clickable answers. You may ask follow-up questions across turns, but ask at most 3 questions per request.',
       `- You have at most ${TOOL_CALL_CAP} tool calls to finish the job. If you run out, say exactly: "${TANGLED_MESSAGE}"`,
-      '- When one sentence asks for two different jobs, build the first automation first, then create_workflow and build the second in the new reducer.',
-      '- Every tool call already narrates itself to Dad, and every add_step result already confirms the step: never call explain while building — use it only when Dad asks what something is.',
+      '- When one sentence asks for two different jobs, build the first automation first, then create_workflow and build the second in the new automation.',
+      '- Every tool call already narrates itself to the owner, and every add_step result already confirms the step: never call explain while building — use it only when the owner asks what something is.',
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
-      '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells Dad what it does in one plain sentence.',
+      '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells the owner what it does in one plain sentence.',
     ].join('\n'),
     catalogSection(),
     workflowSection(o.workflow, o.problems),
@@ -108,7 +109,7 @@ export function buildSystemPrompt(o: {
       '# About the business',
       o.business.name ? `Name: ${o.business.name}` : 'Name: (not given yet)',
       o.business.what ? `What they do: ${o.business.what}` : 'What they do: (not given yet)',
-      `Timezone: ${o.business.timezone} — dates and times for Dad are in this timezone.`,
+      `Timezone: ${o.business.timezone} — dates and times for the owner are in this timezone.`,
     ].join('\n'),
   ].join('\n\n');
 }

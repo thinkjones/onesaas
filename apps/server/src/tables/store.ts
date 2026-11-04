@@ -1,10 +1,10 @@
-import type { ColumnType } from '@dad/shared';
+import type { ColumnType } from '@onesaas/shared';
 import type { Database } from '../db/connection.js';
 
-// The union lives in @dad/shared (the step catalog needs it, and shared
+// The union lives in @onesaas/shared (the step catalog needs it, and shared
 // cannot import from server). Re-exported here so existing imports keep
 // working.
-export type { ColumnType } from '@dad/shared';
+export type { ColumnType } from '@onesaas/shared';
 
 export interface TableDef {
   name: string;

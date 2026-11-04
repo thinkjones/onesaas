@@ -1,4 +1,4 @@
-import { POPULAR_IDEA_IDS, STARTER_IDEAS, type Run, type Workflow } from '@dad/shared';
+import { POPULAR_IDEA_IDS, STARTER_IDEAS, type Run, type Workflow } from '@onesaas/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
@@ -124,7 +124,7 @@ function renderHome(data?: StubData, opts?: { prefillProbe?: boolean }) {
             element={opts?.prefillProbe ? (<><HomePage /><PrefillProbe /></>) : (<HomePage />)}
           />
           <Route
-            path="/reducers/:workflowId"
+            path="/automations/:workflowId"
             element={
               <LocationProbe
                 onLocation={(p, s, st) => {
@@ -251,7 +251,7 @@ describe('HomePage', () => {
       expect(posts).toEqual([{ name: 'When a customer emails me, save', description: SENTENCE }]);
     });
     await waitFor(() => {
-      expect(location().pathname).toBe('/reducers/wf-new');
+      expect(location().pathname).toBe('/automations/wf-new');
     });
     expect(location().search).toBe('?mode=design');
     expect(location().state).toEqual({ agentPrompt: SENTENCE });
@@ -282,12 +282,12 @@ describe('HomePage', () => {
     expect(box().value).toBe('Second prefill');
   });
 
-  test("a prefill arriving after Dad typed doesn't clobber the box", async () => {
+  test("a prefill arriving after the owner typed doesn't clobber the box", async () => {
     renderHome({}, { prefillProbe: true });
     await screen.findByRole('heading', { name: HEADING });
-    fireEvent.change(box(), { target: { value: 'Dad typing' } });
+    fireEvent.change(box(), { target: { value: 'The owner typing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send first prefill' }));
-    expect(box().value).toBe('Dad typing');
+    expect(box().value).toBe('The owner typing');
   });
 
   test('a prefill opens the box when automations hide it', async () => {
@@ -321,7 +321,7 @@ describe('HomePage', () => {
     expect(cards[1]!.getAttribute('data-needs')).toBe('failed');
     expect(cards[2]!.getAttribute('data-needs')).toBeNull();
     const waiting = screen.getByRole('link', { name: 'Waiting for you' });
-    expect(waiting.getAttribute('href')).toBe('/reducers/wf-wait?mode=runs&run=old');
+    expect(waiting.getAttribute('href')).toBe('/automations/wf-wait?mode=runs&run=old');
   });
 
   test('a card with no runs says so, and long flows collapse into +N', async () => {
@@ -339,6 +339,6 @@ describe('HomePage', () => {
   test('a card name opens the automation in design mode', async () => {
     renderHome({ workflows: [mkWorkflow()], runs: [mkRun({})] });
     const name = await screen.findByRole('link', { name: 'Email helper' });
-    expect(name.getAttribute('href')).toBe('/reducers/wf-1?mode=design');
+    expect(name.getAttribute('href')).toBe('/automations/wf-1?mode=design');
   });
 });

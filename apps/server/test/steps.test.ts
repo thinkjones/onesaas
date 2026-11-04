@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { catalog, emailSchema } from '@dad/shared';
+import { catalog, emailSchema } from '@onesaas/shared';
 import { createGateway, type Gateway } from '../src/models/gateway.js';
 import { costUsd } from '../src/models/pricing.js';
 import { openDb } from '../src/db/connection.js';

@@ -38,7 +38,7 @@ importers:
 
   apps/extension:
     dependencies:
-      '@dad/shared':
+      '@onesaas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       lucide-react:
@@ -78,7 +78,7 @@ importers:
 
   apps/server:
     dependencies:
-      '@dad/shared':
+      '@onesaas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@hono/node-server':
@@ -136,7 +136,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@dad/shared':
+      '@onesaas/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@tanstack/react-query':

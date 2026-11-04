@@ -3,7 +3,7 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    // @dad/shared resolves to workspace SOURCES, so tsc checks it under our
+    // @onesaas/shared resolves to workspace SOURCES, so tsc checks it under our
     // settings too, and WXT's noUncheckedIndexedAccess flags its bindings.ts
     // (out of scope to fix). The repo base convention is strict without that
     // flag — match it here.

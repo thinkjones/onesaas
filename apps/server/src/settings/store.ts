@@ -23,7 +23,7 @@ export interface Settings {
 /** Key of the JSON settings document in the M1 `settings` key-value table. */
 export const APP_SETTINGS_KEY = 'app';
 
-/** Sound stays silent until Dad's first interaction unlocks it (Task 2); the
+/** Sound stays silent until the owner's first interaction unlocks it (Task 2); the
  * stored default is on at 0.25 — the unlock gate lives in the web app, not here. */
 export function defaultSettings(): Settings {
   return {

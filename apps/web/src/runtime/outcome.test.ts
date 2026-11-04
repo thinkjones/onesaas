@@ -1,4 +1,4 @@
-import type { StepRun } from '@dad/shared';
+import type { StepRun } from '@onesaas/shared';
 import { describe, expect, test } from 'vitest';
 import { outcomeOf } from './outcome.ts';
 

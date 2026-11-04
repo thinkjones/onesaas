@@ -1,4 +1,4 @@
-import type { Run, StepInstance, Workflow } from '@dad/shared';
+import type { Run, StepInstance, Workflow } from '@onesaas/shared';
 import { describe, expect, test } from 'vitest';
 import { resolveRunId, resolveStepId } from './params.ts';
 

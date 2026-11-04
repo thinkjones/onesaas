@@ -17,7 +17,7 @@ import { createSettingsStore, type SettingsStore } from '../src/settings/store.j
 function testStores(): { db: Database; files: FileStore; settings: SettingsStore } {
   const db = openDb(':memory:');
   createRepo(db);
-  const dir = mkdtempSync(join(tmpdir(), 'dad-mood-'));
+  const dir = mkdtempSync(join(tmpdir(), 'onesaas-mood-'));
   return { db, files: createFileStore({ db, dir }), settings: createSettingsStore(db) };
 }
 

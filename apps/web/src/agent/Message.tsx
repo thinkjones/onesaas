@@ -7,7 +7,7 @@ export interface MessageProps {
   item: AgentTranscriptItem;
   /**
    * True only for the LATEST ask: older asks keep their chips visible but
-   * disabled, so Dad can't answer a stale question. Ignored for other kinds.
+   * disabled, so the owner can't answer a stale question. Ignored for other kinds.
    */
   latestAsk: boolean;
   /** While a turn runs, chips don't act (the spinner on activity lines runs). */
@@ -16,7 +16,7 @@ export interface MessageProps {
 }
 
 /**
- * One transcript row. Dad's messages sit right in the primary bubble, the
+ * One transcript row. The owner's messages sit right in the primary bubble, the
  * agent's left in muted; `activity` is a small grey line, `ask` the question
  * plus its chips. Bubbles reuse the app's single radius and surfaces.
  */
@@ -38,13 +38,13 @@ export default function Message({ item, latestAsk, busy, onSend }: MessageProps)
       </div>
     );
   }
-  const dad = item.kind === 'dad';
+  const owner = item.kind === 'owner';
   return (
-    <div className={cn('flex', dad ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex', owner ? 'justify-end' : 'justify-start')}>
       <p
         className={cn(
           'max-w-[85%] rounded-[var(--radius)] px-3 py-2 text-base',
-          dad ? 'bg-primary text-primary-foreground' : 'bg-muted',
+          owner ? 'bg-primary text-primary-foreground' : 'bg-muted',
         )}
       >
         {item.text}

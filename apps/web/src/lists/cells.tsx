@@ -1,4 +1,4 @@
-import type { ColumnType } from '@dad/shared';
+import type { ColumnType } from '@onesaas/shared';
 import { isLevelColumn } from './levels.ts';
 
 const LEVELS: Record<string, 'high' | 'normal' | 'low'> = {

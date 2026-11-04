@@ -1,4 +1,4 @@
-import { POPULAR_IDEA_IDS, STAGE_LABEL, STARTER_IDEAS, type StarterIdea, type StarterStage } from '@dad/shared';
+import { POPULAR_IDEA_IDS, STAGE_LABEL, STARTER_IDEAS, type StarterIdea, type StarterStage } from '@onesaas/shared';
 import { useState } from 'react';
 import FlowPreview from './FlowPreview.tsx';
 

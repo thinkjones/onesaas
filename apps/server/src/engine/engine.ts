@@ -10,7 +10,7 @@ import {
   type StepInstance,
   type StepRun,
   type StepRunStatus,
-} from '@dad/shared';
+} from '@onesaas/shared';
 import type { Repo } from '../db/repo.js';
 import type { Executor, StepContext } from '../steps/registry.js';
 import type { EngineEvent } from './events.js';
@@ -403,7 +403,7 @@ export function createEngine(d: {
 
   async function resolveApproval(runId: string, stepId: string, d: ApprovalDecision): Promise<Run> {
     const loaded = repo.getRun(runId);
-    // Test runs are throwaway previews: they never wait on Dad (approval.ask
+    // Test runs are throwaway previews: they never wait on the owner (approval.ask
     // auto-approves in test mode), so continuing one here is always a bug.
     if (loaded && loaded.run.kind === 'test') {
       throw new Error('A test run can\'t be approved. Press "Try it" again for a fresh run.');

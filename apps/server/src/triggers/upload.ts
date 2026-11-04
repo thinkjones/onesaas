@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { SAMPLE_FILE_ID } from '@dad/shared';
+import { SAMPLE_FILE_ID } from '@onesaas/shared';
 import type { FileStore } from '../files/store.js';
 
 export { SAMPLE_FILE_ID };

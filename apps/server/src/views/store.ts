@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import type { Database } from '../db/connection.js';
 import { sanitiseName, type TableStore } from '../tables/store.js';
 
-// Saved views over Dad's lists: a grid (spreadsheet), cards (one card per
+// Saved views over the owner's lists: a grid (spreadsheet), cards (one card per
 // row), or a stat (one pinned number). Every list ALSO gets an automatic grid
 // view without saving one — the lists page builds it on the fly.
 

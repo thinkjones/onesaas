@@ -1,5 +1,5 @@
 /**
- * Dad-friendly age for a last-ping stamp, shared by the app's Pairing page
+ * owner-friendly age for a last-ping stamp, shared by the app's Pairing page
  * and the extension popup so both sides describe freshness identically.
  * Total: nullish reads 'never', garbage reads 'unknown', future skew reads
  * 'just now' — never throws, so UI code can render it blind.

@@ -33,9 +33,9 @@ export interface WorkflowPageProps {
  *
  * Photo-triggered flows (trigger.upload) get an UploadDrop in the runs panel:
  * dropping a photo posts it to the upload route and overlays the new run. When
- * the agent starts a second reducer mid-turn (create_workflow), its `switched`
- * event navigates this page to the new reducer's design view (the workflows
- * list is invalidated first, so the new reducer resolves instead of showing
+ * the agent starts a second automation mid-turn (create_workflow), its `switched`
+ * event navigates this page to the new automation's design view (the workflows
+ * list is invalidated first, so the new automation resolves instead of showing
  * not-found). "Fix
  * this step" sets `agentPrefill` to `"<title>" stopped with: <error>. Can you
  * help me fix it?` and opens design mode on the failed step; the panel
@@ -100,15 +100,15 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
     if (locationAgentPrompt !== undefined) setInitialPrompt(locationAgentPrompt);
   }
 
-  // Follow the agent when it starts a second reducer: the `switched`
-  // event names the new reducer, and the web navigates there (design mode,
+  // Follow the agent when it starts a second automation: the `switched`
+  // event names the new automation, and the web navigates there (design mode,
   // where the build lands). Runs before the early returns below with every
   // other hook; the handler no-ops until a switch arrives.
   const handleAgentSwitch = useCallback(
     (e: AgentEvent) => {
       if (e.type !== 'switched') return;
       void queryClient.invalidateQueries({ queryKey: ['workflows'] });
-      navigate(`/reducers/${e.workflowId}?mode=design`);
+      navigate(`/automations/${e.workflowId}?mode=design`);
     },
     [navigate, queryClient],
   );
@@ -142,7 +142,7 @@ export default function WorkflowPage({ onAgentPrefill }: WorkflowPageProps = {})
   // Explain's "Tell me more" (step boxes, runs, inspector…): open the
   // chat and send "Tell me more about <label>" through the panel's
   // sendRequest seam. Before the early returns with every other hook. The
-  // handler claims the event only while the reducer resolves (pending counts:
+  // handler claims the event only while the automation resolves (pending counts:
   // the send fires once the page loads); settled without data (not-found,
   // fetch error) it leaves the event for TellMeMoreFallback, which routes to
   // a live panel instead of swallowing it into invisible state here. The

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { Run, ServerToExtension, TriggerMsg, Workflow } from '@dad/shared';
+import type { Run, ServerToExtension, TriggerMsg, Workflow } from '@onesaas/shared';
 import { beforeEach, expect, vi } from 'vitest';
 import { openDb } from '../src/db/connection.js';
 import { createRepo, type Repo } from '../src/db/repo.js';

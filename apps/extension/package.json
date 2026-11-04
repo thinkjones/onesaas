@@ -1,5 +1,5 @@
 {
-  "name": "@dad/extension",
+  "name": "@onesaas/extension",
   "description": "Chrome side panel and site adapters for OneSaaS",
   "private": true,
   "version": "0.0.0",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dad/shared": "workspace:*",
+    "@onesaas/shared": "workspace:*",
     "lucide-react": "^1.63.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

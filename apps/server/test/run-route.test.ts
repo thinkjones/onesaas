@@ -12,13 +12,13 @@ const EMAIL = {
 function setup(triggerType: string, triggerConfig: Record<string, unknown>) {
   const server = createServer({ dbFile: ':memory:' });
   const wf = server.ops.create({ name: 'Chore', description: 'A chore' });
-  const res = server.ops.setTrigger(wf.id, { type: triggerType, config: triggerConfig }, { by: 'dad' });
+  const res = server.ops.setTrigger(wf.id, { type: triggerType, config: triggerConfig }, { by: 'owner' });
   if (!res.ok) throw new Error(res.error);
   return { server, id: wf.id };
 }
 
 function turnOn(server: ReturnType<typeof createServer>, id: string) {
-  const res = server.ops.setStatus(id, 'on', { by: 'dad' });
+  const res = server.ops.setStatus(id, 'on', { by: 'owner' });
   if (!res.ok) throw new Error(res.error);
 }
 

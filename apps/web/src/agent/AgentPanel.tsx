@@ -17,7 +17,7 @@ export interface AgentPanelProps {
   /** WorkflowPage's agentPrefill seam: applied to the input once, then cleared. */
   prefill?: string;
   onPrefillConsumed?(): void;
-  /** HomePage's first sentence: sent once on mount as Dad's opening message. */
+  /** HomePage's first sentence: sent once on mount as the owner's opening message. */
   initialPrompt?: string;
   /** Fired after the opening send so the page can consume `initialPrompt`. */
   onInitialSent?(): void;
@@ -32,7 +32,7 @@ export interface AgentPanelProps {
 }
 
 /**
- * The chat: transcript (Dad right, agent left, activity as small grey
+ * The chat: transcript (the owner right, agent left, activity as small grey
  * lines, asks as chips) with a textarea + Send below and a push-to-talk mic
  * button. Only the LATEST ask renders clickable chips — older ones stay
  * visible but disabled, and everything locks while busy.
@@ -50,7 +50,7 @@ export default function AgentPanel({
   const [input, setInput] = useState('');
 
   // Each prefill value applies once (guarded by ref, so re-renders and
-  // callback-identity churn never re-apply it over Dad's typing); the seam
+  // callback-identity churn never re-apply it over the owner's typing); the seam
   // clears on consume and again on every send, so a reopened panel never
   // resurrects a stale prompt.
   const appliedPrefill = useRef<string | undefined>(undefined);

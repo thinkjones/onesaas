@@ -1,4 +1,4 @@
-import type { FileRef } from '@dad/shared';
+import type { FileRef } from '@onesaas/shared';
 import type { Executor } from './registry.js';
 
 // Task 7's steps file. It holds meta.draftPost plus notify (the plan's one

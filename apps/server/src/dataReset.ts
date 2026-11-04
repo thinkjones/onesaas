@@ -7,7 +7,7 @@
 // exactly the same state.
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { Workflow } from '@dad/shared';
+import { Workflow } from '@onesaas/shared';
 import type { Database } from './db/connection.js';
 import type { Repo } from './db/repo.js';
 import flow1 from './seed/flow1.json' with { type: 'json' };

@@ -1,4 +1,4 @@
-import type { Run, StepRunStatus, Workflow } from '@dad/shared';
+import type { Run, StepRunStatus, Workflow } from '@onesaas/shared';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { ApiError, useWorkflowOp } from '../api.ts';
@@ -40,7 +40,7 @@ function AutomationCard({ workflow, runs }: { workflow: Workflow; runs: Run[] })
       <div className="automation-card-text">
         <h3 className="automation-card-title">
           {/* Stretched over the whole card; the footer sits above it. */}
-          <Link to={`/reducers/${workflow.id}?mode=design`}>{workflow.name}</Link>
+          <Link to={`/automations/${workflow.id}?mode=design`}>{workflow.name}</Link>
         </h3>
         <p className="setup-hint">
           {lastRunAt === undefined ? (

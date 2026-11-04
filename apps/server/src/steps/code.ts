@@ -1,6 +1,6 @@
 import vm from 'node:vm';
 import { z } from 'zod';
-import type { ColumnType } from '@dad/shared';
+import type { ColumnType } from '@onesaas/shared';
 import { fieldSchema } from './ai.js';
 import type { Executor } from './registry.js';
 
@@ -29,7 +29,7 @@ interface OutputField {
  * constructor chain stays reachable through the passed-in objects, so
  * node:vm is not a security boundary here). The output is validated against a
  * zod object built at run time from `outputFields`; the why is the config's
- * `explanation`, one plain sentence the agent wrote for Dad.
+ * `explanation`, one plain sentence the agent wrote for the owner.
  */
 export const codeTransformExecutor: Executor = async (config, input) => {
   const code = config.code as string;

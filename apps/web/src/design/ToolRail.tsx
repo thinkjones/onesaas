@@ -1,4 +1,4 @@
-import { catalog, type StepKind } from '@dad/shared';
+import { catalog, type StepKind } from '@onesaas/shared';
 import { cn } from 'cn';
 import { useEffect, useRef, useState } from 'react';
 import { stepVisuals } from '../canvas/stepVisuals.ts';

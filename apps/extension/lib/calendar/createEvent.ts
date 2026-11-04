@@ -22,7 +22,7 @@ function wallTime(iso: string): string {
 
 /**
  * Google Calendar "create from template" URL: opening it shows the event
- * editor pre-filled, which saveTemplateEvent then saves (or Dad does).
+ * editor pre-filled, which saveTemplateEvent then saves (or the owner does).
  */
 export function createEventUrl(o: TemplateEvent): string {
   const dates = `${wallTime(o.start)}/${wallTime(o.end)}`;
@@ -43,7 +43,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Click Save on the template event page: [aria-label="Save"] first, else a
  * button whose text is exactly "Save". Polls briefly (the editor renders
  * async after navigation); when no Save control ever appears it throws
- * HANDOFF so the server tells Dad to press Save himself.
+ * HANDOFF so the server tells the owner to press Save themselves.
  */
 export async function saveTemplateEvent(
   doc: Document,

@@ -1,4 +1,4 @@
-import type { Edge, StepInstance, Workflow } from '@dad/shared';
+import type { Edge, StepInstance, Workflow } from '@onesaas/shared';
 import { openDb } from '../src/db/connection.js';
 import { createRepo } from '../src/db/repo.js';
 import { createEngine } from '../src/engine/engine.js';
@@ -436,8 +436,8 @@ test('trigger executes with the raw payload and downstream bindings see it', asy
 
   const payload = {
     email: {
-      from: 'dad@example.com',
-      fromName: 'Dad',
+      from: 'owner@example.com',
+      fromName: 'Sam',
       subject: 'Hi',
       body: 'hello',
       threadId: 't1',
@@ -448,7 +448,7 @@ test('trigger executes with the raw payload and downstream bindings see it', asy
   expect(run.status).toBe('done');
   const full = repo.getRun(run.id)!;
   expect(full.steps.find((s) => s.stepId === 'trigger')!.output).toEqual(payload);
-  expect(capturedInput).toEqual({ text: 'Hi Dad!' });
+  expect(capturedInput).toEqual({ text: 'Hi Sam!' });
 });
 
 test('input violating inputSchema fails the step', async () => {

@@ -1,4 +1,4 @@
-import type { StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@onesaas/shared';
 import type { ReactFlowProps } from '@xyflow/react';
 import { ReactFlow } from '@xyflow/react';
 import { act, render } from '@testing-library/react';

@@ -58,7 +58,7 @@ describe('prepareDraftPost', () => {
     expect(items[0]).toBeInstanceOf(FakeClipboardItem);
     expect(items[0]!.types).toEqual(['image/png']);
     expect(items[0]!.data['image/png']).toBeInstanceOf(Blob);
-    const hint = document.querySelector('[data-dad-meta-hint]');
+    const hint = document.querySelector('[data-onesaas-meta-hint]');
     expect(hint?.textContent).toBe(PASTE_HINT);
     expect(PASTE_HINT).toBe(
       "Your photo is copied. Click here and press ⌘V, then Publish when you're happy.",
@@ -86,7 +86,7 @@ describe('prepareDraftPost', () => {
     expect(result).toEqual({ textFilled: true, imageCopied: false });
     expect(document.querySelector(SELECTORS.composer)?.textContent).toBe('Just words.');
     expect(navigator.clipboard.write as unknown as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-dad-meta-hint]')).toBeNull();
+    expect(document.querySelector('[data-onesaas-meta-hint]')).toBeNull();
   });
 
   it('throws SELECTOR_MISSING when the composer is absent', async () => {
@@ -103,7 +103,7 @@ describe('prepareDraftPost', () => {
   it('keeps a single hint when called twice', async () => {
     await prepareDraftPost(document, { text: 'One', imageDataUrl: PNG_1PX });
     await prepareDraftPost(document, { text: 'Two', imageDataUrl: PNG_1PX });
-    expect(document.querySelectorAll('[data-dad-meta-hint]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-onesaas-meta-hint]')).toHaveLength(1);
     expect(document.querySelector(SELECTORS.composer)?.textContent).toBe('Two');
   });
 });

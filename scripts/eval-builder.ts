@@ -7,7 +7,7 @@
 // PASS/FAIL per flow plus the tool calls made and the model cost.
 import { EventEmitter } from 'node:events';
 import OpenAI from 'openai';
-// Relative, not '@dad/shared': the workspace link only exists under
+// Relative, not '@onesaas/shared': the workspace link only exists under
 // apps/server/node_modules, so the bare specifier fails from scripts/ at both
 // typecheck and tsx runtime. (Shared's own main IS this src entry.)
 import { catalog, type Workflow } from '../packages/shared/src/index.js';
@@ -186,14 +186,14 @@ const CASES: EvalCase[] = [
     },
     checksAll: (workflows, tables) => {
       const email = bestMatch(workflows, FLOW4_EMAIL_STEPS);
-      // One reducer matching both branches is a single-reducer build, not
-      // flow 4: the photo reducer must be a SEPARATE workflow.
+      // One automation matching both branches is a single-automation build, not
+      // flow 4: the photo automation must be a SEPARATE workflow.
       let photo = bestMatch(workflows, FLOW4_PHOTO_STEPS);
       if (photo && email && photo.id === email.id) photo = undefined;
       const out: [string, boolean][] = [
-        [`two reducers built (found ${workflows.length})`, workflows.length >= 2],
-        ['email reducer found', email !== undefined],
-        ['photo reducer found', photo !== undefined],
+        [`two automations built (found ${workflows.length})`, workflows.length >= 2],
+        ['email automation found', email !== undefined],
+        ['photo automation found', photo !== undefined],
       ];
       if (email) {
         const stepTypes = email.steps.map((s) => s.type);

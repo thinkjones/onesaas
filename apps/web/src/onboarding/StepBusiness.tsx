@@ -9,7 +9,7 @@ const inputClass =
 
 /**
  * M5 Task 5 screen 2: the business profile. Next saves the three fields and
- * fires POST /api/mood/generate so the reframe screen can draw Dad's own
+ * fires POST /api/mood/generate so the reframe screen can draw the owner's own
  * business; generation is best-effort and never blocks onboarding. The save
  * is awaited first: the server reads the profile synchronously on POST
  * receipt, so firing both at once would generate from the stale profile.

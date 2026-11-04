@@ -1,18 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-test('new blank reducer opens in design mode with palette and helper', async ({ page }) => {
-  await page.goto('/reducers');
-  await page.getByRole('button', { name: 'New chore reducer' }).click();
-  await expect(page).toHaveURL(/\/reducers\/.+\?mode=design/);
-  await expect(page.getByRole('heading', { name: 'Untitled chore reducer' })).toBeVisible();
+test('new blank automation opens in design mode with palette and helper', async ({ page }) => {
+  await page.goto('/automations');
+  await page.getByRole('button', { name: 'New automation' }).click();
+  await expect(page).toHaveURL(/\/automations\/.+\?mode=design/);
+  await expect(page.getByRole('heading', { name: 'Untitled automation' })).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Add a step' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Helper' })).toBeVisible();
 });
 
 test('palette adds a step, config form saves, problems gate turn-on', async ({ page }) => {
-  await page.goto('/reducers');
-  await page.getByRole('button', { name: 'New chore reducer' }).click();
-  await expect(page).toHaveURL(/\/reducers\/.+\?mode=design/);
+  await page.goto('/automations');
+  await page.getByRole('button', { name: 'New automation' }).click();
+  await expect(page).toHaveURL(/\/automations\/.+\?mode=design/);
 
   const palette = page.getByRole('complementary', { name: 'Add a step' });
   await expect(palette.getByRole('button', { name: 'Extract details' })).toBeVisible();
@@ -31,9 +31,9 @@ test('palette adds a step, config form saves, problems gate turn-on', async ({ p
 });
 
 test('backspace deletes a step and Undo restores it', async ({ page }) => {
-  await page.goto('/reducers');
-  await page.getByRole('button', { name: 'New chore reducer' }).click();
-  await expect(page).toHaveURL(/\/reducers\/.+\?mode=design/);
+  await page.goto('/automations');
+  await page.getByRole('button', { name: 'New automation' }).click();
+  await expect(page).toHaveURL(/\/automations\/.+\?mode=design/);
 
   await page
     .getByRole('complementary', { name: 'Add a step' })

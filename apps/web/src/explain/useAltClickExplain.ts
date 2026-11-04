@@ -13,7 +13,7 @@ import type { ExplainTarget } from '../api.ts';
  * listens: it opens the helper panel and sends the message. Outside the
  * workflow page TellMeMoreFallback (mounted in AppShell) routes to a panel.
  */
-export const TELL_ME_MORE_EVENT = 'dad:tell-me-more';
+export const TELL_ME_MORE_EVENT = 'onesaas:tell-me-more';
 
 export function tellMeMoreMessage(label: string): string {
   return `Tell me more about ${label}`;

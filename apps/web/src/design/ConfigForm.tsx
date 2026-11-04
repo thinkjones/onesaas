@@ -1,4 +1,4 @@
-import { catalog, type StepDef, type StepInstance, type Workflow } from '@dad/shared';
+import { catalog, type StepDef, type StepInstance, type Workflow } from '@onesaas/shared';
 import { useState, type ReactNode } from 'react';
 import AppButton from './AppButton.tsx';
 
@@ -26,7 +26,7 @@ export interface ConfigFormProps {
 // --- Zod introspection (duck-typed `_def` reads, no new dependency) ---
 //
 // The catalog's config/input/output schemas are zod schemas living in
-// @dad/shared, which the web already imports. zod-to-json-schema is a
+// @onesaas/shared, which the web already imports. zod-to-json-schema is a
 // SERVER-only dependency, and a schema-serving API route would be heavier
 // than the problem warrants — so the form reads the shapes it needs straight
 // off the zod objects. Only `_def.typeName`, `.shape`, `.options`, and the
@@ -219,7 +219,7 @@ const inputClass =
  * "Inputs" section where each binding is free text with a picker of upstream
  * step outputs. Saving hands the whole new config + inputs to onSave (the
  * parent sends `updateStep`); unknown step types still save inputs as
- * free text so nothing Dad typed is ever stranded.
+ * free text so nothing the owner typed is ever stranded.
  */
 export default function ConfigForm({ step, workflow, onSave, formId, saving, def }: ConfigFormProps) {
   const resolved = def ?? catalog[step.type];
@@ -352,7 +352,7 @@ export default function ConfigForm({ step, workflow, onSave, formId, saving, def
         if (desc.kind === 'unsupported' || desc.kind === 'array') return null;
         const id = `${step.id}-config-${name}`;
         const value = config[name];
-        // code.transform's code is agent-written and Dad never edits it: show
+        // code.transform's code is agent-written and the owner never edits it: show
         // it read-only in a monospace block under its explanation. The value
         // still round-trips through `config` untouched on save.
         if (step.type === 'code.transform' && name === 'code') {

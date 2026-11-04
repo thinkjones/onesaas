@@ -1,6 +1,6 @@
 import { mkdirSync, promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { FileRef } from '@dad/shared';
+import type { FileRef } from '@onesaas/shared';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
 import type { Database } from '../db/connection.js';
@@ -54,7 +54,7 @@ const HEIC_BRANDS = new Set([
 ]);
 
 // Detected from the BYTES (ftyp box), not assumed from sharp's build flags:
-// when sharp cannot decode the buffer we still owe Dad the HEIC-specific
+// when sharp cannot decode the buffer we still owe the owner the HEIC-specific
 // message for HEIC bytes and the photo message for everything else.
 function isHeicBytes(buf: Buffer, mime: string): boolean {
   if (mime === 'image/heic' || mime === 'image/heif') return true;

@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { catalog, type FileRef } from '@dad/shared';
+import { catalog, type FileRef } from '@onesaas/shared';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest';
 import { openDb, type Database } from '../src/db/connection.js';
@@ -42,7 +42,7 @@ describe('image steps', () => {
   beforeEach(() => {
     db = openDb(':memory:');
     createRepo(db);
-    files = createFileStore({ db, dir: mkdtempSync(join(tmpdir(), 'dad-image-')) });
+    files = createFileStore({ db, dir: mkdtempSync(join(tmpdir(), 'onesaas-image-')) });
     // The fake `image` models object: segment/generate/edit are spies the
     // tests program per case. Image steps never touch the chat gateway.
     image = { segment: vi.fn(), generate: vi.fn(), edit: vi.fn() };

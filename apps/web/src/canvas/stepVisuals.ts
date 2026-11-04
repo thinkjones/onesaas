@@ -1,4 +1,4 @@
-import type { StepKind } from '@dad/shared';
+import type { StepKind } from '@onesaas/shared';
 import {
   Database,
   Inbox,

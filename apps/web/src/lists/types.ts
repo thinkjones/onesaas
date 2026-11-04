@@ -1,4 +1,4 @@
-import type { ColumnType } from '@dad/shared';
+import type { ColumnType } from '@onesaas/shared';
 
 // Mirrors the server's TableDef/ViewDef (apps/server/src/tables/store.ts and
 // apps/server/src/views/store.ts). The web package cannot import server code,

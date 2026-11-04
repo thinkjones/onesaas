@@ -13,7 +13,7 @@ export default function AppShell() {
   // Extension "open the app" button: no-op in browsers.
   useDesktopFocus();
   const location = useLocation();
-  const fullBleed = /^\/(reducers\/[^/]+|lists)$/.test(location.pathname);
+  const fullBleed = /^\/(automations\/[^/]+|lists)$/.test(location.pathname);
   return (
     <main className="board relative h-screen overflow-hidden">
       {/* Off-workflow "Tell me more" routing (renders nothing). */}

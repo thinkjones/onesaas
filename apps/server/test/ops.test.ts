@@ -1,4 +1,4 @@
-import { Workflow, catalog, type Workflow as WorkflowType } from '@dad/shared';
+import { Workflow, catalog, type Workflow as WorkflowType } from '@onesaas/shared';
 import { expect, test } from 'vitest';
 import { createApp } from '../src/app.js';
 import { openDb } from '../src/db/connection.js';
@@ -9,9 +9,9 @@ import { createTableStore, type TableStore } from '../src/tables/store.js';
 import { createWorkflowOps, type WorkflowOps } from '../src/workflows/ops.js';
 import { checkWorkflow } from '../src/workflows/validate.js';
 
-type Change = { wf: WorkflowType; note: string; by: 'dad' | 'agent' };
+type Change = { wf: WorkflowType; note: string; by: 'owner' | 'agent' };
 
-function setup(o?: { onChange?: (wf: WorkflowType, note: string, by: 'dad' | 'agent') => void }): {
+function setup(o?: { onChange?: (wf: WorkflowType, note: string, by: 'owner' | 'agent') => void }): {
   repo: Repo;
   tables: TableStore;
   ops: WorkflowOps;
@@ -532,11 +532,11 @@ test('onChange is called with the note and by', () => {
   });
   const added = addWrite(ops, { after: 'extract' });
   expect(added.ok).toBe(true);
-  const renamed = ops.rename('flow-1', { name: 'Renamed' }, { by: 'dad' });
+  const renamed = ops.rename('flow-1', { name: 'Renamed' }, { by: 'owner' });
   expect(renamed.ok).toBe(true);
   expect(changes.map((c) => [c.note, c.by])).toEqual([
     ['Added step "Write reply" after "Extract details".', 'agent'],
-    ['Renamed to "Renamed".', 'dad'],
+    ['Renamed to "Renamed".', 'owner'],
   ]);
   expect(changes[0]!.wf.steps.some((s) => s.title === 'Write reply')).toBe(true);
 });
@@ -561,7 +561,7 @@ test('POST /api/workflows creates a workflow; bad bodies 400', async () => {
   expect(await bad.json()).toEqual({ error: 'Invalid workflow body' });
 });
 
-test('POST /api/workflows/:id/ops dispatches ops and passes by dad', async () => {
+test('POST /api/workflows/:id/ops dispatches ops and passes by owner', async () => {
   const db = openDb(':memory:');
   const tables = createTableStore(db);
   const repo = createRepo(db);
@@ -570,7 +570,7 @@ test('POST /api/workflows/:id/ops dispatches ops and passes by dad', async () =>
   const app = createApp({
     repo,
     tables,
-    onWorkflowChange: (wf: WorkflowType, note: string, by: 'dad' | 'agent') =>
+    onWorkflowChange: (wf: WorkflowType, note: string, by: 'owner' | 'agent') =>
       changes.push({ wf, note, by }),
   });
   const res = await app.request('/api/workflows/flow-1/ops', {
@@ -581,7 +581,7 @@ test('POST /api/workflows/:id/ops dispatches ops and passes by dad', async () =>
   expect(res.status).toBe(200);
   const body = (await res.json()) as { ok: boolean; note?: string };
   expect(body.ok).toBe(true);
-  expect(changes.map((c) => [c.note, c.by])).toEqual([['Renamed to "Via web".', 'dad']]);
+  expect(changes.map((c) => [c.note, c.by])).toEqual([['Renamed to "Via web".', 'owner']]);
 
   const cycle = await app.request('/api/workflows/flow-1/ops', {
     method: 'POST',

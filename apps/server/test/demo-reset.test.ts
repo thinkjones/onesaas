@@ -29,7 +29,7 @@ import { createSettingsStore } from '../src/settings/store.js';
 // so booting it would mask the "no workflows" assertion.
 
 function makeDataDir(): string {
-  return mkdtempSync(join(tmpdir(), 'dad-demo-reset-'));
+  return mkdtempSync(join(tmpdir(), 'onesaas-demo-reset-'));
 }
 
 function dbFileFor(dataDir: string): string {
@@ -56,7 +56,7 @@ async function seedLivedIn(dataDir: string): Promise<{ moodId: string }> {
   const settings = createSettingsStore(db);
   try {
     settings.update({
-      businessName: "Dad's Hardware",
+      businessName: "The owner's Hardware",
       businessWhat: 'a family hardware store',
       timezone: 'America/New_York',
       textSize: 'large',
@@ -93,7 +93,7 @@ function readFresh(dataDir: string): {
 async function expectLivedInIntact(dataDir: string, moodId: string): Promise<void> {
   expect(existsSync(dbFileFor(dataDir))).toBe(true);
   const { settings, workflowIds } = readFresh(dataDir);
-  expect(settings.businessName).toBe("Dad's Hardware");
+  expect(settings.businessName).toBe("The owner's Hardware");
   expect(workflowIds.length).toBeGreaterThan(0);
   const db = openDb(dbFileFor(dataDir));
   try {
@@ -126,7 +126,7 @@ describe('saveDemoProfile + demoReset --keep-profile', () => {
     await demoReset({ dataDir, keepProfile: true, checkLive: false });
 
     const { settings, workflowIds } = readFresh(dataDir);
-    expect(settings.businessName).toBe("Dad's Hardware");
+    expect(settings.businessName).toBe("The owner's Hardware");
     expect(settings.businessWhat).toBe('a family hardware store');
     expect(settings.timezone).toBe('America/New_York');
     expect(settings.textSize).toBe('large');

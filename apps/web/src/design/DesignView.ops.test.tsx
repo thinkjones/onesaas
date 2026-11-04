@@ -1,4 +1,4 @@
-import type { StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@onesaas/shared';
 import type { ReactFlowProps } from '@xyflow/react';
 import { ReactFlow } from '@xyflow/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -88,7 +88,7 @@ function opsCalls(fetch: ReturnType<typeof vi.fn>): OpCall[] {
  * apply to a local workflow copy so Undo's reconnect/move sequence resolves
  * against changing state, like the real server.
  */
-function renderOps(entry = '/reducers/flow-1') {
+function renderOps(entry = '/automations/flow-1') {
   let current = detail();
   const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -316,7 +316,7 @@ describe('DesignView canvas ops', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={['/reducers/flow-1']}>
+        <MemoryRouter initialEntries={['/automations/flow-1']}>
           <Toaster />
           <DesignView workflowId="flow-1" agent={makeAgent()} logActivity={() => {}} />
         </MemoryRouter>
@@ -356,7 +356,7 @@ describe('DesignView canvas ops', () => {
     ReactFlowMock.mockImplementation(((props: ReactFlowProps) => (
       <>{props.nodes?.map((n) => (n.data as StepNodeData).design?.settings)}</>
     )) as never);
-    const { fetch } = renderOps('/reducers/flow-1?step=s1');
+    const { fetch } = renderOps('/automations/flow-1?step=s1');
     fireEvent.change(await screen.findByLabelText('Instructions'), {
       target: { value: 'Read the catering enquiry.' },
     });

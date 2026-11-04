@@ -1,4 +1,4 @@
-import type { Workflow } from '@dad/shared';
+import type { Workflow } from '@onesaas/shared';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { openDb, type Database } from '../src/db/connection.js';

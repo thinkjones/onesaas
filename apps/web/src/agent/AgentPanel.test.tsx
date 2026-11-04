@@ -101,7 +101,7 @@ function textarea(): HTMLElement {
 }
 
 const PERSISTED: AgentTranscriptEntry[] = [
-  { role: 'dad', text: 'Save my customers', at: 1 },
+  { role: 'owner', text: 'Save my customers', at: 1 },
   { role: 'agent', text: 'On it.', at: 2 },
 ];
 
@@ -167,7 +167,7 @@ describe('AgentPanel ask chips', () => {
     expect(screen.getByRole('button', { name: 'Something else' })).toBeDefined();
   });
 
-  test('clicking a chip sends its text as a Dad message', async () => {
+  test('clicking a chip sends its text as an owner message', async () => {
     const { posts } = renderPanel({ transcript: [] });
     await screen.findByText('Tell me what you want this automation to do.');
     act(() => emitAgent('flow-1', ASK));
@@ -175,7 +175,7 @@ describe('AgentPanel ask chips', () => {
     await waitFor(() => {
       expect(posts).toEqual([{ text: 'Outlook' }]);
     });
-    // The clicked chip lands in the transcript as Dad's own message.
+    // The clicked chip lands in the transcript as the owner's own message.
     expect(screen.getAllByText('Outlook')).toHaveLength(2);
   });
 
@@ -284,7 +284,7 @@ describe('AgentPanel send errors', () => {
     // The server message surfaces inline (not a crash)…
     expect(await screen.findByRole('alert')).toBeDefined();
     expect(screen.getByText('Still thinking about your last message.')).toBeDefined();
-    // …the rejected message is not kept as Dad's…
+    // …the rejected message is not kept as the owner's…
     expect(screen.queryByText('hello')).toBeNull();
     // …and the running turn keeps the input disabled.
     expect((textarea() as HTMLTextAreaElement).disabled).toBe(true);
@@ -541,7 +541,7 @@ describe('AgentPanel remount', () => {
     await screen.findByText('Tell me what you want this automation to do.');
     expect(getCount).toBe(1);
 
-    // Complete a turn (mocked): Dad sends, the agent answers, done settles.
+    // Complete a turn (mocked): the owner sends, the agent answers, done settles.
     fireEvent.change(textarea(), { target: { value: 'hello' } });
     fireEvent.keyDown(textarea(), { key: 'Enter', code: 'Enter' });
     await waitFor(() => {
@@ -564,7 +564,7 @@ describe('AgentPanel remount', () => {
 
     // The server persisted the turn; collapse/reopen remounts the panel.
     current = [
-      { role: 'dad', text: 'hello', at: 10 },
+      { role: 'owner', text: 'hello', at: 10 },
       { role: 'agent', text: 'Done deal.', at: 11 },
     ];
     first.unmount();

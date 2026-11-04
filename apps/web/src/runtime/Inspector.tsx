@@ -1,4 +1,4 @@
-import type { StepRun } from '@dad/shared';
+import type { StepRun } from '@onesaas/shared';
 import BoxIcon from 'lucide-react/icons/box';
 import { useState } from 'react';
 import type { ExplainTarget } from '../api.ts';
@@ -134,7 +134,7 @@ export interface InspectorProps {
  *
  * Skipped approvals carry `{ proposed }` output (deliberate server audit, see
  * engine.resolveApproval) — shown as "Proposed (skipped)" with the proposal
- * nested below, so Dad sees what he skipped instead of a bare `proposed` key.
+ * nested below, so the owner sees what they skipped instead of a bare `proposed` key.
  */
 export default function Inspector({
   stepRun,

@@ -4,7 +4,7 @@ import {
   type StepDef,
   type StepInstance,
   type Workflow as WorkflowType,
-} from '@dad/shared';
+} from '@onesaas/shared';
 import { nanoid } from 'nanoid';
 import type { Repo } from '../db/repo.js';
 import type { TableStore } from '../tables/store.js';
@@ -12,10 +12,10 @@ import { checkWorkflow, extractRefs, upstreamIds } from './validate.js';
 
 export type OpResult = { ok: true; workflow: WorkflowType; note: string } | { ok: false; error: string };
 
-export type OpBy = 'dad' | 'agent';
+export type OpBy = 'owner' | 'agent';
 
 export interface OpOpts {
-  /** Who made the change. Direct calls default to the agent; the web passes 'dad'. */
+  /** Who made the change. Direct calls default to the agent; the web passes 'owner'. */
   by?: OpBy;
 }
 
@@ -56,7 +56,7 @@ export function createWorkflowOps(d: {
   repo: Repo;
   tables: TableStore;
   catalog: Record<string, StepDef>;
-  onChange?: (wf: WorkflowType, note: string, by: 'dad' | 'agent') => void;
+  onChange?: (wf: WorkflowType, note: string, by: 'owner' | 'agent') => void;
 }): WorkflowOps {
   const { repo, tables, catalog } = d;
 
@@ -183,7 +183,7 @@ export function createWorkflowOps(d: {
       // Replace semantics: an `inputs` patch is the step's whole new inputs,
       // so it — not a merge with the old bindings — is what gets validated.
       // A patch that leaves `inputs` alone is never refused for pre-existing
-      // dangling bindings; checkWorkflow reports those for Dad to fix.
+      // dangling bindings; checkWorkflow reports those for the owner to fix.
       if (patch.inputs !== undefined) {
         const bad = badBinding(
           extractRefs(patch.inputs),

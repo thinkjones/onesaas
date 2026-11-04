@@ -267,15 +267,15 @@ test('mount pings a paired extension and shows who it is talking to', async () =
         paired: true,
         connected: true,
         lastPingAt: new Date(Date.now() - 8000).toISOString(),
-        peer: 'dad@gmail.com',
+        peer: 'owner@gmail.com',
       };
     }
-    if (isPing(url, init)) return pingLive('dad@gmail.com');
+    if (isPing(url, init)) return pingLive('owner@gmail.com');
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
   const { unmount } = render(<Pairing />);
-  expect(await screen.findByText('Talking to: dad@gmail.com')).toBeDefined();
+  expect(await screen.findByText('Talking to: owner@gmail.com')).toBeDefined();
   expect(await screen.findByText('Last ping: just now')).toBeDefined();
   expect(fetchMock).toHaveBeenCalledWith(
     '/api/pairing/ping',
@@ -290,10 +290,10 @@ test('a failed mount ping flips a stale connected claim to the offline view', as
     'fetch',
     mockFetch((url, init) => {
       if (url === '/api/pairing/status') {
-        return { paired: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+        return { paired: true, connected: true, lastPingAt: stale, peer: 'owner@gmail.com' };
       }
       if (isPing(url, init)) {
-        return { ok: false, connected: false, lastPingAt: stale, peer: 'dad@gmail.com' };
+        return { ok: false, connected: false, lastPingAt: stale, peer: 'owner@gmail.com' };
       }
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -301,7 +301,7 @@ test('a failed mount ping flips a stale connected claim to the offline view', as
   const { unmount } = render(<Pairing />);
   expect(await screen.findByText('Not connected')).toBeDefined();
   expect(await screen.findByText(/Paired, but Chrome isn't connected/)).toBeDefined();
-  expect(await screen.findByText('Talking to: dad@gmail.com')).toBeDefined();
+  expect(await screen.findByText('Talking to: owner@gmail.com')).toBeDefined();
   unmount();
 });
 
@@ -340,11 +340,11 @@ test('a connected poll with a stale last ping re-verifies through the ping endpo
     'fetch',
     mockFetch((url, init) => {
       if (url === '/api/pairing/status') {
-        return { paired: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+        return { paired: true, connected: true, lastPingAt: stale, peer: 'owner@gmail.com' };
       }
       if (isPing(url, init)) {
         pingCalls += 1;
-        return { ok: true, connected: true, lastPingAt: stale, peer: 'dad@gmail.com' };
+        return { ok: true, connected: true, lastPingAt: stale, peer: 'owner@gmail.com' };
       }
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -418,7 +418,7 @@ test('paired-start code screen completes when the generation advances', async ()
               paired: true,
               connected: true,
               lastPingAt: new Date().toISOString(),
-              peer: 'dad@gmail.com',
+              peer: 'owner@gmail.com',
               generation: 2,
             };
       }

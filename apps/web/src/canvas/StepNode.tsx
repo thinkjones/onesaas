@@ -1,4 +1,4 @@
-import type { StepInstance, StepKind, StepRunStatus } from '@dad/shared';
+import type { StepInstance, StepKind, StepRunStatus } from '@onesaas/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { cn } from 'cn';
 import Check from 'lucide-react/icons/check';

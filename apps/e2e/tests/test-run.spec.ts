@@ -33,7 +33,7 @@ test('flow-1 test run previews everything without touching Gmail', async ({ requ
 test('try-it button shows the test results strip', async ({ page }) => {
   // The run executes ai.* steps for real (~12s): both timeouts raised.
   test.setTimeout(90_000);
-  await page.goto('/reducers/flow-1?mode=design');
+  await page.goto('/automations/flow-1?mode=design');
   await page.getByRole('button', { name: 'Try it' }).click();
   // The strip is an unlabelled div (no landmark role in Chromium's a11y
   // tree), so assert its content: the sample notice plus a per-step why.

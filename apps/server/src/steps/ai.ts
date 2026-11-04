@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ColumnType } from '@dad/shared';
+import type { ColumnType } from '@onesaas/shared';
 import type { ChatJsonOptions, ChatJsonResult, Gateway } from '../models/gateway.js';
 import { ctxNow, ctxTimezone, type Executor, type StepContext } from './registry.js';
 

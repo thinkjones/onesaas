@@ -1,7 +1,7 @@
 import type { ServerType } from '@hono/node-server';
 import { createNodeWebSocket } from '@hono/node-ws';
-import type { Workflow } from '@dad/shared';
-import { catalog } from '@dad/shared';
+import type { Workflow } from '@onesaas/shared';
+import { catalog } from '@onesaas/shared';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
@@ -99,7 +99,7 @@ export function createApp(deps: AppDeps): Hono {
   const engine = deps.engine as ReturnType<typeof createEngine> | undefined;
   const tables = deps.tables as TableStore | undefined;
   const onWorkflowChange = deps.onWorkflowChange as
-    | ((wf: Workflow, note: string, by: 'dad' | 'agent') => void)
+    | ((wf: Workflow, note: string, by: 'owner' | 'agent') => void)
     | undefined;
   const agent = deps.agent as BuilderAgent | undefined;
   const agentEvents = deps.agentEvents as EventEmitter | undefined;
@@ -115,7 +115,7 @@ export function createApp(deps: AppDeps): Hono {
   const modelConnection = deps.modelConnection as ModelConnectionStore | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
-  // The composition root shares ONE ops (so its onChange sees Dad's edits);
+  // The composition root shares ONE ops (so its onChange sees the owner's edits);
   // direct createApp callers without one get a local instance as before.
   const ops =
     (deps.ops as WorkflowOps | undefined) ??
@@ -276,7 +276,7 @@ export function createApp(deps: AppDeps): Hono {
     return c.json({ ok: true });
   });
 
-  // Mood backgrounds (M5 Task 4). POST draws Dad's business in the
+  // Mood backgrounds (M5 Task 4). POST draws the owner's business in the
   // background (202 immediately) and emits { type: 'mood', fileIds } on
   // /api/events when done; GET reports the stored set plus whether a run is
   // in flight. A POST while a run is in flight is a no-op 202 (no duplicate
@@ -347,7 +347,7 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   // Lists + saved views (M4 Task 8). Counts and paging slice the full
-  // query: Dad-scale lists fit in memory, so no SQL-level paging.
+  // query: owner-scale lists fit in memory, so no SQL-level paging.
   app.get('/api/lists', (c) => {
     if (!tables) return c.json({ error: 'Server not configured' }, 500);
     return c.json(
@@ -579,7 +579,7 @@ export function createApp(deps: AppDeps): Hono {
     // Forward the validated args, not the raw body, so unknown keys can
     // never ride through to the op even if a schema stops being strict.
     const validatedArgs = argsParsed.data as unknown[];
-    return c.json(fn(id, ...validatedArgs, { by: 'dad' }));
+    return c.json(fn(id, ...validatedArgs, { by: 'owner' }));
   });
 
   const agentBody = z.object({ text: z.string().min(1) }).strict();
@@ -647,7 +647,7 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   // The side panel's Run button: a REAL run on real data, unlike "Try it". Only
-  // for automations Dad has turned on, and re-checked because edits to a live
+  // for automations the owner has turned on, and re-checked because edits to a live
   // workflow are saved without validation. Resolves when the run finishes or
   // parks on an approval; progress streams over /api/events meanwhile.
   app.post('/api/workflows/:id/run', async (c) => {
@@ -689,7 +689,7 @@ export function createApp(deps: AppDeps): Hono {
     const wf = repo.getWorkflow(id);
     if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
     if (wf.trigger.type !== 'trigger.upload') {
-      return c.json({ error: "This chore reducer doesn't start from a photo upload." }, 400);
+      return c.json({ error: "This automation doesn't start from a photo upload." }, 400);
     }
     const body = await c.req.parseBody();
     const file = body['file'];

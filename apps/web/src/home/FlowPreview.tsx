@@ -1,4 +1,4 @@
-import type { FlowIconName, FlowStep } from '@dad/shared';
+import type { FlowIconName, FlowStep } from '@onesaas/shared';
 import {
   ArrowRight,
   Bell,

@@ -486,7 +486,7 @@ function ServicesSection() {
 // Debug mode for pairing, server side: the bridge's recent event log —
 // hellos, rejections, redemptions, disconnects — newest last. The other two
 // legs live in the extension popup's Connection log and the service-worker
-// console ([dad-ext] lines).
+// console ([onesaas-ext] lines).
 function DiagnosticsSection() {
   const [events, setEvents] = useState<Array<{ t: string; msg: string }> | null>(null);
   const [error, setError] = useState('');

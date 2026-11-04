@@ -1,4 +1,4 @@
-import { catalog, type StepKind } from '@dad/shared';
+import { catalog, type StepKind } from '@onesaas/shared';
 import { useMemo, useRef, useState } from 'react';
 import AppButton from '../design/AppButton.tsx';
 
@@ -16,7 +16,7 @@ export type ChatPick =
   | { kind: 'step'; stepId: string; title: string };
 
 export interface ChatMsg {
-  from: 'dad' | 'agent';
+  from: 'owner' | 'agent';
   text: string;
 }
 
@@ -32,7 +32,7 @@ export interface NodeChatProps {
   anchorTitle: string;
   history: ChatMsg[];
   busy: boolean;
-  /** Other steps in this reducer (the "things you have created" options). */
+  /** Other steps in this automation (the "things you have created" options). */
   siblings: { id: string; title: string }[];
   onSubmit(text: string, pick: ChatPick | undefined): void;
   onClose(): void;
@@ -41,7 +41,7 @@ export interface NodeChatProps {
 /**
  * The per-node mini chat (Bug #4): a small box anchored at a canvas node.
  * Typing filters a dropdown of catalog node types (grouped When/Get/Work
- * out/Save/Do) plus the reducer's existing steps; picking one adds it
+ * out/Save/Do) plus the automation's existing steps; picking one adds it
  * after this node, while free text goes to the agent with node context.
  * The exchange stays here as a small history; the RHS chat only logs
  * that this node is being designed.
@@ -111,7 +111,7 @@ export default function NodeChat({
             <p
               key={i}
               className={`max-w-full text-sm break-words ${
-                m.from === 'dad' ? 'self-end rounded-2xl rounded-br-sm bg-primary px-2.5 py-1 text-primary-foreground' : 'self-start text-muted-foreground'
+                m.from === 'owner' ? 'self-end rounded-2xl rounded-br-sm bg-primary px-2.5 py-1 text-primary-foreground' : 'self-start text-muted-foreground'
               }`}
             >
               {m.text}

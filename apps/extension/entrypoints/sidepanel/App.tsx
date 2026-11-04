@@ -1,6 +1,6 @@
 import ArrowLeft from 'lucide-react/icons/arrow-left';
 import { useEffect, useRef, useState } from 'react';
-import { formatPingAge } from '@dad/shared';
+import { formatPingAge } from '@onesaas/shared';
 import type { BgDebugEvent } from '../../lib/background.js';
 import ControlPlane from './ControlPlane.tsx';
 import { SITE_CAPABILITIES, siteOfUrl, type PanelSite } from '../../lib/sites.js';
@@ -409,7 +409,7 @@ function App() {
   // so the keyframes ride along in a style tag).
   const spinner = (
     <>
-      <style>{'@keyframes dad-spin { to { transform: rotate(360deg); } }'}</style>
+      <style>{'@keyframes onesaas-spin { to { transform: rotate(360deg); } }'}</style>
       <span
         role="status"
         aria-label="Pairing"
@@ -422,7 +422,7 @@ function App() {
           border: '2px solid var(--border-strong)',
           borderTopColor: 'var(--text-dim)',
           borderRadius: '50%',
-          animation: 'dad-spin 0.8s linear infinite',
+          animation: 'onesaas-spin 0.8s linear infinite',
         }}
       />
     </>

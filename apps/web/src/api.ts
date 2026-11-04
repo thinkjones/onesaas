@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import type { FileRef, Run, StepRun, Workflow } from '@dad/shared';
+import type { FileRef, Run, StepRun, Workflow } from '@onesaas/shared';
 import type { ListSummary, ViewData, ViewDef } from './lists/types.ts';
 
 // Mirrors apps/server/src/engine/events.ts. The web package cannot import it
@@ -615,7 +615,7 @@ export const PENDING_BUILT_TIMEOUT_MS = 20_000;
  */
 export const MOOD_DRAW_TIMEOUT_MS = 20_000;
 
-/** POST /api/workflows {name, description}: a blank reducer (steps come later). */
+/** POST /api/workflows {name, description}: a blank automation (steps come later). */
 export function createWorkflow(body: { name: string; description: string }): Promise<Workflow> {
   return postJson('/api/workflows', body);
 }
@@ -651,11 +651,11 @@ export function useDeleteWorkflow() {
 /**
  * Mirrors apps/server/src/agent/conversations.ts TranscriptEntry (the web
  * package cannot import server code, so the shape is redeclared here like
- * EngineEvent). One visible row: Dad's sends plus the agent's `say` and `ask`
+ * EngineEvent). One visible row: the owner's sends plus the agent's `say` and `ask`
  * (activity/plan/built/test are live-only and never persist).
  */
 export interface AgentTranscriptEntry {
-  role: 'dad' | 'agent';
+  role: 'owner' | 'agent';
   text: string;
   ask?: { question: string; options: string[] };
   at: number;

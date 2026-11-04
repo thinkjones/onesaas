@@ -48,12 +48,12 @@ describe('EmptyState', () => {
       <EmptyState
         icon={Inbox}
         title="No runs yet"
-        hint="Runs will show up here once this chore reducer starts."
+        hint="Runs will show up here once this automation starts."
         action={{ label: 'Run now', onClick }}
       />,
     );
     expect(screen.getByText('No runs yet')).toBeDefined();
-    expect(screen.getByText('Runs will show up here once this chore reducer starts.')).toBeDefined();
+    expect(screen.getByText('Runs will show up here once this automation starts.')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Run now' })).toBeDefined();
   });
 });

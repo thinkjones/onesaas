@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { vi } from 'vitest';
-import { catalog } from '@dad/shared';
+import { catalog } from '@onesaas/shared';
 import { executors, type Bridge, type StepContext } from '../src/steps/registry.js';
 
 function makeCtx(over: Partial<StepContext> = {}, bridge?: Bridge): StepContext {

@@ -7,7 +7,7 @@ import { createServer } from '../src/main.js';
 import { defaultSettings } from '../src/settings/store.js';
 
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'dad-data-reset-'));
+  const dir = mkdtempSync(join(tmpdir(), 'onesaas-data-reset-'));
   const server = createServer({ dbFile: join(dir, 'app.db'), filesDir: join(dir, 'files') });
   return { dir, server };
 }

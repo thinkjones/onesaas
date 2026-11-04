@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { catalog } from '@dad/shared';
+import { catalog } from '@onesaas/shared';
 import { BridgeError } from '../src/bridge/bridge.js';
 import type { Gateway } from '../src/models/gateway.js';
 import { executors, type Bridge, type StepContext } from '../src/steps/registry.js';

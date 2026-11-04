@@ -1,4 +1,4 @@
-import { catalog, topoOrder, type Workflow } from '@dad/shared';
+import { catalog, topoOrder, type Workflow } from '@onesaas/shared';
 import type { TableStore } from '../tables/store.js';
 
 export interface WorkflowProblem {

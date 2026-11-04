@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ExtensionToServer, type ServerToExtension, type TriggerMsg } from '@dad/shared';
+import { ExtensionToServer, type ServerToExtension, type TriggerMsg } from '@onesaas/shared';
 import type { Pairing } from './pairing.js';
 
 export type BridgeSite = 'gmail' | 'calendar' | 'meta';

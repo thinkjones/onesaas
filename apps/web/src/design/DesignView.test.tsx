@@ -1,4 +1,4 @@
-import type { StepInstance, Workflow } from '@dad/shared';
+import type { StepInstance, Workflow } from '@onesaas/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
@@ -119,7 +119,7 @@ function renderDesign(
   const logActivity = opts?.logActivity ?? (() => {});
   const rendered = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[opts?.entry ?? '/reducers/flow-1']}>
+      <MemoryRouter initialEntries={[opts?.entry ?? '/automations/flow-1']}>
         <Toaster />
         <DesignView
           workflowId="flow-1"
@@ -583,7 +583,7 @@ describe('DesignView start', () => {
 
   test('a conversation started elsewhere hides Start so the plan can draw', async () => {
     renderDesign(detail([]), {
-      agent: makeAgent({ transcript: [{ kind: 'dad', text: 'Log my jobs', at: 1 }] }),
+      agent: makeAgent({ transcript: [{ kind: 'owner', text: 'Log my jobs', at: 1 }] }),
     });
     await screen.findByTestId('design-titlebar');
     expect(screen.queryByRole('heading', { name: 'What should this automation do?' })).toBeNull();
@@ -734,13 +734,13 @@ describe('DesignView title bar', () => {
 
 describe('DesignView inspector', () => {
   test('a selected node shows its settings in the overlay panel', async () => {
-    renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
+    renderDesign(detail(), { entry: '/automations/flow-1?mode=design&step=s1' });
     const panel = await screen.findByTestId('design-inspector');
     expect(within(panel).getByText('Pick out the details')).toBeDefined();
   });
 
   test('Close dismisses the inspector', async () => {
-    renderDesign(detail(), { entry: '/reducers/flow-1?mode=design&step=s1' });
+    renderDesign(detail(), { entry: '/automations/flow-1?mode=design&step=s1' });
     const panel = await screen.findByTestId('design-inspector');
     fireEvent.click(panel.querySelector('[aria-label="Close"]')!);
     await waitFor(() => expect(screen.queryByTestId('design-inspector')).toBeNull());

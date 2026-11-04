@@ -3,9 +3,9 @@ import { withVisionFallback } from '../bridge/vision.js';
 import type { Executor } from './registry.js';
 
 // Calendar reads run selector-first in a pinned worker tab (never moving
-// Dad's view) with screenshot + vision fallback; event creation opens a
-// pre-filled template in the ACTIVE tab (Dad sees it) and clicks Save,
-// handing off to Dad when Save is missing.
+// The owner's view) with screenshot + vision fallback; event creation opens a
+// pre-filled template in the ACTIVE tab (the owner sees it) and clicks Save,
+// handing off to the owner when Save is missing.
 
 /** Vision prompt for the day-view fallback (exact string, pinned by tests). */
 export const FREEBUSY_VISION_PROMPT =

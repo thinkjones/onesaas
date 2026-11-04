@@ -1,4 +1,4 @@
-import type { StarterIdea } from '@dad/shared';
+import type { StarterIdea } from '@onesaas/shared';
 import ArrowRight from 'lucide-react/icons/arrow-right';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import AppButton from '../design/AppButton.tsx';

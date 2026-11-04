@@ -65,9 +65,9 @@ function makeBrowser(
   } = {},
 ) {
   const store: Record<string, unknown> = {};
-  if (opts.token !== undefined) store['dadExtToken'] = opts.token;
+  if (opts.token !== undefined) store['onesaasExtToken'] = opts.token;
   const tabs = opts.tabs ?? [{ id: 11, url: 'https://mail.google.com/mail/u/0/#inbox' }];
-  // Active tab id, like the real browser: Dad starts on tab 7, and
+  // Active tab id, like the real browser: the owner starts on tab 7, and
   // update({active:true}) moves activation (so the pre-capture verification
   // query sees the just-activated worker tab).
   let activeId = 7;
@@ -181,6 +181,18 @@ afterEach(() => {
 });
 
 describe('boot', () => {
+  it('carries over a pairing saved under the earlier name', async () => {
+    const t = makeBrowser();
+    await t.browser.storage.local.set({ dadExtToken: 'old-tok' });
+    const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
+    await bg.boot();
+    lastSocket().open();
+    expect(sentJson(lastSocket())).toEqual([{ type: 'hello', token: 'old-tok' }]);
+    expect(t.store['onesaasExtToken']).toBe('old-tok');
+    expect(t.store['dadExtToken']).toBeUndefined();
+    bg.dispose();
+  });
+
   it('connects and says hello when a token is stored', async () => {
     const t = makeBrowser({ token: 'tok123' });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
@@ -215,7 +227,7 @@ describe('pairing', () => {
     expect(sentJson(lastSocket())).toContainEqual({ type: 'pair', code: '123456' });
     lastSocket().receive({ type: 'paired', token: 'newtok' });
     await expect(replyP).resolves.toEqual({ ok: true, workerId: expect.any(String) });
-    expect(t.store['dadExtToken']).toBe('newtok');
+    expect(t.store['onesaasExtToken']).toBe('newtok');
     expect(sentJson(lastSocket())).toContainEqual({ type: 'hello', token: 'newtok' });
     bg.dispose();
   });
@@ -258,7 +270,7 @@ describe('unpair', () => {
     await bg.boot();
     lastSocket().open();
     await expect(t.runtimeMessage({ action: 'unpair' })).resolves.toEqual({ ok: true });
-    expect(t.store['dadExtToken']).toBeUndefined();
+    expect(t.store['onesaasExtToken']).toBeUndefined();
     expect(await t.runtimeMessage({ action: 'status' })).toEqual({
       paired: false,
       connected: true,
@@ -273,7 +285,7 @@ describe('unpair', () => {
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     await expect(t.runtimeMessage({ action: 'unpair' })).resolves.toEqual({ ok: true });
-    expect(t.store['dadExtToken']).toBeUndefined();
+    expect(t.store['onesaasExtToken']).toBeUndefined();
     bg.dispose();
   });
 });
@@ -579,7 +591,7 @@ describe('worker tab routing', () => {
       tab: 'worker',
     });
     await flush();
-    // The read lands in the navigated worker tab, and Dad's tabs are untouched.
+    // The read lands in the navigated worker tab, and the owner's tabs are untouched.
     expect(t.updated).toContainEqual({
       tabId: t.tabMessages[0]?.tabId,
       props: { url: 'https://mail.google.com/mail/u/0/#all/thread_abc123' },
@@ -692,7 +704,7 @@ describe('screenshot action', () => {
     expect(sentJson(lastSocket())).toEqual([
       { type: 'result', id: 's1', ok: true, output: { dataUrl: 'data:image/png;base64,AAAA' } },
     ]);
-    // Navigated the worker tab (first created id: 101), then restored Dad's tab (id 7).
+    // Navigated the worker tab (first created id: 101), then restored the owner's tab (id 7).
     expect(t.updated).toContainEqual({
       tabId: 101,
       props: { url: 'https://calendar.google.com/calendar/week' },
@@ -978,12 +990,12 @@ describe('getButtons (late-loading Gmail tabs)', () => {
 
 describe('mutual ping', () => {
   it('hello carries the Chrome profile email when identity resolves', async () => {
-    const t = makeBrowser({ token: 'tok123', email: 'dad@gmail.com' });
+    const t = makeBrowser({ token: 'tok123', email: 'owner@gmail.com' });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
     expect(sentJson(lastSocket())).toEqual([
-      { type: 'hello', token: 'tok123', client: { profileEmail: 'dad@gmail.com' } },
+      { type: 'hello', token: 'tok123', client: { profileEmail: 'owner@gmail.com' } },
     ]);
     bg.dispose();
   });
@@ -1000,7 +1012,7 @@ describe('mutual ping', () => {
   });
 
   it('the pair-flow hello carries the profile email too', async () => {
-    const t = makeBrowser({ email: 'dad@gmail.com' });
+    const t = makeBrowser({ email: 'owner@gmail.com' });
     const bg = createBackground({ browser: t.browser, WebSocket: FakeWebSocket });
     await bg.boot();
     lastSocket().open();
@@ -1011,7 +1023,7 @@ describe('mutual ping', () => {
     expect(sentJson(lastSocket())).toContainEqual({
       type: 'hello',
       token: 'newtok',
-      client: { profileEmail: 'dad@gmail.com' },
+      client: { profileEmail: 'owner@gmail.com' },
     });
     bg.dispose();
   });

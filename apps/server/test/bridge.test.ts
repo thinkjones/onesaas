@@ -735,14 +735,14 @@ describe('pairing HTTP routes', () => {
     const inbox = new Inbox(client);
     send(client, { type: 'pair', code });
     const paired = await inbox.next();
-    send(client, { type: 'hello', token: paired.token, client: { profileEmail: 'dad@example.com' } });
+    send(client, { type: 'hello', token: paired.token, client: { profileEmail: 'owner@example.com' } });
     expect(await inbox.next()).toEqual({ type: 'ready', buttons: [] });
     const statusRes = await fetch(`http://127.0.0.1:${port}/api/pairing/status`);
     expect(await statusRes.json()).toEqual({
       paired: true,
       connected: true,
       lastPingAt: expect.any(String),
-      peer: 'dad@example.com',
+      peer: 'owner@example.com',
       generation: 1,
     });
   });
@@ -867,9 +867,9 @@ describe('bridge ping() + connectionInfo()', () => {
   });
 
   test('hello stamps lastPingAt and captures the client identity', () => {
-    const { bridge } = helloed({ profileEmail: 'dad@example.com' });
+    const { bridge } = helloed({ profileEmail: 'owner@example.com' });
     const info = bridge.connectionInfo();
-    expect(info.peer).toBe('dad@example.com');
+    expect(info.peer).toBe('owner@example.com');
     expect(info.lastPingAt).toEqual(expect.any(String));
     expect(Date.parse(info.lastPingAt!)).toBeLessThanOrEqual(Date.now());
   });

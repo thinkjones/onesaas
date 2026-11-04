@@ -1,4 +1,4 @@
-import type { Run, Workflow } from '@dad/shared';
+import type { Run, Workflow } from '@onesaas/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -64,7 +64,7 @@ function renderActivity(runs: Run[]) {
         <Routes>
           <Route path="/" element={<ActivityPage />} />
           <Route
-            path="/reducers/:workflowId"
+            path="/automations/:workflowId"
             element={
               <LocationProbe
                 onLocation={(p, s) => {
@@ -95,7 +95,7 @@ describe('ActivityPage', () => {
     ]);
     const card = (await screen.findByText('Drafted a reply for approval')).closest('a')!;
     expect(card.textContent).toContain('Leads');
-    expect(card.getAttribute('href')).toBe('/reducers/wf-1?mode=runs&run=run-new');
+    expect(card.getAttribute('href')).toBe('/automations/wf-1?mode=runs&run=run-new');
     expect(screen.getByRole('columnheader', { name: 'What happened' })).toBeDefined();
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows).toHaveLength(1);
@@ -126,7 +126,7 @@ describe('ActivityPage', () => {
     const { location } = renderActivity([run('run-new', 'wf-1', daysAgo(0), 'done')]);
     fireEvent.click((await screen.findAllByRole('row'))[1]!);
     await waitFor(() => {
-      expect(location().pathname).toBe('/reducers/wf-1');
+      expect(location().pathname).toBe('/automations/wf-1');
     });
     expect(location().search).toBe('?mode=runs&run=run-new');
   });

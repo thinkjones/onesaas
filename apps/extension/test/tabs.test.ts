@@ -17,7 +17,7 @@ function makeTabs(opts: { existing?: TabLike[]; capture?: string; captureThrows?
   let nextId = 100;
   const created: FakeTabsState['created'] = [];
   const updated: FakeTabsState['updated'] = [];
-  // Active tab per window, like the real browser: Dad starts on tab 7 in
+  // Active tab per window, like the real browser: the owner starts on tab 7 in
   // window 1, and update({active:true}) moves activation (so the
   // pre-capture verification query sees the just-activated worker tab).
   const activeByWindow = new Map<number, number>([[1, 7]]);
@@ -81,11 +81,11 @@ describe('getWorkerTab', () => {
     expect(f.created[0]?.url).toContain('calendar.google.com');
   });
 
-  it('recreates the tab when Dad closed it', async () => {
+  it('recreates the tab when the owner closed it', async () => {
     const f = makeTabs();
     const mgr = createTabManager({ tabs: f.tabs });
     const first = await mgr.getWorkerTab('calendar');
-    f.byId.delete(first); // Dad closed the worker tab.
+    f.byId.delete(first); // The owner closed the worker tab.
     const second = await mgr.getWorkerTab('calendar');
     expect(second).not.toBe(first);
     expect(f.created).toHaveLength(2);
@@ -129,7 +129,7 @@ describe('captureScreenshot', () => {
       tabId: workerId,
       props: { url: 'https://calendar.google.com/calendar/week' },
     });
-    // Briefly activated the worker tab, then restored Dad's tab (id 7).
+    // Briefly activated the worker tab, then restored the owner's tab (id 7).
     const activations = f.updated.filter((u) => u.props['active'] === true);
     expect(activations.map((u) => u.tabId)).toEqual([workerId, 7]);
     expect(f.tabs.captureVisibleTab).toHaveBeenCalledTimes(1);
@@ -157,7 +157,7 @@ describe('captureScreenshot', () => {
     );
     expect(err).toBeInstanceOf(Error);
     expect((err as { code?: unknown }).code).toBe('TIMEOUT');
-    // Dad's view is restored even on failure.
+    // The owner's view is restored even on failure.
     expect(f.updated).toContainEqual({ tabId: 7, props: { active: true } });
   });
 
@@ -185,7 +185,7 @@ describe('captureScreenshot window targeting', () => {
     const f = makeTabs({
       existing: [{ id: 55, url: 'https://calendar.google.com/calendar', windowId: 2 }],
     });
-    f.setActive(2, 9); // Window B: Dad is on tab 9; window A (current): tab 7.
+    f.setActive(2, 9); // Window B: the owner is on tab 9; window A (current): tab 7.
     const mgr = createTabManager({ tabs: f.tabs });
 
     await mgr.captureScreenshot('calendar', 'https://calendar.google.com/calendar/week');
@@ -261,7 +261,7 @@ describe('captureScreenshot pre-capture verification', () => {
   it('fails TIMEOUT without capturing when the active tab changes before capture', async () => {
     const f = makeTabs();
     const mgr = createTabManager({ tabs: f.tabs });
-    // Dad switches tabs in the activate→capture window: the previous-tab
+    // The owner switches tabs in the activate→capture window: the previous-tab
     // lookup still sees 7, but the verification query sees 99.
     const activeReplies: TabLike[][] = [
       [{ id: 7, active: true, windowId: 1 }],
@@ -284,7 +284,7 @@ describe('captureScreenshot pre-capture verification', () => {
 
     expect((err as { code?: unknown }).code).toBe('TIMEOUT');
     expect(f.tabs.captureVisibleTab).not.toHaveBeenCalled();
-    // Dad's tab is still restored.
+    // The owner's tab is still restored.
     expect(f.updated).toContainEqual({ tabId: 7, props: { active: true } });
   });
 });

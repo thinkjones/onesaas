@@ -273,7 +273,7 @@ body {
   border-radius: 16px 16px 16px 4px;
   background: var(--bg-well);
 }
-.msg-dad {
+.msg-owner {
   align-self: flex-end;
   color: var(--on-accent);
   background: var(--accent);

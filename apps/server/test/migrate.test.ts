@@ -1,4 +1,4 @@
-import { Workflow, type Workflow as WorkflowType } from '@dad/shared';
+import { Workflow, type Workflow as WorkflowType } from '@onesaas/shared';
 import { describe, expect, test } from 'vitest';
 import { openDb } from '../src/db/connection.js';
 import { createRepo } from '../src/db/repo.js';

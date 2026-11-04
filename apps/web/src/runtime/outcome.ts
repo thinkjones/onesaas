@@ -1,4 +1,4 @@
-import type { StepRun } from '@dad/shared';
+import type { StepRun } from '@onesaas/shared';
 
 /**
  * The one-line "what happened at that node" caption for Watch-it-Run. Done

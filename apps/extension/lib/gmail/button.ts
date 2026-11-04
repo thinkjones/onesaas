@@ -1,4 +1,4 @@
-import type { RunStatus } from '@dad/shared';
+import type { RunStatus } from '@onesaas/shared';
 import { SELECTORS, resolveToolbar } from './selectors.js';
 
 export interface WorkflowButtonItem {
@@ -16,12 +16,12 @@ const STATUS_PILLS: Record<RunStatus, string> = {
 
 /** Deep link into the runtime view for one run (local dev web app). */
 export function runtimeUrl(workflowId: string, runId: string): string {
-  return `http://localhost:5173/reducers/${encodeURIComponent(workflowId)}?mode=runtime&run=${encodeURIComponent(runId)}`;
+  return `http://localhost:5173/automations/${encodeURIComponent(workflowId)}?mode=runtime&run=${encodeURIComponent(runId)}`;
 }
 
 /**
  * Render one button per workflow into the message toolbar. Idempotent: our
- * container (div.dad-gmail-buttons) is created once per toolbar and cleared +
+ * container (div.onesaas-gmail-buttons) is created once per toolbar and cleared +
  * re-rendered on every call, so MutationObserver refreshes never duplicate.
  * No-ops when there is no toolbar (thread list view has nowhere to inject).
  */
@@ -38,7 +38,7 @@ export function injectButtons(
   ) as HTMLElement | null;
   if (!container) {
     container = doc.createElement('div');
-    container.className = 'dad-gmail-buttons';
+    container.className = 'onesaas-gmail-buttons';
     container.style.display = 'inline-flex';
     container.style.gap = '6px';
     container.style.marginLeft = '8px';
@@ -94,7 +94,7 @@ export function setButtonStatus(
     } else {
       pill?.remove();
       const span = doc.createElement('span');
-      span.className = 'dad-status-pill';
+      span.className = 'onesaas-status-pill';
       span.style.marginLeft = '6px';
       span.style.fontSize = '12px';
       span.textContent = STATUS_PILLS[status];
@@ -110,7 +110,7 @@ export function setButtonStatus(
   }
   pill?.remove();
   const link = doc.createElement('a');
-  link.className = 'dad-status-pill';
+  link.className = 'onesaas-status-pill';
   link.style.marginLeft = '6px';
   link.style.fontSize = '12px';
   link.style.color = 'inherit';

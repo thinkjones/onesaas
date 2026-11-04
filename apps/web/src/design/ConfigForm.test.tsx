@@ -1,4 +1,4 @@
-import type { StepDef, StepInstance, Workflow } from '@dad/shared';
+import type { StepDef, StepInstance, Workflow } from '@onesaas/shared';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ConfigForm, { type ConfigSave } from './ConfigForm.tsx';

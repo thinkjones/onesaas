@@ -1,4 +1,4 @@
-import type { Run, TriggerMsg } from '@dad/shared';
+import type { Run, TriggerMsg } from '@onesaas/shared';
 import { z } from 'zod';
 import type { Database } from '../db/connection.js';
 import type { Repo } from '../db/repo.js';

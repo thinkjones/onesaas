@@ -1,4 +1,4 @@
-# E2E suite (`@dad/e2e`)
+# E2E suite (`@onesaas/e2e`)
 
 Playwright end-to-end tests. The suite boots an **isolated stack** — API on `:8791` with a fresh `test-results/e2e.db`, web on `:5193` proxied to it — so it never touches your live dev servers (`:5173`/`:8787`) or your real database.
 
@@ -9,7 +9,7 @@ pnpm e2e          # headless Chromium, no video
 pnpm e2e:video    # same suite, records one .webm per UI test under test-results/
 ```
 
-First run only: `pnpm --filter @dad/e2e exec playwright install chromium`.
+First run only: `pnpm --filter @onesaas/e2e exec playwright install chromium`.
 
 ## Prerequisites
 
@@ -18,8 +18,8 @@ First run only: `pnpm --filter @dad/e2e exec playwright install chromium`.
 
 ## What's covered (12 tests)
 
-- `app.spec.ts` — API health (direct + through the Vite proxy), home page, pairing-code issuance, seeded flow-1 in the reducers list.
-- `design.spec.ts` — blank reducer → design mode; palette add → config form → problems gate Turn on; Backspace delete → Undo restores.
+- `app.spec.ts` — API health (direct + through the Vite proxy), home page, pairing-code issuance, seeded flow-1 in the automations list.
+- `design.spec.ts` — blank automation → design mode; palette add → config form → problems gate Turn on; Backspace delete → Undo restores.
 - `test-run.spec.ts` — flow-1 test run previews everything (`usedSample`, all `done`, pinned whys, sample notice survives refetch); Try-it button renders the story strip.
 - `agent-panel.spec.ts` — panel renders/collapses; sending runs a live turn and shows the reply (content-agnostic assertions).
 

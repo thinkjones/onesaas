@@ -1,4 +1,4 @@
-import type { StepRunStatus } from '@dad/shared';
+import type { StepRunStatus } from '@onesaas/shared';
 import { cn } from 'cn';
 import { STATUS_LABEL } from './statusLabels.ts';
 

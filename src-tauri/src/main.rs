@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    dads_ai_agent_lib::run()
+    onesaas_lib::run()
 }

@@ -1,4 +1,4 @@
-// ALL Gmail DOM selectors and data-dad-* hook names live here. Nothing outside
+// ALL Gmail DOM selectors and data-onesaas-* hook names live here. Nothing outside
 // this file may hardcode a Gmail selector, so a Gmail markup change is a
 // one-file fix. Starting points verified against
 // test/fixtures/gmail-thread.html (SYNTHETIC — see its header).
@@ -25,11 +25,11 @@ export const SELECTORS = {
    * [role=toolbar]; this exists so tests can anchor an injection container
    * without faking a full role=toolbar. Never relied on in production.
    */
-  toolbarTestHook: '[data-dad-toolbar]',
+  toolbarTestHook: '[data-onesaas-toolbar]',
   /** Our own injected button container (also the MutationObserver skip-marker). */
-  buttonsContainer: 'div.dad-gmail-buttons',
+  buttonsContainer: 'div.onesaas-gmail-buttons',
   /** Status pill inside one of our buttons. */
-  statusPill: '.dad-status-pill',
+  statusPill: '.onesaas-status-pill',
   /** Gmail main pane; MutationObserver root (falls back to body). */
   mainRoot: 'div[role="main"]',
   /** Unread inbox rows (read rows are tr.zA WITHOUT zE). */

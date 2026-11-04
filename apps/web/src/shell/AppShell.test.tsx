@@ -30,9 +30,9 @@ function renderShell(opts?: { path?: string; workflows?: unknown[] }) {
           <Route element={<AppShell />}>
             <Route path="/" element={<p>page body</p>} />
             <Route path="/automate" element={<p>automate body</p>} />
-            <Route path="/reducers/:workflowId" element={
+            <Route path="/automations/:workflowId" element={
               <>
-                <p>reducer body</p>
+                <p>automation body</p>
                 <BarActions>
                   <button type="button">Screen action</button>
                 </BarActions>
@@ -82,17 +82,17 @@ describe('AppShell', () => {
     renderShell({ path: '/automate', workflows: [{ id: 'wf-1', name: 'Leads' }] });
     const picker = await screen.findByRole('combobox', { name: 'Choose an automation' });
     fireEvent.change(picker, { target: { value: 'wf-1' } });
-    expect(await screen.findByText('reducer body')).toBeDefined();
+    expect(await screen.findByText('automation body')).toBeDefined();
   });
 
   test('a screen can place its actions in the bar', async () => {
-    renderShell({ path: '/reducers/wf-1?mode=design', workflows: [] });
+    renderShell({ path: '/automations/wf-1?mode=design', workflows: [] });
     const button = await screen.findByRole('button', { name: 'Screen action' });
     expect(screen.getByTestId('floating-bar').contains(button)).toBe(true);
   });
 
   test('an automation canvas fills the board; other screens scroll beneath the bar', async () => {
-    const { unmount } = renderShell({ path: '/reducers/wf-1?mode=design' });
+    const { unmount } = renderShell({ path: '/automations/wf-1?mode=design' });
     expect((await screen.findByTestId('shell-content')).className).toContain('overflow-hidden');
     unmount();
     renderShell({ path: '/' });

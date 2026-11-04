@@ -36,7 +36,7 @@ export interface BuilderAgentDeps {
 export interface BuilderAgent {
   /** One turn: runs to completion (done) unless the workflow is busy. */
   send(workflowId: string, text: string): Promise<void>;
-  /** Record one of Dad's canvas edits for the next model call. Never busy. */
+  /** Record one of the owner's canvas edits for the next model call. Never busy. */
   noteManualChange(workflowId: string, note: string): void;
   getTranscript(workflowId: string): TranscriptEntry[];
   isBusy(workflowId: string): boolean;
@@ -52,7 +52,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
   const toolsByName = new Map(builderTools.map((t) => [t.name, t]));
   const busy = new Set<string>();
   // Live turns by workflow: noteManualChange appends to the in-flight
-  // conversation (not the stale persisted one) so a Dad edit mid-turn is
+  // conversation (not the stale persisted one) so an owner edit mid-turn is
   // neither lost at persist time nor invisible to the next model call.
   const active = new Map<string, Conversation>();
 
@@ -74,7 +74,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
   }
 
   function noteManualChange(workflowId: string, note: string): void {
-    const msg: AgentMessage = { role: 'system', content: `Dad changed the canvas: ${note}` };
+    const msg: AgentMessage = { role: 'system', content: `The owner changed the canvas: ${note}` };
     const live = active.get(workflowId);
     if (live) {
       live.messages.push(msg);
@@ -104,7 +104,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     const conv = conversations.load(workflowId) ?? { messages: [], transcript: [] };
     active.set(workflowId, conv);
     conv.messages.push({ role: 'user', content: text });
-    conv.transcript.push({ role: 'dad', text, at: Date.now() });
+    conv.transcript.push({ role: 'owner', text, at: Date.now() });
 
     const emit = (e: AgentEvent): void => {
       if (e.type === 'say') {
@@ -145,7 +145,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
     let calls = 0;
     try {
       for (;;) {
-        // Rebuilt from the LATEST workflow every iteration: Dad may edit
+        // Rebuilt from the LATEST workflow every iteration: the owner may edit
         // mid-turn, and create_workflow may switch the target mid-turn — so
         // this follows ctx.workflowId (the live target), not the send target.
         const wf = repo.getWorkflow(ctx.workflowId);
@@ -215,8 +215,8 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
           }
           const out = await tool.run(call.args, ctx);
           // A mid-turn switch (create_workflow) moves the live target — and
-          // the web app navigates Dad to the new reducer — so the new target
-          // joins the busy set too: his next send there must wait for this
+          // the web app navigates the owner to the new automation — so the new target
+          // joins the busy set too: their next send there must wait for this
           // turn instead of interleaving a second one. send() clears both.
           if (ctx.workflowId !== workflowId && !extraTargets.has(ctx.workflowId)) {
             busy.add(ctx.workflowId);
@@ -234,7 +234,7 @@ export function createBuilderAgent(d: BuilderAgentDeps): BuilderAgent {
       }
     } catch (err) {
       // Failure path (gateway/DB/prompt threw): the turn still ends cleanly.
-      // Dad sees a failure line, the conversation-so-far is kept, and `done`
+      // The owner sees a failure line, the conversation-so-far is kept, and `done`
       // preserves the done-means-turn-over contract. send() still rejects below
       // so direct callers see the error.
       const msg = err instanceof Error ? err.message : String(err);

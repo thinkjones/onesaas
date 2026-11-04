@@ -1,4 +1,4 @@
-import type { StepInstance } from '@dad/shared';
+import type { StepInstance } from '@onesaas/shared';
 import { ReactFlowProvider, type Node, type NodeProps } from '@xyflow/react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
@@ -8,7 +8,7 @@ const STEP: StepInstance = {
   id: 'approve',
   type: 'approval.ask',
   title: 'Check the reply',
-  summary: 'Dad checks the reply before it is drafted.',
+  summary: 'The owner checks the reply before it is drafted.',
   config: {},
   inputs: {},
   position: { x: 0, y: 0 },
@@ -27,7 +27,7 @@ describe('StepNode', () => {
   test('renders kind icon, title and summary without a status', () => {
     renderNode({ step: STEP, kind: 'act' });
     expect(screen.getByText('Check the reply')).toBeDefined();
-    expect(screen.getByText('Dad checks the reply before it is drafted.')).toBeDefined();
+    expect(screen.getByText('The owner checks the reply before it is drafted.')).toBeDefined();
     expect(screen.queryByText('Waiting for you')).toBeNull();
   });
 

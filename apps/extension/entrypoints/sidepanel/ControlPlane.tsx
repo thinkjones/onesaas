@@ -23,11 +23,11 @@ const API = 'http://127.0.0.1:8787';
 const AGENT_SETTLING_MS = 1500;
 
 type ChatItem =
-  | { kind: 'dad' | 'agent' | 'activity'; text: string }
+  | { kind: 'owner' | 'agent' | 'activity'; text: string }
   | { kind: 'ask'; text: string; options: string[] };
 
 interface TranscriptEntry {
-  role: 'dad' | 'agent';
+  role: 'owner' | 'agent';
   text: string;
   ask?: { options: string[] };
 }
@@ -265,7 +265,7 @@ export default function ControlPlane({ site, connected, openApp, onOpenSettings 
     setSendError(null);
     setAgentBusy(true);
     setInput('');
-    const entry: ChatItem = { kind: 'dad', text: message };
+    const entry: ChatItem = { kind: 'owner', text: message };
     setTranscript((t) => [...t, entry]);
     const fail = (error: string, keepBusy = false) => {
       setTranscript((t) => t.filter((item) => item !== entry));

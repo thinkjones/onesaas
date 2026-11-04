@@ -1,4 +1,4 @@
-import type { Run, Workflow } from '@dad/shared';
+import type { Run, Workflow } from '@onesaas/shared';
 
 /** The run a card shows: an unanswered one outranks a newer finished one. */
 export function runToShow(workflowId: string, runs: Run[]): Run | undefined {

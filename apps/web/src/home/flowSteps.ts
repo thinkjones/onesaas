@@ -1,4 +1,4 @@
-import { catalog, type FlowIconName, type FlowStep, type Workflow } from '@dad/shared';
+import { catalog, type FlowIconName, type FlowStep, type Workflow } from '@onesaas/shared';
 
 const ICON_BY_TYPE: Record<string, FlowIconName> = {
   'trigger.gmailButton': 'MousePointerClick',

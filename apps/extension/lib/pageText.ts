@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 
-/** What a run started by hand gets to work with from the tab Dad is looking at. */
+/** What a run started by hand gets to work with from the tab the owner is looking at. */
 export interface PageSnapshot {
   url: string;
   title: string;
@@ -11,7 +11,7 @@ export interface PageSnapshot {
 export const PAGE_TEXT_LIMIT = 30_000;
 
 /**
- * Reads the active tab, only when Dad starts a run. Null when it can't be read
+ * Reads the active tab, only when the owner starts a run. Null when it can't be read
  * (chrome:// pages, the Web Store, a tab with no text), so the run still starts.
  */
 export async function readActivePage(): Promise<PageSnapshot | null> {

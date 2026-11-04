@@ -1,4 +1,4 @@
-import type { StepRunStatus } from '@dad/shared';
+import type { StepRunStatus } from '@onesaas/shared';
 
 export const STATUS_LABEL: Record<StepRunStatus, string> = {
   pending: 'Not started',

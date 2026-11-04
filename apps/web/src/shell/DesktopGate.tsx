@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 
-/** Dad is desktop: below this viewport width the app gates to a message. */
+/** The owner is desktop: below this viewport width the app gates to a message. */
 export const DESKTOP_MIN_WIDTH_PX = 1280;
 
 export const GATE_MESSAGE = 'This works best on a bigger screen. Try a laptop or desktop.';

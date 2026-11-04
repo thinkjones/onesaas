@@ -1,4 +1,4 @@
-import type { Run } from '@dad/shared';
+import type { Run } from '@onesaas/shared';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import RunsList from './RunsList.tsx';

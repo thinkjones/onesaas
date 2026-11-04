@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import { catalog } from '@dad/shared';
+import { catalog } from '@onesaas/shared';
 import { createGateway, type Gateway } from '../src/models/gateway.js';
 import { openDb } from '../src/db/connection.js';
 import { createTableStore, type TableStore } from '../src/tables/store.js';
