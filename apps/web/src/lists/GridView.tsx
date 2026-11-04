@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-table';
 import ChevronDownIcon from 'lucide-react/icons/chevron-down';
 import ChevronUpIcon from 'lucide-react/icons/chevron-up';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Explain from '../explain/Explain.tsx';
 import { dataExplainValue } from '../explain/useAltClickExplain.ts';
 import { CellValue } from './cells.tsx';
@@ -41,15 +41,22 @@ export default function GridView({
       id: col.name,
       header: col.label,
       accessorFn: (row: Record<string, unknown>) => row[col.name],
-      cell: (info) => <CellValue type={col.type} value={info.getValue()} timezone={timezone} column={col.name} />,
+      cell: (info) => <CellValue type={col.type} value={info.getValue()} timezone={timezone} column={col.name} clip />,
     }));
   }, [table.columns, columns, timezone]);
   const data = useMemo(() => rows, [rows]);
   const grid = useReactTable({ data, columns: defs, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
 
+  // A record opened from a link may be off screen.
+  const selected = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    selected.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [selectedRow]);
+
   if (rows.length === 0) return <p>Nothing here yet.</p>;
   return (
-    <table className="w-full text-[0.882rem]">
+    <div className="overflow-x-auto" data-testid="grid-scroll">
+    <table className="w-max min-w-full text-[0.882rem]">
       <thead>
         {grid.getHeaderGroups().map((group) => (
           <tr key={group.id} className="bg-background">
@@ -61,7 +68,7 @@ export default function GridView({
                 <th
                   key={header.id}
                   data-explain={dataExplainValue(target, label)}
-                  className="border-y border-border px-5 py-2 text-left text-[0.765rem] font-bold text-muted-foreground"
+                  className="border-y border-border px-5 py-2 text-left text-[0.765rem] font-bold whitespace-nowrap text-muted-foreground"
                 >
                   <span className="inline-flex items-center gap-1">
                     <button
@@ -90,12 +97,13 @@ export default function GridView({
         {grid.getRowModel().rows.map((row) => (
           <tr
             key={row.id}
+            ref={selectedRow !== undefined && row.original === selectedRow ? selected : undefined}
             aria-selected={selectedRow !== undefined && row.original === selectedRow}
             className={`border-b border-border aria-selected:bg-accent-soft aria-selected:shadow-[inset_3px_0_0_var(--accent)] ${onSelectRow ? 'cursor-pointer hover:bg-accent' : ''}`}
             onClick={onSelectRow ? () => onSelectRow(row.original) : undefined}
           >
             {row.getVisibleCells().map((cell) => (
-              <td key={cell.id} className="px-5 py-3 break-words">
+              <td key={cell.id} className="px-5 py-3 whitespace-nowrap">
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </td>
             ))}
@@ -103,5 +111,6 @@ export default function GridView({
         ))}
       </tbody>
     </table>
+    </div>
   );
 }

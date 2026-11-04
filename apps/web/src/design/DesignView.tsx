@@ -1,4 +1,4 @@
-import { catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@onesaas/shared';
+import { savedRecordPath, catalog, type Edge, type StepInstance, type StepRun, type Workflow } from '@onesaas/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import Play from 'lucide-react/icons/play';
 import TriangleAlert from 'lucide-react/icons/triangle-alert';
@@ -749,6 +749,17 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
     [stepRuns],
   );
 
+  const savedPathOf = useCallback(
+    (stepId: string): string | undefined => {
+      const sr = stepRuns[stepId];
+      // From the version the run used: the design may have moved on since.
+      const step = overlay?.workflow.steps.find((st) => st.id === stepId);
+      if (sr?.status !== 'done' || !step) return undefined;
+      return savedRecordPath(step, sr.output) ?? undefined;
+    },
+    [stepRuns, overlay],
+  );
+
   // A waiting or failed step grows in place to hold what you need to act on.
   // Question and title come from the version the run actually used.
   const renderNodeExpanded = useCallback(
@@ -963,6 +974,7 @@ export default function DesignView({ workflowId, agent, logActivity, onFixStep, 
                 renderNodeExtra={runsMode ? undefined : renderNodeExtra}
                 renderNodeExpanded={runsMode ? renderNodeExpanded : undefined}
                 renderNodeOutcome={runsMode ? renderNodeOutcome : undefined}
+                savedPathOf={runsMode ? savedPathOf : undefined}
                 renderNodeDesign={renderNodeDesign}
               />
             </div>

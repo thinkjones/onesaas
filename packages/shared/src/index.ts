@@ -5,4 +5,5 @@ export * from './bindings.js';
 export * from './columns.js';
 export * from './catalog.js';
 export * from './starterIdeas.js';
+export * from './savedRecord.js';
 export * from './pingAge.js';

@@ -107,7 +107,12 @@ export default function FloatingBar() {
   }, [inTauri, navigate]);
 
   return (
-    <div className={`floatbar${inTauri ? ' tauri' : ''}`} data-testid="floating-bar">
+    <div
+      className={`floatbar${inTauri ? ' tauri' : ''}`}
+      data-testid="floating-bar"
+      // Its empty space moves the window too, like the strip it sits on.
+      {...(inTauri ? { 'data-tauri-drag-region': true } : {})}
+    >
       <span className="wordmark" data-tauri-drag-region>
         OneSaaS
       </span>

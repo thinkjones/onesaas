@@ -8,6 +8,7 @@ import {
   type Workflow,
 } from '@onesaas/shared';
 import {
+  Panel,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -19,6 +20,7 @@ import {
   type ReactFlowInstance,
 } from '@xyflow/react';
 import { MotionConfig } from 'motion/react';
+import Hand from 'lucide-react/icons/hand';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import GhostNode, { GhostEdge, type GhostNodeData } from '../design/GhostNode.tsx';
 import FlowEdge, { type FlowEdgeData } from './FlowEdge.tsx';
@@ -61,6 +63,8 @@ export interface WorkflowCanvasProps {
   renderNodeExpanded?(stepId: string, number: number): ReactNode;
   /** Per-node outcome caption (Watch-it-Run; mirrors renderNodeExtra). */
   renderNodeOutcome?(stepId: string): string | undefined;
+  /** Where to see what a step saved in this run. */
+  savedPathOf?(stepId: string): string | undefined;
   /**
    * Design-mode hover actions + node chat (Bug #4). Applied only in design
    * mode; runtime passes nothing and nodes stay clean.
@@ -126,6 +130,24 @@ function classifyOptions(config: Record<string, unknown>): string[] {
  * Backspace (reported as `remove` ops; ghosts are unselectable so they can
  * never be deleted).
  */
+const MOVE_HINT_KEY = 'onesaas.boardMoved';
+
+function moveHintSeen(): boolean {
+  try {
+    return localStorage.getItem(MOVE_HINT_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function rememberMoveHintSeen(): void {
+  try {
+    localStorage.setItem(MOVE_HINT_KEY, '1');
+  } catch {
+    // Private windows can refuse storage; the hint just comes back next time.
+  }
+}
+
 export default function WorkflowCanvas({
   workflow,
   mode,
@@ -139,8 +161,15 @@ export default function WorkflowCanvas({
   renderNodeExtra,
   renderNodeExpanded,
   renderNodeOutcome,
+  savedPathOf,
   renderNodeDesign,
 }: WorkflowCanvasProps) {
+  // Once you've moved the board you know how; it doesn't need saying again.
+  const [showMoveHint, setShowMoveHint] = useState(() => !moveHintSeen());
+  const dismissMoveHint = useCallback(() => {
+    setShowMoveHint(false);
+    rememberMoveHintSeen();
+  }, []);
   const runs = mode === 'runtime';
   const [sizes, setSizes] = useState<Record<string, { width: number; height: number }>>({});
   const [flow, setFlow] = useState<ReactFlowInstance<CanvasAnyNode, CanvasAnyEdge> | null>(null);
@@ -197,6 +226,7 @@ export default function WorkflowCanvas({
           extra: renderNodeExtra?.(s.id),
           expanded: runs ? renderNodeExpanded?.(s.id, numbers[s.id] ?? 0) : undefined,
           outcome: renderNodeOutcome?.(s.id),
+          savedPath: savedPathOf?.(s.id),
           fresh: builtIds?.includes(s.id) ?? false,
           workflowId: workflow.id,
           design: designMode ? renderNodeDesign?.(s) : undefined,
@@ -235,7 +265,7 @@ export default function WorkflowCanvas({
       }
     }
     return nodes;
-  }, [laid, workflow, mode, runs, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeExpanded, renderNodeOutcome, renderNodeDesign]);
+  }, [laid, workflow, mode, runs, stepRuns, ghosts, builtIds, selectedStepId, renderNodeExtra, renderNodeExpanded, renderNodeOutcome, savedPathOf, renderNodeDesign]);
 
   const initialEdges: CanvasAnyEdge[] = useMemo(() => {
     const ghostIds = new Set((ghosts ?? []).map((g) => g.id));
@@ -415,7 +445,20 @@ export default function WorkflowCanvas({
         // Cards stay full size and readable; a long flow scrolls.
         panOnScroll
         zoomOnScroll={false}
-      />
+        onMoveStart={(event) => {
+          // Only a person moving it: fitting the flow in view fires this too.
+          if (event !== null && showMoveHint) dismissMoveHint();
+        }}
+      >
+        {showMoveHint && (
+          <Panel position="bottom-center">
+            <span className="board-hint" data-testid="board-hint">
+              <Hand aria-hidden />
+              Drag the board to move around. Scrolling works too.
+            </span>
+          </Panel>
+        )}
+      </ReactFlow>
     </MotionConfig>
   );
 }

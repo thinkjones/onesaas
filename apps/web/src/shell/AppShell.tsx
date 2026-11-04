@@ -1,8 +1,8 @@
 import { Outlet, useLocation } from 'react-router';
-import { isTauri } from '../api.ts';
 import TellMeMoreFallback from '../explain/TellMeMoreFallback.tsx';
 import { useDesktopFocus } from './DesktopFocus.ts';
 import FloatingBar from './FloatingBar.tsx';
+import WindowDragBar from './WindowDragBar.tsx';
 
 /**
  * One full-screen board with the floating bar over it, Miro style: no sidebar
@@ -18,8 +18,7 @@ export default function AppShell() {
     <main className="board relative h-screen overflow-hidden">
       {/* Off-workflow "Tell me more" routing (renders nothing). */}
       <TellMeMoreFallback />
-      {/* The webview can't be dragged by its hidden title bar: this strip stands in. */}
-      {isTauri() && <div data-tauri-drag-region className="absolute inset-x-0 top-0 z-30 h-3" />}
+      <WindowDragBar />
       <FloatingBar />
       <div
         data-testid="shell-content"

@@ -276,6 +276,19 @@ export default function ListsPage() {
   const table: ListSummary | undefined =
     lists.data?.find((t) => t.name === params.get('table')) ?? lists.data?.[0];
   const rows = useListRows(table?.name ?? null, { limit: 200 });
+  // A link to one record (?row=) opens it, once per link: closing it stays closed.
+  const rowParam = params.get('row');
+  const linkedKey = rowParam === null || !rows.data ? null : `${table?.name}/${rowParam}`;
+  const [openedLink, setOpenedLink] = useState<string | null>(null);
+  const [linkMissing, setLinkMissing] = useState(false);
+  if (linkedKey !== null && linkedKey !== openedLink) {
+    setOpenedLink(linkedKey);
+    const linked = rows.data!.rows.find((r) => String(r['id']) === rowParam);
+    setSelectedRow(linked ?? null);
+    setLinkMissing(linked === undefined);
+    setQuery('');
+    setLevel(null);
+  }
   const pinned = (views.data ?? []).filter((v) => v.table === table?.name && v.pinned && v.kind === 'stat');
   const levelColumn = table?.columns.find((c) => isLevelColumn(c.name));
   const levels = useMemo(() => {
@@ -303,6 +316,7 @@ export default function ListsPage() {
     setQuery('');
     setLevel(null);
     setSelectedRow(null);
+    setLinkMissing(false);
     setPinning(false);
     setParams({ table: name });
   };
@@ -395,6 +409,11 @@ export default function ListsPage() {
               {rows.data.rows.length < rows.data.total && (
                 <p className="px-5">
                   Showing {rows.data.rows.length} of {rows.data.total}
+                </p>
+              )}
+              {linkMissing && (
+                <p role="status" className="px-5 text-sm text-muted-foreground">
+                  I couldn&apos;t find that record here. It may have been removed, or be past the rows showing here.
                 </p>
               )}
               {query.trim() !== '' && (

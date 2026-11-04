@@ -14,18 +14,23 @@ function levelOf(value: unknown): 'high' | 'normal' | 'low' | undefined {
   return typeof value === 'string' ? LEVELS[value.trim().toLowerCase()] : undefined;
 }
 
+const CLIP_AT = 30;
+
 /** One list cell: photos as thumbnails, levels as pills, datetimes in the business timezone. */
 export function CellValue({
   type,
   value,
   timezone,
   column,
+  clip = false,
 }: {
   type: ColumnType;
   value: unknown;
   timezone: string | null;
   /** The column's name: urgency-style columns show their levels as pills. */
   column?: string;
+  /** Cut long text to fit a table cell; the full text stays on hover and in the details. */
+  clip?: boolean;
 }) {
   if (column !== undefined && isLevelColumn(column)) {
     const level = levelOf(value);
@@ -53,8 +58,11 @@ export function CellValue({
   if ((type === 'datetime' || type === 'date') && typeof value === 'string') {
     return <span>{formatZoned(value, timezone)}</span>;
   }
-  if (typeof value === 'object') return <span>{JSON.stringify(value)}</span>;
-  return <span>{String(value)}</span>;
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  if (clip && text.length > CLIP_AT) {
+    return <span title={text}>{text.slice(0, CLIP_AT)}…</span>;
+  }
+  return <span>{text}</span>;
 }
 
 /** FileRef-shaped values (object or JSON string) serve from /api/files. Bare

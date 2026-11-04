@@ -132,6 +132,38 @@ describe('ListsPage', () => {
     expect(screen.queryByText(/Showing \d+ of \d+/)).toBeNull();
   });
 
+  test('a link to a record opens its details and marks its row', async () => {
+    renderLists({
+      entry: '/lists?table=customers&row=2',
+      rows: [{ id: 1, name: 'Ada' }, { id: 2, name: 'Grace' }],
+    });
+    expect(await screen.findByRole('complementary', { name: 'Grace' })).toBeDefined();
+    const row = screen.getAllByRole('row').find((r) => r.textContent?.includes('Grace'))!;
+    expect(row.getAttribute('aria-selected')).toBe('true');
+  });
+
+  test('closing a linked record stays closed', async () => {
+    renderLists({ entry: '/lists?table=customers&row=1', rows: [{ id: 1, name: 'Ada' }] });
+    await screen.findByRole('complementary', { name: 'Ada' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByRole('complementary', { name: 'Ada' })).toBeNull();
+  });
+
+  test('a link to a record that is not there says so', async () => {
+    renderLists({ entry: '/lists?table=customers&row=99', rows: [{ id: 1, name: 'Ada' }] });
+    expect((await screen.findByRole('status')).textContent).toContain("couldn't find that record");
+  });
+
+  test('the table cuts long text at 30 characters and the details keep it whole', async () => {
+    const long = 'A very long job description that goes on and on';
+    renderLists({ entry: '/lists?table=customers', rows: [{ id: 1, name: long }] });
+    const cell = await screen.findByText(`${long.slice(0, 30)}…`);
+    expect(cell.getAttribute('title')).toBe(long);
+    expect(screen.getByTestId('grid-scroll').className).toContain('overflow-x-auto');
+    fireEvent.click(cell);
+    expect(screen.getByRole('complementary', { name: long }).textContent).toContain(long);
+  });
+
   test('?table= selects that table on landing', async () => {
     renderLists({ tables: [TABLE, ORDERS], entry: '/lists?table=orders' });
     expect(await screen.findByRole('region', { name: 'Orders' })).toBeDefined();

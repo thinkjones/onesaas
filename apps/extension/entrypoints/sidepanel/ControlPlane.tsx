@@ -1,3 +1,4 @@
+import { savedRecordPath } from '@onesaas/shared';
 import ArrowUpRight from 'lucide-react/icons/arrow-up-right';
 import Check from 'lucide-react/icons/check';
 import Pause from 'lucide-react/icons/pause';
@@ -376,6 +377,7 @@ export default function ControlPlane({
             const status = shownStatus(step, i);
             // Nothing about a step shows until it's that step's turn.
             const state = i < revealed ? run.steps[step.id] : undefined;
+            const saved = status === 'done' ? savedRecordPath(step, state?.output) : null;
             const proposed = (state?.output as { proposed?: { text?: unknown } } | undefined)?.proposed?.text;
             const waiting = status === 'waiting' && shownState === 'waiting';
             return (
@@ -397,6 +399,12 @@ export default function ControlPlane({
                     {state?.error !== undefined && <span className="error">{state.error}</span>}
                     {state?.error === undefined && state?.why !== undefined && !waiting && (
                       <span className="run-step-why">{state.why}</span>
+                    )}
+                    {saved !== null && (
+                      <button type="button" className="see-in-app" onClick={() => void openApp(saved)}>
+                        See the saved record
+                        <ArrowUpRight size={14} aria-hidden="true" />
+                      </button>
                     )}
                   </div>
                 </div>

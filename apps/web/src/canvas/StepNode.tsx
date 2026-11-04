@@ -1,3 +1,5 @@
+import ArrowUpRight from 'lucide-react/icons/arrow-up-right';
+import { Link } from 'react-router';
 import type { StepInstance, StepKind, StepRunStatus } from '@onesaas/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { cn } from 'cn';
@@ -26,6 +28,8 @@ export interface StepNodeData extends Record<string, unknown> {
   runs?: boolean;
   /** One plain sentence about what happened here (Runs only). */
   outcome?: string;
+  /** Where to see what this step saved. */
+  savedPath?: string;
   /** Runs mode: the approval or failure body. The step grows in place to hold it. */
   expanded?: ReactNode;
   /** Problems and Try it verdicts under a design card. */
@@ -109,7 +113,7 @@ function StepPopover({ cardY, children }: { cardY: number; children: ReactNode }
  * re-lays out the flow to make room.
  */
 export default function StepNode({ id, data, selected, positionAbsoluteY }: NodeProps<Node<StepNodeData>>) {
-  const { step, kind, number, status, runs, outcome, expanded, extra, fresh, workflowId, design } = data;
+  const { step, kind, number, status, runs, outcome, savedPath, expanded, extra, fresh, workflowId, design } = data;
   const approval = step.type === 'approval.ask';
   const { icon, tint } = stepVisuals[kind];
   const Icon = approval ? ShieldCheck : icon;
@@ -197,6 +201,12 @@ export default function StepNode({ id, data, selected, positionAbsoluteY }: Node
               <span data-outcome="true" className="outcome">
                 {outcome ?? (runStatus === 'skipped' ? 'Skipped.' : 'Not started.')}
               </span>
+              {savedPath !== undefined && (
+                <Link to={savedPath} className="saved-link nodrag" onClick={(e) => e.stopPropagation()}>
+                  See the saved record
+                  <ArrowUpRight size={13} aria-hidden />
+                </Link>
+              )}
             </div>
             {runStatus === 'skipped' && <StatusBadge status="skipped" />}
           </div>

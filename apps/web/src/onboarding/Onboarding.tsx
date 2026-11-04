@@ -7,6 +7,7 @@ import { Navigate, useNavigate } from 'react-router';
 import { isTauri, useSettings, type Settings } from '../api.ts';
 import AppButton from '../design/AppButton.tsx';
 import '../shell/FloatingBar.css';
+import WindowDragBar from '../shell/WindowDragBar.tsx';
 import type { UseVoiceResult } from '../voice/useVoice.ts';
 import SetupChat, { type ChatLine } from './SetupChat.tsx';
 import StepBusiness from './StepBusiness.tsx';
@@ -113,7 +114,11 @@ export default function Onboarding({ useVoiceFn }: { useVoiceFn?: () => UseVoice
   return (
     <MotionConfig reducedMotion="user">
       <div className="onb-board">
-        <header className={`floatbar onb-bar${isTauri() ? ' tauri' : ''}`}>
+        <WindowDragBar />
+        <header
+          className={`floatbar onb-bar${isTauri() ? ' tauri' : ''}`}
+          {...(isTauri() ? { 'data-tauri-drag-region': true } : {})}
+        >
           <span className="wordmark">OneSaaS</span>
           <span aria-hidden className="onb-bar-rule" />
           <span className="font-bold">Getting set up</span>

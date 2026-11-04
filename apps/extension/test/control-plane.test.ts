@@ -241,6 +241,32 @@ describe('running an automation', () => {
 });
 
 describe('running', () => {
+  test('a step that saved something links to that record', async () => {
+    const saves: Automation = {
+      ...LEAD,
+      steps: [{ id: 'save', type: 'table.insert', title: 'Save job', config: { table: 'job applications' } }],
+    };
+    replies['GET /api/workflows'] = { body: [saves] };
+    replies['POST /api/workflows/wf-lead/run'] = {
+      body: {
+        run: { id: 'r1', status: 'done' },
+        steps: [
+          { stepId: 'trigger', status: 'done' },
+          { stepId: 'save', status: 'done', output: { id: 42 } },
+        ],
+      },
+    };
+    await render();
+    await act(async () => {
+      button('Save as lead').click();
+    });
+    await flush();
+    await act(async () => {
+      button('See the saved record').click();
+    });
+    expect(openApp).toHaveBeenCalledWith('/lists?table=job%20applications&row=42');
+  });
+
   test('a fast run still shows one step working at a time, for the set pace', async () => {
     vi.useFakeTimers();
     try {
