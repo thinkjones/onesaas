@@ -19,7 +19,8 @@ import sharp from 'sharp';
 // per-mask encoding marker, so `lossless` and `one_bit` both work); we ask
 // for compact `one_bit` masks plus per-record confidence.
 
-const BASE_URL = 'https://api.meta.ai/v1';
+export const META_BASE_URL = 'https://api.meta.ai/v1';
+const BASE_URL = META_BASE_URL;
 
 export const SAM_MODEL = 'sam-3.1';
 export const MUSE_IMAGE_MODEL = 'muse-image-1.0';

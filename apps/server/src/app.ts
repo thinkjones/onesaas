@@ -17,8 +17,10 @@ import type { EngineEvent } from './engine/events.js';
 import { buildRunStory } from './engine/story.js';
 import { createExplainer, ExplainBody, ExplainError } from './explain/explain.js';
 import { FileNotFoundError, FileRejectedError, type FileStore } from './files/store.js';
+import { ManualRunRefused, manualRunPayload } from './engine/manualRun.js';
 import type { TestRunResult } from './engine/testRun.js';
 import type { Gateway, ModelStatus } from './models/gateway.js';
+import { ModelConnectionRejected, type ModelConnectionStore } from './models/connection.js';
 import type { ImageModels } from './models/image.js';
 import { DEFAULT_MOOD_BUSINESS_WHAT, generateMoodSet } from './mood/generate.js';
 import type { SettingsStore } from './settings/store.js';
@@ -110,6 +112,7 @@ export function createApp(deps: AppDeps): Hono {
   const voice = deps.voice as VoiceProxyOptions | undefined;
   const image = deps.image as ImageModels | undefined;
   const resetData = deps.resetData as (() => void) | undefined;
+  const modelConnection = deps.modelConnection as ModelConnectionStore | undefined;
 
   // The canvas and the builder agent change workflows ONLY through these ops.
   // The composition root shares ONE ops (so its onChange sees Dad's edits);
@@ -134,6 +137,33 @@ export function createApp(deps: AppDeps): Hono {
       return c.json({ error: 'Server not configured' }, 500);
     }
     return c.json(withStatus.status());
+  });
+
+  // The OpenAI-compatible endpoint from Settings. GET and PUT both answer with
+  // whether a key is saved, never the key itself.
+  app.get('/api/models/connection', (c) => {
+    if (!modelConnection) return c.json({ error: 'Server not configured' }, 500);
+    return c.json(modelConnection.getPublic());
+  });
+
+  const modelConnectionBody = z
+    .object({
+      baseUrl: z.string().optional(),
+      apiKey: z.string().optional(),
+      model: z.string().optional(),
+    })
+    .strict();
+
+  app.put('/api/models/connection', async (c) => {
+    if (!modelConnection) return c.json({ error: 'Server not configured' }, 500);
+    const parsed = modelConnectionBody.safeParse(await c.req.json().catch(() => undefined));
+    if (!parsed.success) return c.json({ error: 'Invalid connection body' }, 400);
+    try {
+      return c.json(modelConnection.update(parsed.data));
+    } catch (err) {
+      if (err instanceof ModelConnectionRejected) return c.json({ error: err.message }, 400);
+      throw err;
+    }
   });
 
   app.post('/api/pairing/start', (c) => {
@@ -602,6 +632,30 @@ export function createApp(deps: AppDeps): Hono {
         story: buildRunStory(workflow, steps, { usedSample }),
       });
     } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    }
+  });
+
+  // The side panel's Run button: a REAL run on real data, unlike "Try it". Only
+  // for automations Dad has turned on, and re-checked because edits to a live
+  // workflow are saved without validation. Resolves when the run finishes or
+  // parks on an approval; progress streams over /api/events meanwhile.
+  app.post('/api/workflows/:id/run', async (c) => {
+    if (!repo || !engine || !tables || !bridge) {
+      return c.json({ error: 'Server not configured' }, 500);
+    }
+    const id = c.req.param('id');
+    const wf = repo.getWorkflow(id);
+    if (!wf) return c.json({ error: `Unknown workflow: ${id}` }, 404);
+    if (wf.status !== 'on') return c.json({ error: 'Turn this automation on before running it.' }, 409);
+    const problem = checkWorkflow(wf, tables)[0];
+    if (problem) return c.json({ error: `This automation needs fixing: ${problem.problem}` }, 409);
+    try {
+      const payload = await manualRunPayload(wf, bridge);
+      const run = await engine.start(id, payload);
+      return c.json({ run, steps: repo.getRun(run.id)?.steps ?? [] });
+    } catch (err) {
+      if (err instanceof ManualRunRefused) return c.json({ error: err.message }, err.status);
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
     }
   });

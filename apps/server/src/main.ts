@@ -15,6 +15,7 @@ import { createEngine } from './engine/engine.js';
 import { createTestRunner } from './engine/testRun.js';
 import { createFileStore } from './files/store.js';
 import { GLIMMER_DOWN_NOTE, createGateway } from './models/gateway.js';
+import { createModelClients, createModelConnectionStore } from './models/connection.js';
 import { createImageModels } from './models/image.js';
 import { createSettingsStore } from './settings/store.js';
 import { migrateFlow1Seed } from './seed/migrate.js';
@@ -69,14 +70,11 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
   const bridge = createBridge({ pairing });
 
   const apiKey = process.env['MODEL_API_KEY'];
-  // The client requires SOME apiKey string at construction; 'unconfigured' is
-  // a placeholder that only surfaces if an AI step actually runs (it fails
-  // with an auth error then), so the server still boots for non-AI work.
-  if (!apiKey && !warnedMissingKey) {
-    warnedMissingKey = true;
-    console.warn('MODEL_API_KEY not set — AI steps will fail');
-  }
-  const openai = new OpenAI({ apiKey: apiKey ?? 'unconfigured', baseURL: 'https://api.meta.ai/v1' });
+  // A key or endpoint saved in Settings can replace this at any time, so the
+  // clients are resolved per call. The server still boots without any key: AI
+  // steps fail with an auth error only when they actually run.
+  const modelConnection = createModelConnectionStore(settings);
+  const clients = createModelClients({ store: modelConnection, envApiKey: apiKey });
   // Local inbox triage (M5 Task 7): when both Glimmer vars are set, triage is
   // assigned to the LM Studio server. The health check is async, so the
   // server always boots — triage serves from Spark until a check passes, and
@@ -94,14 +92,15 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
     glimmerBaseUrl && glimmerModel
       ? createGateway({
           providers: {
-            meta: openai,
+            meta: clients.chat,
             // LM Studio ignores the key but the SDK requires a non-empty one.
             glimmer: new OpenAI({ apiKey: 'lm-studio', baseURL: glimmerBaseUrl }),
           },
           roles: { triage: { provider: 'glimmer', model: glimmerModel } },
           glimmerHealth: { baseUrl: glimmerBaseUrl, model: glimmerModel },
+          customModel: clients.customModel,
         })
-      : createGateway({ client: openai });
+      : createGateway({ client: clients.chat, customModel: clients.customModel });
   if (glimmerBaseUrl && glimmerModel) {
     // One line once the initial check settles, so the server log shows which
     // backend actually sorts the inbox (only in the configured branch: the
@@ -121,7 +120,13 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
       },
     );
   }
-  const image = createImageModels({ client: openai, fetch, apiKey: apiKey ?? 'unconfigured' });
+  const image = createImageModels({
+    client: clients.meta as Parameters<typeof createImageModels>[0]['client'],
+    fetch,
+    get apiKey() {
+      return clients.metaApiKey() ?? 'unconfigured';
+    },
+  });
 
   // The one StepContext base: the engine and the test runner share it by
   // reference, so a PUT /api/settings updates live runs immediately (the
@@ -207,7 +212,12 @@ export function createServer(opts?: { dbFile?: string; filesDir?: string; seedFl
     conversations,
     resetData: () => resetDataToFreshInstall({ db, filesDir, repo, tables, setTimezone }),
     // The voice proxy holds the key server-side; the browser never sees it.
-    voice: { apiKey },
+    voice: {
+      get apiKey() {
+        return clients.metaApiKey();
+      },
+    },
+    modelConnection,
   });
   return { app, db, tables, views, repo, pairing, bridge, gateway, engine, ops, agent, conversations, agentEvents, testRun, files };
 }

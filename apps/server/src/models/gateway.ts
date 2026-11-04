@@ -5,7 +5,7 @@ import { costUsd } from './pricing.js';
 
 export type ModelRole = 'builder' | 'planner' | 'triage' | 'vision';
 
-export type ModelProvider = 'meta' | 'glimmer';
+export type ModelProvider = 'meta' | 'glimmer' | 'custom';
 
 export interface ChatJsonResult<T> {
   data: T;
@@ -89,7 +89,16 @@ const DEFAULT_ROLES: Record<ModelRole, string> = {
 
 const ROLE_ORDER: ModelRole[] = ['builder', 'planner', 'triage', 'vision'];
 
-export interface CreateGatewayOptions {
+interface CustomEndpointOption {
+  /**
+   * The model to use on a saved OpenAI-compatible endpoint, read per call;
+   * undefined means the Meta defaults. Such servers may not support strict
+   * `json_schema`, so JSON calls use the `json_object` path Glimmer uses.
+   */
+  customModel?: () => string | undefined;
+}
+
+export interface CreateGatewayOptions extends CustomEndpointOption {
   client: Pick<OpenAI, 'chat'>;
   roles?: Partial<Record<ModelRole, string>>;
 }
@@ -99,7 +108,7 @@ export interface RoleAssignment {
   model: string;
 }
 
-export interface CreateGatewayProvidersOptions {
+export interface CreateGatewayProvidersOptions extends CustomEndpointOption {
   providers: { meta: Pick<OpenAI, 'chat'>; glimmer?: Pick<OpenAI, 'chat'> };
   roles?: Partial<Record<ModelRole, RoleAssignment>>;
   /**
@@ -288,6 +297,10 @@ export function createGateway(
     ROLE_ORDER.map((role) => {
       const assignment = roles[role];
       if (assignment.provider === 'glimmer') {
+        const fallback = o.customModel?.();
+        if (!glimmerHealthy && fallback !== undefined) {
+          return { role, provider: 'custom' as const, model: fallback, healthy: true };
+        }
         return glimmerHealthy
           ? { role, provider: 'glimmer' as const, model: assignment.model, healthy: true }
           : {
@@ -298,6 +311,8 @@ export function createGateway(
               note: GLIMMER_DOWN_NOTE,
             };
       }
+      const custom = o.customModel?.();
+      if (custom !== undefined) return { role, provider: 'custom' as const, model: custom, healthy: true };
       return {
         role,
         provider: 'meta' as const,
@@ -340,23 +355,26 @@ export function createGateway(
       }
       const fallbackModel =
         roles[opts.role].provider === 'glimmer' ? DEFAULT_ROLES[opts.role] : roles[opts.role].model;
+      const custom = o.customModel?.();
       return completeJson(
         meta,
-        fallbackModel,
+        custom ?? fallbackModel,
         [
           { role: 'system', content: opts.system },
           { role: 'user', content: opts.user },
         ],
         opts.schema,
         opts.schemaName,
-        false,
+        custom !== undefined,
       );
     },
     async visionJson<T>(opts: VisionJsonOptions<T>): Promise<ChatJsonResult<T>> {
       // Only triage routes to Glimmer; vision always reads on meta.
+      const custom = o.customModel?.();
       return completeJson(
         meta,
-        roles[opts.role].provider === 'meta' ? roles[opts.role].model : DEFAULT_ROLES[opts.role],
+        custom ??
+          (roles[opts.role].provider === 'meta' ? roles[opts.role].model : DEFAULT_ROLES[opts.role]),
         [
           {
             role: 'user',
@@ -368,13 +386,14 @@ export function createGateway(
         ],
         opts.schema,
         opts.schemaName,
-        false,
+        custom !== undefined,
       );
     },
     async chatTools(opts: ChatToolsOptions): Promise<ChatToolsResult> {
       // Only triage routes to Glimmer, and triage never calls tools.
       const model =
-        roles[opts.role].provider === 'meta' ? roles[opts.role].model : DEFAULT_ROLES[opts.role];
+        o.customModel?.() ??
+        (roles[opts.role].provider === 'meta' ? roles[opts.role].model : DEFAULT_ROLES[opts.role]);
       const completion = await meta.chat.completions.create({
         model,
         messages: opts.messages,
