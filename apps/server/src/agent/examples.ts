@@ -38,7 +38,7 @@ Tool calls:
 
 8. test_run {} — read the one-line-per-step preview, fix anything that failed.
 
-9. activate {} — the chore reducer is on.`;
+9. activate {} — the automation is on.`;
 
 export const flow2ExampleUser =
   'When someone emails asking to book a time, check my calendar, save the booking and put it in my calendar, then draft a confirmation for me to check.';
@@ -91,7 +91,7 @@ Tool calls:
 
 12. test_run {} — read the one-line-per-step preview. Reads need Dad's computer: when Gmail or Calendar is not open the read previews fail ("I need Gmail open in Chrome to do this") and the rest show skipped. That failure is environmental, not shape — keep the steps. The Problems line is the shape oracle: fix anything it names.
 
-13. activate {} — the chore reducer is on.`;
+13. activate {} — the automation is on.`;
 
 export const flow4ExampleUser =
   'When a new customer emails, do what you did before, and also let me drop in a product photo to turn into a post for Facebook and Instagram.';
@@ -119,9 +119,9 @@ export const flow4Example = `Example: "${flow4ExampleUser}"
 
 The builder thinks: two different jobs in one sentence. The email branch is
 the button flow from before plus a new-customer check; the photo branch is a
-whole separate reducer. Build the email branch first, then start the second
-reducer and build the photo branch there — never mix both jobs' steps into
-one reducer.
+whole separate automation. Build the email branch first, then start the second
+automation and build the photo branch there — never mix both jobs' steps into
+one automation.
 
 The Customers and Posts lists already exist (see the lists section), so this
 build needs no create_table calls. When a list is missing, create it first:
@@ -131,11 +131,11 @@ keyed by email) and Posts (caption text, image text, shown by caption).
 Ids below are shortened; use the real ids from the Links line.
 
 Build straight through without explain calls — the lists section already
-shows every column, and both reducers must fit in this one turn. Every step
+shows every column, and both automations must fit in this one turn. Every step
 below is required: do not stop after the email branch, and do not skip the
 Posts log (it is how Dad finds the post later). Finish the whole email
 branch (steps 1–9, through the draft and the conditional edge) before
-create_workflow — there is no way back to the email reducer afterwards.
+create_workflow — there is no way back to the email automation afterwards.
 
 Tool calls (email branch):
 
@@ -157,7 +157,7 @@ Tool calls (email branch):
 
 9. add_step {"type": "gmail.draftReply", "title": "Draft reply", "summary": "Draft the reply in Gmail.", "config": {}, "inputs": {"body": "{{approve.text}}", "threadId": "{{trigger.email.threadId}}"}, "after": "<the approve step's id>"}
 
-Tool calls (photo branch — a separate reducer):
+Tool calls (photo branch — a separate automation):
 
 10. create_workflow {"name": "Product photo posts", "description": "Turns a dropped-in product photo into a Facebook and Instagram post."} — only after steps 1–9 are all built; there is no way back. Now building the photo reducer; set its trigger next.
 
@@ -177,4 +177,4 @@ Tool calls (photo branch — a separate reducer):
 
 18. add_step {"type": "meta.draftPost", "title": "Prepare Facebook post", "summary": "Open the post in Meta Business Suite.", "config": {}, "inputs": {"text": "{{approve.text}}", "image": "{{art.file}}"}, "after": "<the approve step's id>"}
 
-Finally, say both reducers are built and Dad can turn them on. No test_run, no activate: each would target only the photo reducer, and the turn is for building both in sequence.`;
+Finally, say both automations are built and Dad can turn them on. No test_run, no activate: each would target only the photo reducer, and the turn is for building both in sequence.`;

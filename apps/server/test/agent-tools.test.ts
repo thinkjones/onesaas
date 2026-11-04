@@ -558,7 +558,7 @@ test('system prompt contains every catalog description, the fixed voice and the 
     tables: tables.listTables(),
   });
   expect(prompt).toContain(
-    'You help a small business owner turn a chore into a chore reducer. Running a business is hard; be warm, brief and encouraging. Use plain words. Never mention JSON, ids or step types.',
+    'You help a small business owner turn a chore into an automation. Always call it an automation. Running a business is hard; be warm, brief and encouraging. Use plain words. Never mention JSON, ids or step types.',
   );
   for (const def of Object.values(catalog)) {
     expect(prompt).toContain(def.description);

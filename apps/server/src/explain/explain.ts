@@ -37,13 +37,13 @@ export class ExplainError extends Error {
  */
 export const UI_DESCRIPTIONS: Record<string, string> = {
   'mode-switch':
-    'Design is where you build and change the chore reducer with your helper. Watch it run shows what it actually did, run by run.',
+    'Design is where you build and change the automation with your helper. Runs shows what it actually did, run by run.',
   'turn-on':
-    'Turn on starts the chore reducer so it watches for new work on its own. You can turn it off again any time.',
+    'Publish starts the automation so it watches for new work on its own. You can turn it off again any time.',
   'nav-inbox':
-    'Inbox shows everything your chore reducers have done, newest first — like an email inbox for your business.',
+    'Inbox shows everything your automations have done, newest first — like an email inbox for your business.',
   'nav-automate':
-    'Automate is where you describe a chore and build a new chore reducer, and see your reducers and pinned numbers at a glance.',
+    'Automate is where you describe a chore and build a new automation, and see your automations and pinned numbers at a glance.',
   'nav-data': 'Data is the things your business keeps track of, like customers and bookings.',
   'nav-settings':
     'Settings is where you tell the app about your business and how you want it to look and sound.',
@@ -106,7 +106,7 @@ export function createExplainer(deps: ExplainerDeps): {
 
   async function explainStep(id: string | undefined, context: string | undefined) {
     const stepId = requireId(id, 'step');
-    const workflowId = requireId(context, 'chore reducer');
+    const workflowId = requireId(context, 'automation');
     const wf = deps.repo.getWorkflow(workflowId);
     if (!wf) throw new ExplainError(`Unknown workflow: ${workflowId}`, 404);
     const node = wf.trigger.id === stepId ? wf.trigger : wf.steps.find((s) => s.id === stepId);

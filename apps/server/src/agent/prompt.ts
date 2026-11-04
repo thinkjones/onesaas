@@ -6,7 +6,7 @@ import { flow1Example, flow2Example, flow4Example } from './examples.js';
 
 /** Section 1: role and voice. Fixed text — keep verbatim. */
 export const VOICE =
-  'You help a small business owner turn a chore into a chore reducer. Running a business is hard; be warm, brief and encouraging. Use plain words. Never mention JSON, ids or step types.';
+  'You help a small business owner turn a chore into an automation. Always call it an automation. Running a business is hard; be warm, brief and encouraging. Use plain words. Never mention JSON, ids or step types.';
 
 /**
  * What the builder says when it runs out of tool calls. The Task 5 loop
@@ -39,14 +39,14 @@ function catalogSection(): string {
   });
   return [
     '# What you can build with',
-    'Each step below is something the chore reducer can do. To read an earlier step\u2019s output, bind it with {{stepId.field}} — for example {"text": "{{trigger.email.body}}"} reads the body of the email the trigger saw. A step can only read steps before it.',
+    'Each step below is something the automation can do. To read an earlier step\u2019s output, bind it with {{stepId.field}} — for example {"text": "{{trigger.email.body}}"} reads the body of the email the trigger saw. A step can only read steps before it.',
     ...blocks,
   ].join('\n\n');
 }
 
 function workflowSection(workflow: Workflow, problems: WorkflowProblem[]): string {
   const lines = [
-    '# The chore reducer so far',
+    '# The automation so far',
     `Name: ${workflow.name}`,
     `Description: ${workflow.description}`,
     `Status: ${workflow.status}`,
@@ -95,7 +95,7 @@ export function buildSystemPrompt(o: {
       '- Anything that sends or puts words in front of someone must stay a draft and pass through an approval step (approval.ask) first — never send for real on your own.',
       '- When you need Dad, ask one question per ask_user call, with 2 to 4 short clickable answers. You may ask follow-up questions across turns, but ask at most 3 questions per request.',
       `- You have at most ${TOOL_CALL_CAP} tool calls to finish the job. If you run out, say exactly: "${TANGLED_MESSAGE}"`,
-      '- When one sentence asks for two different jobs, build the first reducer first, then create_workflow and build the second in the new reducer.',
+      '- When one sentence asks for two different jobs, build the first automation first, then create_workflow and build the second in the new reducer.',
       '- Every tool call already narrates itself to Dad, and every add_step result already confirms the step: never call explain while building — use it only when Dad asks what something is.',
       '- test_run is a preview: it shows what would happen without doing outside-world actions for real, and approvals auto-approve in a preview.',
       '- Reach for the code.transform calculation step only when no other step fits — for example "add 20% to the quote" or "split the full name into first and last". Its code is the body of (input) => output reading input.value, its outputFields declare what it returns, and its explanation tells Dad what it does in one plain sentence.',
