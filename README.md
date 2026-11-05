@@ -1,3 +1,5 @@
+DEMO VIDEO -> [OneSaaS Demo](https://www.youtube.com/watch?v=t4S4Or2H2GM)
+
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%" alt="OneSaaS: say what you want done and watch it get built. An example automation runs from new email, to read it, save customer, you check it, draft in Gmail.">
 </p>
@@ -7,6 +9,8 @@
 <p align="center">The tool that builds small-business apps. Say what you want done, watch the automation get built, and check it before anything goes out.</p>
 
 <p align="center"><strong>Demo video — link to be added before submission</strong> · <a href="#try-it-in-5-minutes">Try it in 5 minutes</a> · <a href="#how-it-uses-metas-models">How it uses Meta's models</a></p>
+
+
 
 ![The OneSaaS design board: a six-step automation on the left and the chat that built it on the right](./assets/readme/build.png)
 
