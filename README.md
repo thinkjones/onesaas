@@ -1,3 +1,5 @@
+DEMO VIDEO -> [OneSaaS Demo](https://www.youtube.com/watch?v=t4S4Or2H2GM)
+
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%" alt="OneSaaS: say what you want done and watch it get built. An example automation runs from new email, to read it, save customer, you check it, draft in Gmail.">
 </p>
@@ -8,6 +10,8 @@
 
 <p align="center"><strong>Demo video — link to be added before submission</strong> · <a href="#try-it-in-5-minutes">Try it in 5 minutes</a> · <a href="#how-it-uses-metas-models">How it uses Meta's models</a></p>
 
+
+
 ![The OneSaaS design board: a six-step automation on the left and the chat that built it on the right](./assets/readme/build.png)
 
 My dad runs his small business out of Gmail and memory, and every evening the same chores eat him: answer customers, track bookings, turn phone photos into posts. This app doesn't do one of those chores. It's the tool that *builds* automations for them. He says what he wants to achieve, out loud, and watches it get built in front of him: a plan first, then the real steps, a test run, then Publish. Every step says why in plain English, nothing ever sends itself, and the whole thing runs on his own computer.
@@ -15,8 +19,6 @@ My dad runs his small business out of Gmail and memory, and every evening the sa
 Built for the Meta AI Developer Hackathon: Indie Developer track, "Build for Your World".
 
 ## See it work
-
-<iframe width="560" height="315" src="https://www.youtube.com/embed/t4S4Or2H2GM?si=-lltgjzEJJpYEneF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 | You stay in charge | Run it from the page you're on |
 | :---: | :---: |
