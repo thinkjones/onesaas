@@ -16,6 +16,8 @@ Built for the Meta AI Developer Hackathon: Indie Developer track, "Build for You
 
 ## See it work
 
+<iframe width="560" height="315" src="https://www.youtube.com/embed/t4S4Or2H2GM?si=-lltgjzEJJpYEneF" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
 | You stay in charge | Run it from the page you're on |
 | :---: | :---: |
 | <img src="./assets/readme/approve.png" alt="A real run paused on an approval step, showing the drafted reply with Looks good and Skip buttons" width="600"> | <img src="./assets/readme/panel-run.png" alt="The Chrome side panel showing the same run, waiting for approval" width="240"> |
